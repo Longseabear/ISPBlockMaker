@@ -148,3 +148,29 @@ npm run build
 현재 범위는 단일 프로젝트, 평면 블록 그래프, 탭당 한 개의 활성 터미널입니다. 설명은 블록 JSON에 저장하며 구현 코드는 파일 경로로 참조합니다. 배치 변경도 revision을 증가시킵니다. 결과물은 블록 ID·revision·생성 시간과 선택적 실행 ID/metadata를 기록합니다. 예제는 입력 규격·난수 seed·파라미터·RMSE·코드 해시를 포함합니다.
 
 터미널 연결이 끊기면 60초간 유지하며 같은 화면에서 네트워크 재연결 시 복원합니다. 페이지를 새로고침하면 새 cmd 터미널이 자동으로 시작됩니다. 하위 그래프, 블록 정의 재사용, 임의 그래프 자동 실행, RAW 뷰어, RTL 도구 연동은 아직 구현하지 않았습니다. 생성 HTML의 격리는 로컬 CLI 자체를 sandbox하는 기능은 아닙니다.
+
+## JOB Queue와 반복실험
+
+왼쪽 사이드바의 작업 화면들 아래에 **JOB Queue**가 있습니다. 전역 요청과 모든 블록의 JOB을 함께 표시하며, 남은 작업 수·진행 상태·검색·완료 필터를 제공합니다. 아직 JOB으로 변환되지 않은 요청은 별도 접이식 목록으로 표시합니다. 작업의 “요청 / JOB 관리” 버튼으로 기존 편집창을 열어 삭제하거나 내용을 확인하세요. 단순 조회는 요청을 소비하지 않습니다.
+
+프로젝트 스킬 옆 `experiment-loop.md`는 반복실험용 에이전트 지시문입니다. 고정 입력/seed/metric, 후보와 최선 버전 구분, 검증→결과 기록→커밋→JOB 완료, 실패/횟수에 따른 종료와 결과 화면 제시를 정의합니다. 기본 한도는 최대 5개 후보, 연속 실패 2회 또는 개선 없는 후보 3회입니다. 사용자가 지정한 범위가 우선합니다. 자동 터미널 타이머는 시작하지 않습니다.
+
+## GPU simulator extensions
+
+왼쪽 **GPU simulator**에서 WebGL2로 이미지의 파라미터 변화를 봅니다. 기본 이미지 조정과 프로젝트 `extensions/gpu/*.json` 확장을 선택할 수 있습니다. 이미지 업로드(20MB 이하, 긴 변 최대 1024px), 고정 seed 합성 입력, 슬라이더, 비교 결과 고정, 명시적인 그래프 파라미터 적용, PNG 시각화 저장을 지원합니다. 저장 후 Visualizations로 이동합니다. 기존 그래프를 자동으로 GPU로 변환하지는 않습니다.
+
+확장은 아래 형태입니다. `fragment`에는 GLSL ES 3.00 전체 소스를 넣습니다. `u_image`는 sampler2D, `u_resolution`은 vec2이며, 매니페스트의 각 파라미터는 float uniform입니다. 정점 셰이더는 프레임워크가 제공합니다. `blockId`와 `parameter`를 함께 지정하면 그래프의 해당 숫자 파라미터에 연결됩니다. 결과용 최상위 `blockId`는 선택 사항입니다.
+
+```json
+{
+  "version": 1,
+  "id": "my-filter",
+  "name": "My filter",
+  "description": "GPU implementation and its approximations",
+  "blockId": "filter",
+  "fragment": "#version 300 es\nprecision highp float;\nuniform sampler2D u_image;\nuniform float gain;\nout vec4 color;\nvoid main(){color=vec4(texelFetch(u_image,ivec2(gl_FragCoord.xy),0).rgb*gain,1.0);}",
+  "parameters": [{"name":"gain","label":"Gain","min":0,"max":2,"step":0.01,"default":1,"blockId":"filter","parameter":"gain"}]
+}
+```
+
+미리보기는 RGBA8이며 RAW/float 파이프라인 정밀도를 보장하지 않습니다. 표시되는 RMSE는 **입력과 출력의 차이**이고 품질 점수가 아닙니다. 시간은 셰이더 준비·실행·GPU 읽기를 포함한 벽시계 시간입니다. GPU 동등성을 주장하려면 프로젝트의 CPU 참조와 허용오차 검증을 별도로 수행하세요. WebGL2 지원과 실제 장치/드라이버에 따라 하드웨어 가속 여부가 달라질 수 있습니다. 규격 참고: [WebGL2 API](https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext).

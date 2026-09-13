@@ -139,3 +139,7 @@ Use actual edge IDs from `project` or the successful `connect` response. `--edge
 `present` requests graph selection/highlights/fit or artifact-tab navigation on currently connected editor tabs. It preserves terminal visibility and the running session. It does not change the terminal's pinned work target. Unsaved inspector edits defer the request behind a “결과 보기” button; do not force-discard edits. Check the response: `delivered: 0` means there was no connected screen, not that the result was shown. Do not start a browser or repeatedly resend just to force attention; report that the result is registered and can be opened. Delivery is not an acknowledgment that the user viewed it.
 
 Finish with a brief human-facing message: what changed, what was validated, and which block/result to inspect. Do not dump raw project JSON into the completion message.
+
+## Repeatable experiment loop
+
+When asked to iterate, optimize, compare parameters, or process remaining JOBs, read `experiment-loop.md` beside this skill. This is an execution protocol for the agent, not an automatic scheduler. Do not start indefinite background runs merely because this skill is present.

@@ -11,6 +11,7 @@ import * as pty from "node-pty";
 import { z } from "zod";
 import { contextFor, toMermaid } from "./model.mjs";
 import { readImplementation } from "./source.mjs";
+import { gpuExtensions } from "./gpu.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion } from "./versions.mjs";
 
@@ -81,6 +82,7 @@ app.get("/api/bootstrap", (req, res) => {
   res.json({ token, state: store.get(), workspace });
 });
 app.get("/api/project", (req, res) => res.json(store.get()));
+app.get("/api/gpu/extensions", async (req, res) => res.json(await gpuExtensions(workspace)));
 app.get("/api/versions", async (req, res) =>
   res.json(await versionStatus(workspace, req.query.history === "1")),
 );

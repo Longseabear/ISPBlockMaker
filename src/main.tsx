@@ -44,6 +44,8 @@ import {
   X,
 } from "lucide-react";
 import type { Api, Artifact, Block, Project, Presentation } from "./types";
+import { JobsBoard } from "./JobsBoard";
+import { GpuSimulator } from "./GpuSimulator";
 import { CodeView } from "./CodeView";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { VersionControl } from "./VersionControl";
@@ -946,7 +948,7 @@ function App() {
   function switchView(next: string) {
     setView(next);
     setFocus("");
-    if (next === "artifacts" || next === "code")
+    if (["artifacts", "code", "jobs", "gpu"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   function mode(next: string) {
@@ -1343,6 +1345,8 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
+          <button className={view === "gpu" ? "active" : ""} aria-label="GPU simulator" onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
+          <button className={view === "jobs" ? "active job-nav" : "job-nav"} aria-label="JOB Queue" onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <div className="layout-toolbar">
             <div>
               <button onClick={() => mode("design")}>설계</button>
@@ -1400,7 +1404,16 @@ function App() {
         <main className="main-area">
           <div className="editor">
             <div className="editor-main">
-              {view === "code" ? (
+              {view === "jobs" ? (
+                <JobsBoard project={project} onOpen={id => {
+                  if (dirty) return notify("현재 편집을 저장하거나 취소하세요.");
+                  switchView("graph");
+                  if (id) { selectBlock(id); setRequestTarget({id, nonce: Date.now()}); }
+                  else {setGlobalOpen(true);setLayout(current => ({...current, inspector:true}));}
+                }}/>
+              ) : view === "gpu" ? (
+                <GpuSimulator api={api} project={project} dirty={dirty} onSaved={id=>{setArtifactId(id);switchView("artifacts");}}/>
+              ) : view === "code" ? (
                 <CodeView project={project} initialId={selected} api={api} />
               ) : view === "graph" ? (
                 <div className="graph-area">

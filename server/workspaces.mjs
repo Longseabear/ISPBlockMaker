@@ -74,6 +74,10 @@ export function openWorkspace(folder, root) {
           .replaceAll("workspace/graph.json", "graph.json"),
       );
     }
+    const loopGuide = path.join(path.dirname(skill), "experiment-loop.md");
+    if (!fs.existsSync(loopGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/experiment-loop.md"), loopGuide);
+    if (!fs.readFileSync(skill, "utf8").includes("experiment-loop.md"))
+      fs.appendFileSync(skill, "\n\n## Repeatable experiment loop\nFor iteration or remaining JOB requests, read `experiment-loop.md` beside this skill. Do not start an indefinite scheduler.\n");
     const claudeSkill = path.join(
       workspace,
       ".claude/skills/isp-block-maker/SKILL.md",
