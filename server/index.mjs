@@ -1,4 +1,5 @@
 import { installViewer } from "./viewer.mjs";
+import { deleteArtifacts } from "./artifact-delete.mjs";
 import { serverPaths } from "./paths.mjs";
 import express from "express";
 import { requestDocument } from "./documents.mjs";
@@ -624,6 +625,12 @@ const artifactSchema = z.object({
   revision: z.number().int().positive(),
   runId: z.string().max(100).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+});
+app.delete("/api/artifacts", (req,res) => {
+  const {ids}=z.object({ids:z.array(z.string().min(1)).min(1).max(1000)}).parse(req.body);
+  const result=deleteArtifacts(store,artifactDir,[...new Set(ids)]);
+  broadcast();
+  res.json(result);
 });
 app.post("/api/artifacts", (req, res) => {
   const input = artifactSchema.parse(req.body);

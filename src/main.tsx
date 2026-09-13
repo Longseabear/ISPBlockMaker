@@ -917,6 +917,9 @@ function TerminalPane({
 
 function App() {
   const flowRef = useRef<ReactFlowInstance<FlowNode> | null>(null);
+  const [deleteCandidates,setDeleteCandidates]=useState<Artifact[]>([]);
+  const [deleteBusy,setDeleteBusy]=useState(false);
+  const [deleteError,setDeleteError]=useState("");
   const [workspacePath, setWorkspacePath] = useState("");
   const [workspacePicker, setWorkspacePicker] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
@@ -1364,6 +1367,7 @@ function App() {
             onClose={() => setWorkspacePicker(false)}
           />
         )}
+        {!!deleteCandidates.length&&<div className="workspace-picker-backdrop" data-unsaved-dialog="true"><section className="leave-dialog" role="dialog" aria-modal="true" aria-label="시각화 삭제"><h2>시각화 {deleteCandidates.length}개를 삭제할까요?</h2><ul>{deleteCandidates.map(a=><li key={a.id}>{a.title}</li>)}</ul><p>등록된 HTML·이미지 파일과 내장 데이터, 메타데이터를 영구 삭제합니다.</p><p>구현 코드, 원본 입력, 생성 스크립트·작업 폴더의 출력 원본, JOB·활동 기록은 유지합니다.</p>{deleteError&&<p role="alert">{deleteError}</p>}<div className="work-controls"><button autoFocus disabled={deleteBusy} onClick={()=>setDeleteCandidates([])}>취소</button><button disabled={deleteBusy} onClick={async()=>{setDeleteBusy(true);setDeleteError("");try{const result=await api<{cleanupPending:string[]}>("/artifacts",{ids:deleteCandidates.map(a=>a.id)},"DELETE");setDeleteCandidates([]);setArtifactId("");if(result.cleanupPending.length)notify("목록은 삭제됐지만 일부 파일 정리가 실패했습니다: "+result.cleanupPending.join(", "));}catch(e){setDeleteError(String(e));}finally{setDeleteBusy(false);}}}>{deleteBusy?"삭제 중…":"영구 삭제"}</button></div></section></div>}
         {leaveTarget&&<div className="workspace-picker-backdrop" data-unsaved-dialog="true"><section className="leave-dialog" role="dialog" aria-modal="true" aria-label="저장하지 않은 변경" onKeyDown={e=>{if(e.key==='Escape'&&!leaveBusy)setLeaveTarget(null);}}><h2>변경사항을 저장할까요?</h2><p>선택한 화면으로 이동하기 전에 현재 편집을 처리하세요.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div className="work-controls"><button autoFocus disabled={leaveBusy} onClick={()=>setLeaveTarget(null)}>계속 편집</button><button disabled={leaveBusy} onClick={()=>void resolveLeave(false)}>변경 버리고 이동</button><button className="primary" disabled={leaveBusy} onClick={()=>void resolveLeave(true)}>{leaveBusy?'처리 중…':'저장 후 이동'}</button></div></section></div>}
         <nav className="rail workspace-sidebar" aria-label="Workspace controls">
           {" "}
@@ -1656,6 +1660,8 @@ function App() {
                         </span>
                         <span className="spacer" />
                         <span>{artifact.kind.toUpperCase()}</span>
+                        <button onClick={()=>{setDeleteError("");setDeleteCandidates([artifact]);}}><Trash2 size={14}/> 삭제</button>
+                        {artifact.runId && project.artifacts.filter(a=>a.runId===artifact.runId).length>1 && <button onClick={()=>{setDeleteError("");setDeleteCandidates(project.artifacts.filter(a=>a.runId===artifact.runId));}}>같은 실행 결과 삭제</button>}
                       </div>
                       <div className="artifact-preview">
                         {artifact.kind === "html" ? (

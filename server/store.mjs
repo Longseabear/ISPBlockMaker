@@ -179,5 +179,9 @@ export function createStore(
       refresh();
       return persist({ ...state, artifacts: [...state.artifacts, artifact] });
     },
+    removeArtifacts(ids) {
+      refresh();
+      return persist({ ...state, artifacts: state.artifacts.filter(a => !ids.includes(a.id)) });
+    },
   };
 }
