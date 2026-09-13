@@ -11,10 +11,10 @@ import * as pty from "node-pty";
 import { z } from "zod";
 import { contextFor, toMermaid } from "./model.mjs";
 import { readImplementation } from "./source.mjs";
-import { recordActivity, readActivity } from "./activity.mjs";
+import { recordActivity, readActivity, summarySchema } from "./activity.mjs";
 import { gpuExtensions } from "./gpu.mjs";
 import { openWorkspace } from "./workspaces.mjs";
-import { versionStatus, previewVersion, switchVersion } from "./versions.mjs";
+import { versionStatus, previewVersion, switchVersion, commitChanges } from "./versions.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = path.join(root, ".isp");
@@ -71,7 +71,7 @@ app.use("/api", (req, res, next) => {
 app.use("/api", express.json({ limit: "16mb" }));
 app.use("/api", (req,res,next)=>{
  const folder=dataDir,endpoint=req.path,method=req.method;
- if (method!=="GET" && !["/selection","/present"].includes(endpoint)) {
+ if (method!=="GET" && !["/selection","/present","/activity/summaries"].includes(endpoint)) {
   let result;const json=res.json.bind(res);res.json=(body)=>{result=body;return json(body);};
   res.on("finish",()=>{try {
    const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
@@ -82,6 +82,13 @@ app.use("/api", (req,res,next)=>{
  next();
 });
 app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
+app.get("/api/versions/commits/:hash",async(req,res)=>res.json(await commitChanges(workspace,req.params.hash)));
+app.post("/api/activity/summaries",(req,res)=>{
+ const input=summarySchema.parse(req.body);
+ recordActivity(dataDir,{...input,kind:"summary",title:input.title});
+ res.status(201).json(readActivity(dataDir)[0]);
+});
+
 
 function broadcast() {
   const message = JSON.stringify({ type: "state", state: store.get() });

@@ -105,7 +105,8 @@ export async function main() {
   if (args.includes("--global") && option("block"))
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
-  if (command === "context")
+  if (command === "summary") result = await request("/activity/summaries", {method:"POST",body:JSON.stringify(JSON.parse(fs.readFileSync(args[0],"utf8")))});
+  else if (command === "context")
     result = await request(
       `/context${!args.includes("--selection") && blockId ? `?blockId=${encodeURIComponent(blockId)}` : ""}`,
     );
@@ -345,6 +346,7 @@ isp present --graph
 isp update patch.json --block ID --revision N
 isp artifact result.html --block ID --revision N --title "Comparison"
 isp mermaid                     Export the graph as Mermaid
+isp summary summary.json        Record work summary, verification and related IDs
 isp demo                        Run the synthetic flat-detection / denoise example
 
 Outside the web terminal: npm run isp -- context

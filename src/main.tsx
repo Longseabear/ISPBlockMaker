@@ -1057,7 +1057,7 @@ function App() {
       const result = response.headers.get("content-type")?.includes("json")
         ? await response.json()
         : await response.text();
-      if (result.blocks) accept(result);
+      if (Array.isArray(result.blocks) && Array.isArray(result.edges) && typeof result.revision === "number") accept(result);
       return result;
     },
     [token, accept],

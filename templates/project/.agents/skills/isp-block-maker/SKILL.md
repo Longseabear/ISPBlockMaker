@@ -143,3 +143,11 @@ Finish with a brief human-facing message: what changed, what was validated, and 
 ## Repeatable experiment loop
 
 When asked to iterate, optimize, compare parameters, or process remaining JOBs, read `experiment-loop.md` beside this skill. This is an execution protocol for the agent, not an automatic scheduler. Do not start indefinite background runs merely because this skill is present.
+
+## Record a useful work summary
+
+After completing or stopping requested implementation/analysis, record one concise work summary with `node "<absolute workspace>/.isp/tools/isp.mjs" summary "<summary JSON path>"`. Store the temporary JSON in ignored `.isp/` so it does not dirty implementation history. Record this after the relevant validation and local commit, before the final presentation. For interrupted/blocked work, state unfinished items honestly; do not invent test results or reasons from a diff.
+
+JSON fields: title (required short title), summary (required outcome), reason (why), changes (array of concrete before/after statements), validation (array of commands, measured results and limits), limitations (remaining issues), commit (optional verified hash), blockIds, jobIds, artifactIds (optional arrays of actual related IDs). Use the task's changed blocks and actual artifacts, not merely the terminal's pinned block. Do not auto-complete JOBs through this log; JOB lifecycle remains separate.
+
+Activity history shows this summary alongside immutable commit diffs. Git automatically supplies changed files, graph fields, parameter before/after values, and affected implementation blocks. Do not repeat raw diff text in the summary; explain intent, outcome and evidence instead. Commit titles alone are not a substitute for this work summary.

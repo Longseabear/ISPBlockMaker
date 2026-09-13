@@ -1,3 +1,5 @@
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';
 export function recordActivity(dir,event){const file=path.join(dir,'activity.json');fs.mkdirSync(dir,{recursive:true});const items=readActivity(dir);items.unshift({id:crypto.randomUUID(),time:new Date().toISOString(),...event});fs.writeFileSync(file+'.tmp',JSON.stringify(items.slice(0,1000)));fs.renameSync(file+'.tmp',file);}
 export function readActivity(dir){try{return JSON.parse(fs.readFileSync(path.join(dir,'activity.json'),'utf8'));}catch{return [];}}
+import {z} from 'zod';
+export const summarySchema=z.object({title:z.string().trim().min(1).max(200),summary:z.string().trim().min(1).max(6000),reason:z.string().max(4000).default(''),changes:z.array(z.string().max(2000)).max(40).default([]),validation:z.array(z.string().max(2000)).max(40).default([]),limitations:z.string().max(4000).default(''),commit:z.string().regex(/^[a-f0-9]{7,64}$/i).optional(),blockIds:z.array(z.string().max(80)).max(200).default([]),jobIds:z.array(z.string().max(80)).max(100).default([]),artifactIds:z.array(z.string().max(100)).max(100).default([])});

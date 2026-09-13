@@ -294,3 +294,32 @@ export async function switchVersion(workspace, input, beforeSwitch = () => {}) {
   await git(workspace, args);
   return versionStatus(workspace);
 }
+
+export async function commitChanges(workspace, ref) {
+  if (!/^[a-f0-9]{7,64}$/i.test(ref)) throw new Error('커밋 해시를 지정하세요.');
+  const status=await versionStatus(workspace);
+  if(!status.available)throw new Error('프로젝트 Git 저장소가 없습니다.');
+  const commit=await commitInfo(workspace,ref);
+  const parents=(await git(workspace,['rev-list','--parents','-n','1',commit.hash])).trim().split(' ').slice(1);
+  const parent=parents[0]||null;
+  const args=parent?['diff',parent,commit.hash]:['show','--format=','--root',commit.hash];
+  const files=(await git(workspace,[...args,'--name-only','-z','--'])).split('\0').map(v=>v.trim()).filter(Boolean);
+  const patch=await git(workspace,[...args,'--no-ext-diff','--no-textconv','--no-color','--unified=3','--']);
+  const readGraph=async(ref)=>{try{return JSON.parse(await git(workspace,['show',`${ref}:graph.json`]));}catch{return null;}};
+  const before=parent?await readGraph(parent):{blocks:[],edges:[]},after=await readGraph(commit.hash);
+  const blocks=[];
+  for(const id of new Set((before&&after?[...(before.blocks||[]),...(after.blocks||[])]:[]).map(b=>b.id))){
+    const old=before?.blocks?.find(b=>b.id===id),next=after?.blocks?.find(b=>b.id===id);
+    const fields=[];
+    for(const key of new Set([...Object.keys(old||{}),...Object.keys(next||{})])){
+      if(key==='parameters')continue;
+      if(JSON.stringify(old?.[key])!==JSON.stringify(next?.[key]))fields.push(key);
+    }
+    const parameters=[];
+    for(const key of new Set([...Object.keys(old?.parameters||{}),...Object.keys(next?.parameters||{})]))
+      if(JSON.stringify(old?.parameters?.[key])!==JSON.stringify(next?.parameters?.[key]))parameters.push({name:key,before:old?.parameters?.[key]??null,after:next?.parameters?.[key]??null});
+    if(next?.implementation&&files.includes(next.implementation.replaceAll('\\','/')))fields.push('implementation source');
+    if(fields.length||parameters.length)blocks.push({id,name:next?.name||old?.name,status:!old?'added':!next?'removed':'modified',fields,parameters});
+  }
+  return {commit,parent,merge:parents.length>1,files,blockChanges:blocks,graphAvailable:!!after&&!!before,edgesBefore:before?.edges?.length??null,edgesAfter:after?.edges?.length??null,patch:patch.slice(0,100000),truncated:patch.length>100000};
+}
