@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {deflateSync,crc32} from "node:zlib";
+import {alignCfaRoi} from "./cfa-roi.mjs";
 
 export const imageSpec = z.object({
   format:z.enum(["raw","bmp","rgba8"]), width:z.number().int().positive().max(65536).optional(),height:z.number().int().positive().max(65536).optional(),
@@ -68,6 +69,8 @@ export function cropImage(image,roi){
   for(const key of ["x","y","width","height"])if(!Number.isInteger(roi[key]))throw new Error("ROI는 원본 픽셀 기준 정수여야 합니다.");
   if(roi.x<0||roi.y<0||roi.width<1||roi.height<1||roi.x+roi.width>s.width||roi.y+roi.height>s.height)throw new Error("ROI가 이미지 범위를 벗어났습니다.");
   if(s.format==="raw") {
+    const aligned=alignCfaRoi(s,roi);
+    if(["x","y","width","height"].some(key=>aligned[key]!==roi[key]))throw new Error(`RAW 크롭은 ${2*s.group}×${2*s.group} CFA 셀에 정렬해야 합니다. 시작점과 끝점에서 ${s.pattern} pixel order를 유지하세요.`);
     const bytes=Buffer.alloc(roi.width*roi.height*2);
     for(let y=0;y<roi.height;y++){const start=s.offset+(roi.y+y)*s.stride+roi.x*2;image.bytes.copy(bytes,y*roi.width*2,start,start+roi.width*2);}
     const originX=(s.originX+roi.x)%(2*s.group),originY=(s.originY+roi.y)%(2*s.group);

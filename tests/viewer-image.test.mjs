@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {alignCfaRoi} from "../server/cfa-roi.mjs";
 import {inflateSync} from "node:zlib";
 import {openImage,channelAt,cropImage,preview} from "../server/viewer-image.mjs";
 
@@ -8,12 +9,12 @@ test("RAW crop preserves 16-bit source bytes, padding and CFA phase across repea
  for(let y=0;y<8;y++)for(let x=0;x<8;x++)bytes.writeUInt16LE((y*8+x)|0xa000,4+y*20+x*2);
  const image=openImage(bytes,{format:"raw",width:8,height:8,bitDepth:12,offset:4,stride:20,pattern:"GRBG",group:2});
  assert.equal(image.sample(3,2),19);
- const crop=cropImage(image,{x:1,y:3,width:4,height:3});
- assert.equal(crop.bytes.length,24);assert.equal(crop.bytes.readUInt16LE(),0xa019);
- assert.deepEqual(crop.spec.cfaOrigin,{x:1,y:3});
+ const crop=cropImage(image,{x:4,y:4,width:4,height:4});
+ assert.equal(crop.bytes.length,32);assert.equal(crop.bytes.readUInt16LE(),0xa024);
+ assert.deepEqual(crop.spec.cfaOrigin,{x:0,y:0});
  const again=openImage(crop.bytes,crop.spec);
- for(let y=0;y<3;y++)for(let x=0;x<4;x++){assert.equal(again.sample(x,y),image.sample(x+1,y+3));assert.equal(channelAt(again.spec,x,y),channelAt(image.spec,x+1,y+3));}
- const next=cropImage(again,{x:1,y:1,width:2,height:2});assert.deepEqual(next.spec.cfaOrigin,{x:2,y:0});
+ for(let y=0;y<4;y++)for(let x=0;x<4;x++){assert.equal(again.sample(x,y),image.sample(x+4,y+4));assert.equal(channelAt(again.spec,x,y),channelAt(image.spec,x+4,y+4));}
+ const next=cropImage(again,{x:0,y:0,width:4,height:4});assert.deepEqual(next.spec.cfaOrigin,{x:0,y:0});
  assert.throws(()=>cropImage(image,{x:7,y:0,width:2,height:1}),/ROI/);
  assert.throws(()=>openImage(Buffer.alloc(2),{format:"raw",width:8,height:8}),/부족/);
 });
@@ -29,4 +30,19 @@ test("BMP bottom-up rows decode to top-left coordinates and PNG crops contain ex
  const png=crop.bytes;let data;for(let p=8;p<png.length;){const n=png.readUInt32BE(p);if(png.toString("ascii",p+4,p+8)==="IDAT")data=png.subarray(p+8,p+8+n);p+=n+12;}
  assert.deepEqual([...inflateSync(data)],[0,255,0,0,255,0,0,0,255,255]);
  assert.throws(()=>preview(image,{black:10,white:10}),/White/);
+});
+
+test("CFA crops align both boundaries for every pattern, group and imported phase",()=>{
+ for(const group of [1,2,4])for(const pattern of ["GRBG","RGGB","GBRG","BGGR"])for(let phase=0;phase<2*group;phase++){
+  const image=openImage(Buffer.alloc(35*35*2),{format:"raw",width:35,height:35,group,pattern,originX:phase,originY:phase});
+  for(const area of [{x:1,y:3,width:11,height:13},{x:34,y:34,width:1,height:1},{x:0,y:0,width:35,height:35}]){
+   const roi=alignCfaRoi(image.spec,area),crop=cropImage(image,roi),period=2*group;
+   assert.equal((roi.x+phase)%period,0);assert.equal((roi.y+phase)%period,0);
+   assert.equal(roi.width%period,0);assert.equal(roi.height%period,0);
+   assert.equal(channelAt(crop.spec,0,0),pattern[0]);assert.equal(channelAt(crop.spec,crop.spec.width-1,crop.spec.height-1),pattern[3]);
+   assert.deepEqual(crop.spec.cfaOrigin,{x:0,y:0});
+  }
+  assert.throws(()=>cropImage(image,{x:1,y:1,width:3,height:3}),/CFA/);
+ }
+ assert.throws(()=>alignCfaRoi({format:"raw",group:4,width:7,height:7},{x:0,y:0,width:7,height:7}),/CFA/);
 });

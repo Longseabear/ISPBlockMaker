@@ -25,10 +25,11 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   const presented=new Promise(resolve=>socket.on("message",d=>{const m=JSON.parse(d);if(m.type==="present")resolve(m.presentation);}));
   const request=await(await post("/viewer/requests",{imageId:imported.id,prompt:"Select flat area",blockId:"input"})).json();assert.equal(request.status,"pending");assert.equal((await presented).requestId,request.id);
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:7,y:7,width:2,height:2})).status,400);
+  assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:1,y:2,width:3,height:2})).status,400);
   const waiting=promisify(execFile)(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-result",request.id,"--wait","5"],{cwd:temp,windowsHide:true});
-  const result=await(await post(`/viewer/requests/${request.id}/submit`,{x:1,y:2,width:3,height:2})).json();assert.equal(result.status,"submitted");assert.deepEqual(result.result.output.cfaOrigin,{x:1,y:2});
+  const result=await(await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:8,height:8})).json();assert.equal(result.status,"submitted");assert.deepEqual(result.result.output.cfaOrigin,{x:0,y:0});
   assert.equal(JSON.parse((await waiting).stdout).status,"submitted");
-  const crop=fs.readFileSync(path.join(temp,result.result.paths.crop));assert.equal(crop.readUInt16LE(),17*7);assert.equal(crop.length,12);
+  const crop=fs.readFileSync(path.join(temp,result.result.paths.crop));assert.equal(crop.readUInt16LE(),0);assert.equal(crop.length,128);
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
   const downloaded=await fetch(base+`/api/viewer/requests/${request.id}/files/crop`,{headers});assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),crop);
   const preview=await(await fetch(base+`/api/viewer/images/${imported.id}/preview`,{headers})).json();assert.match(preview.url,/^data:image\/png;base64,/);
