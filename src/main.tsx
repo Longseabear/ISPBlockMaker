@@ -142,17 +142,20 @@ const emptyContract = {
   acceptance: "",
 };
 
+type EditControls = {save:()=>Promise<boolean>;discard:()=>void};
 function Inspector({
   block,
   revision,
   api,
   notify,
   onDirty,
+  controls,
   artifacts,
   onResult,
   requestFocus,
   global = false,
 }: {
+  controls: React.RefObject<EditControls | null>;
   global?: boolean;
   requestFocus?: number;
   artifacts: Artifact[];
@@ -184,6 +187,7 @@ function Inspector({
   }, [tab, requestFocus]);
   useEffect(() => {
     if (!dirty) {
+      undoStack.current=[];
       setNewRequest("");
       setDraft(block);
       setParams(JSON.stringify(block.parameters, null, 2));
@@ -197,7 +201,20 @@ function Inspector({
       setBaseRevision(revision);
     }
   }, [block, revision, dirty]);
+  const undoStack = useRef<{draft:Block;params:string;ports:string;newRequest:string}[]>([]);
+  const saveLock = useRef(false);
+  function discard() {undoStack.current=[];setDirty(false);onDirty(false);}
+  function undo() {const previous=undoStack.current.pop();if(!previous)return;setDraft(previous.draft);setParams(previous.params);setPorts(previous.ports);setNewRequest(previous.newRequest);const remains=undoStack.current.length>0;setDirty(remains);onDirty(remains);}
+  useEffect(()=>{controls.current={save,discard};const keyboard=(e:KeyboardEvent)=>{
+    if (!(e.ctrlKey||e.metaKey)||e.altKey||e.isComposing) return;
+    const target=e.target as HTMLElement;
+    if(target.closest('.xterm,[data-unsaved-dialog]'))return;
+    if(e.key.toLowerCase()==='s'){e.preventDefault();if(dirty&&!saving)void save();}
+    if(e.key.toLowerCase()==='z'&&!e.shiftKey&&!target.closest('input,textarea,[contenteditable=true]')){e.preventDefault();if(!saving)undo();}
+  };window.addEventListener('keydown',keyboard);return()=>{controls.current=null;window.removeEventListener('keydown',keyboard);};});
   function mark() {
+    undoStack.current.push({draft:structuredClone(draft),params,ports,newRequest});
+    if(undoStack.current.length>100)undoStack.current.shift();
     setDirty(true);
     onDirty(true);
   }
@@ -206,6 +223,9 @@ function Inspector({
     setDraft((current) => ({ ...current, [key]: value }));
   }
   async function save() {
+    if(saveLock.current)return false;
+    if(!dirty)return true;
+    saveLock.current=true;
     setSaving(true);
     try {
       const portData = JSON.parse(ports);
@@ -244,10 +264,14 @@ function Inspector({
       );
       setDirty(false);
       onDirty(false);
+      undoStack.current=[];
       notify("블록을 저장했습니다.");
+      return true;
     } catch (error) {
       notify(String(error));
+      return false;
     } finally {
+      saveLock.current=false;
       setSaving(false);
     }
   }
@@ -647,7 +671,7 @@ function Inspector({
           </div>
         )}
       </div>
-      <div className="inspector-footer">
+      <div className="inspector-footer"><button title="마지막 편집 되돌리기 (Ctrl+Z)" disabled={!dirty||saving||!undoStack.current.length} onClick={undo}>되돌리기</button>
         <button
           className="icon-button"
           title="변경 취소 / 최신 상태 불러오기"
@@ -960,6 +984,32 @@ function App() {
     [contextText, setContextText] = useState("");
   const [dirty, setDirty] = useState(false),
     [pending, setPending] = useState(false);
+  const editControls=useRef<EditControls|null>(null);
+  const [leaveTarget,setLeaveTarget]=useState<HTMLElement|null>(null),[leaveBusy,setLeaveBusy]=useState(false),[leaveError,setLeaveError]=useState('');
+  useEffect(()=>{
+    const navigation=(e:MouseEvent)=>{
+      if(!dirty)return;
+      const target=e.target as HTMLElement;
+      if(target.closest('[data-unsaved-dialog]'))return;
+      const destination=target.closest('.workspace-sidebar > button,.layout-toolbar > div:first-child button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
+      if(!destination)return;
+      e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
+    };
+    const unload=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};
+    document.addEventListener('click',navigation,true);window.addEventListener('beforeunload',unload);
+    return()=>{document.removeEventListener('click',navigation,true);window.removeEventListener('beforeunload',unload);};
+  },[dirty]);
+  async function resolveLeave(saveFirst:boolean){
+    if(leaveBusy)return;setLeaveBusy(true);setLeaveError('');
+    const destination=leaveTarget;
+    try{if(!editControls.current)throw new Error('편집기를 찾지 못했습니다. 계속 편집을 선택하세요.');
+      if(saveFirst){if(!await editControls.current.save()){setLeaveError('저장하지 못했습니다. 입력 또는 충돌 메시지를 확인하세요.');return;}}
+      else editControls.current.discard();
+      setLeaveTarget(null);
+      setTimeout(()=>{if(destination?.isConnected)destination.click();},0);
+    }catch(e){setLeaveError(String(e));}finally{setLeaveBusy(false);}
+  }
+
   const rootRef = useRef<HTMLDivElement>(null),
     projectRef = useRef<Project | null>(null),
     toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1298,6 +1348,7 @@ function App() {
             onClose={() => setWorkspacePicker(false)}
           />
         )}
+        {leaveTarget&&<div className="workspace-picker-backdrop" data-unsaved-dialog="true"><section className="leave-dialog" role="dialog" aria-modal="true" aria-label="저장하지 않은 변경" onKeyDown={e=>{if(e.key==='Escape'&&!leaveBusy)setLeaveTarget(null);}}><h2>변경사항을 저장할까요?</h2><p>선택한 화면으로 이동하기 전에 현재 편집을 처리하세요.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div className="work-controls"><button autoFocus disabled={leaveBusy} onClick={()=>setLeaveTarget(null)}>계속 편집</button><button disabled={leaveBusy} onClick={()=>void resolveLeave(false)}>변경 버리고 이동</button><button className="primary" disabled={leaveBusy} onClick={()=>void resolveLeave(true)}>{leaveBusy?'처리 중…':'저장 후 이동'}</button></div></section></div>}
         <nav className="rail workspace-sidebar" aria-label="Workspace controls">
           {" "}
           <div className="graph-toolbar">
@@ -1405,7 +1456,7 @@ function App() {
           <div className="editor">
             <div className="editor-main">
               {view === "jobs" ? (
-                <JobsBoard project={project} onOpen={id => {
+                <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {
                   if (dirty) return notify("현재 편집을 저장하거나 취소하세요.");
                   switchView("graph");
                   if (id) { selectBlock(id); setRequestTarget({id, nonce: Date.now()}); }
@@ -1641,6 +1692,7 @@ function App() {
               revision={project.revision}
               api={api}
               notify={notify}
+              controls={editControls}
               onDirty={setDirty}
               artifacts={project.artifacts}
               onResult={(id) => {

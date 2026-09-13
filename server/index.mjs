@@ -11,6 +11,7 @@ import * as pty from "node-pty";
 import { z } from "zod";
 import { contextFor, toMermaid } from "./model.mjs";
 import { readImplementation } from "./source.mjs";
+import { recordActivity, readActivity } from "./activity.mjs";
 import { gpuExtensions } from "./gpu.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion } from "./versions.mjs";
@@ -68,6 +69,20 @@ app.use("/api", (req, res, next) => {
   next();
 });
 app.use("/api", express.json({ limit: "16mb" }));
+app.use("/api", (req,res,next)=>{
+ const folder=dataDir,endpoint=req.path,method=req.method;
+ if (method!=="GET" && !["/selection","/present"].includes(endpoint)) {
+  let result;const json=res.json.bind(res);res.json=(body)=>{result=body;return json(body);};
+  res.on("finish",()=>{try {
+   const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
+   const title=endpoint.includes("jobs")?"JOB 변경":endpoint.includes("requests")?"요청 변경":endpoint==="/artifacts"?"시각화 등록":endpoint==="/versions/switch"?"구현 버전 전환":endpoint==="/workspace"?"작업 폴더 전환":endpoint==="/project"?"그래프 저장":endpoint.startsWith("/blocks")||endpoint==="/global"?"블록 / 요청 저장":"작업 실행";
+   recordActivity(folder,{title,detail:res.statusCode>=400?String(result?.error||`HTTP ${res.statusCode}`).slice(0,1000):`${method} ${endpoint}`,blockId,artifactId:endpoint==="/artifacts"?result?.id:undefined,failed:res.statusCode>=400});
+  }catch(e){console.error("Activity log:",e.message);}});
+ }
+ next();
+});
+app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
+
 function broadcast() {
   const message = JSON.stringify({ type: "state", state: store.get() });
   for (const client of wss.clients)
