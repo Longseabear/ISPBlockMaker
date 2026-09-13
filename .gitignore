@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.isp/
+workspace/artifacts/generated/
+/workspace/*
+!/workspace/.agents/
+!/workspace/.claude/
+!/workspace/AGENTS.md
+!/workspace/CLAUDE.md
+!/workspace/isp.mjs
+!/workspace/isp.cmd
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.log
