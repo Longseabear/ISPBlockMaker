@@ -11,8 +11,10 @@ $command = '@echo off' + "`r`n" + '@start "" "%~dp0..\' + $package.app.Replace('
 [IO.File]::WriteAllText((Join-Path $bin 'isp-block-maker.cmd'), $command, [Text.Encoding]::ASCII)
 $owned = @()
 $manifest = Join-Path $installRoot 'installed-files.json'
-if(Test-Path -LiteralPath $manifest) { $owned += @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json) }
-$owned += @(Get-Content -LiteralPath (Join-Path $installRoot 'package-files.json') -Raw | ConvertFrom-Json)
+if(Test-Path -LiteralPath $manifest) {
+    foreach($file in (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)) { $owned += [string]$file }
+}
+foreach($file in (Get-Content -LiteralPath (Join-Path $installRoot 'package-files.json') -Raw | ConvertFrom-Json)) { $owned += [string]$file }
 [IO.File]::WriteAllText($manifest, (ConvertTo-Json -InputObject @($owned | Sort-Object -Unique)), [Text.Encoding]::UTF8)
 if ($NoRegistration) { exit 0 }
 $oldPath = [string][Environment]::GetEnvironmentVariable('Path','User')
