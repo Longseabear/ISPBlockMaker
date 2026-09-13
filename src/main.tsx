@@ -1,3 +1,4 @@
+import { Viewer } from "./Viewer";
 import { Documents } from "./Documents";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -973,7 +974,7 @@ function App() {
   function switchView(next: string) {
     setView(next);
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu", "documents"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   function mode(next: string) {
@@ -1063,6 +1064,7 @@ function App() {
     },
     [token, accept],
   );
+  const [viewerRequestId,setViewerRequestId] = useState("");
   function present(result: Presentation) {
     if (dirty) {
       setPendingPresentation(result);
@@ -1077,7 +1079,10 @@ function App() {
     setView(result.view);
     setHighlighted(result.blockIds);
     setHighlightedEdges(result.edgeIds || []);
-    if (result.view === "artifacts") {
+    if (result.view === "viewer") {
+      setViewerRequestId(result.requestId || "");
+      setLayout(current=>({...current,inspector:false}));
+    } else if (result.view === "artifacts") {
       setArtifactId(result.artifactId || "");
       if (project?.artifacts.find(a => a.id === result.artifactId)?.metadata?.documentType === "sdd") setView("documents");
       setLayout((current) => ({ ...current, inspector: false }));
@@ -1398,7 +1403,8 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
-          <button className={view === "documents" ? "active" : ""} aria-label="Document화" onClick={() => switchView("documents")}><FileImage size={18}/><span>Document화</span></button>
+          <button className={view === "documents" ? "active" : ""} aria-label="Documentation" onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
+          <button className={view === "viewer" ? "active" : ""} aria-label="Image Viewer" onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
           <button className={view === "gpu" ? "active" : ""} aria-label="GPU simulator" onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} aria-label="JOB Queue" onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <div className="layout-toolbar">
@@ -1458,7 +1464,9 @@ function App() {
         <main className="main-area">
           <div className="editor">
             <div className="editor-main">
-              {view === "documents" ? (
+              {view === "viewer" ? (
+                <Viewer api={api} token={token} requestId={viewerRequestId} onExpand={()=>setFocus("editor")}/>
+              ) : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {

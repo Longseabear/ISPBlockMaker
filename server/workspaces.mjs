@@ -74,10 +74,13 @@ export function openWorkspace(folder, root) {
           .replaceAll("workspace/graph.json", "graph.json"),
       );
     }
+    const viewerGuide=path.join(path.dirname(skill),"viewer.md");
+    if(!fs.existsSync(viewerGuide))fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),viewerGuide);
+    if(!fs.readFileSync(skill,"utf8").includes("viewer.md"))fs.appendFileSync(skill,"\n\n## Image Viewer and user-selected crops\nWhen image analysis needs a user-selected region, read `viewer.md` beside this skill. Request and present an ROI, then read the submitted crop and metadata.\n");
     const sddGuide = path.join(path.dirname(skill), "sdd.md");
     if (!fs.existsSync(sddGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/sdd.md"), sddGuide);
     if (!fs.readFileSync(skill, "utf8").includes("sdd.md"))
-      fs.appendFileSync(skill, "\n\n## SDD documentation\nFor Document화 / SDD requests, read `sdd.md` beside this skill. Generate self-contained HTML in Overview → Flow → block details order and register with `isp document`.\n");
+      fs.appendFileSync(skill, "\n\n## SDD documentation\nFor Documentation / SDD requests, read `sdd.md` beside this skill. Generate self-contained HTML in Overview → Flow → block details order and register with `isp document`.\n");
     const loopGuide = path.join(path.dirname(skill), "experiment-loop.md");
     if (!fs.existsSync(loopGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/experiment-loop.md"), loopGuide);
     if (!fs.readFileSync(skill, "utf8").includes("experiment-loop.md"))

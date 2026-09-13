@@ -112,7 +112,26 @@ export async function main() {
   if (args.includes("--global") && option("block"))
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
-  if (command === "summary") result = await request("/activity/summaries", {method:"POST",body:JSON.stringify(JSON.parse(fs.readFileSync(args[0],"utf8")))});
+  if (command === "viewer-list") result=await request("/viewer");
+  else if (command === "viewer-import") {
+    if(!args[0]||!option("spec"))throw new Error("Usage: isp viewer-import image.raw --spec image.json");
+    result=await request("/viewer/images/import",{method:"POST",body:JSON.stringify({path:path.resolve(args[0]),spec:JSON.parse(fs.readFileSync(option("spec"),"utf8")),name:option("title")})});
+  } else if(command === "viewer-request") {
+    if(!args[0]||!option("message"))throw new Error('Usage: isp viewer-request IMAGE_ID --message "Select ROI" [--block ID]');
+    result=await request("/viewer/requests",{method:"POST",body:JSON.stringify({imageId:args[0],prompt:option("message"),blockId,show:!args.includes("--no-show")})});
+  } else if(command === "viewer-result") {
+    const seconds=Number(option("wait")||0);
+    if(!Number.isFinite(seconds)||seconds<0||seconds>600)throw new Error("--wait는 0–600초입니다.");
+    const until=Date.now()+seconds*1000;
+    do {
+      result=await request(`/viewer/requests/${encodeURIComponent(args[0])}`);
+      if(result.status!=="pending"||Date.now()>=until)break;
+      await new Promise(resolve=>setTimeout(resolve,Math.min(1000,until-Date.now())));
+    } while(true);
+  }
+  else if(command === "viewer-show") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/show`,{method:"POST",body:"{}"});
+  else if(command === "viewer-cancel") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/cancel`,{method:"POST",body:"{}"});
+  else if (command === "summary") result = await request("/activity/summaries", {method:"POST",body:JSON.stringify(JSON.parse(fs.readFileSync(args[0],"utf8")))});
   else if (command === "document") {
     if (!args[0] || !/\.html?$/i.test(args[0]) || !option("revision")) throw new Error('Usage: isp document report.html --revision N [--title TEXT]');
     const project = await request("/project");
@@ -356,6 +375,12 @@ isp present --edges EDGE_ID,EDGE_ID --message "Updated connections"
 isp present --artifact ARTIFACT_ID --message "Comparison ready"
 isp present --graph
 isp update patch.json --block ID --revision N
+isp viewer-list                 List images and crop requests
+isp viewer-import image.raw --spec image.json
+isp viewer-request IMAGE_ID --message "Select a flat patch" --block BLOCK_ID
+isp viewer-result REQUEST_ID [--wait 120]   Read status/results, optionally wait for user selection
+isp viewer-show REQUEST_ID       Present the crop request in connected browsers
+isp viewer-cancel REQUEST_ID     Cancel a pending request
 isp document sdd.html --revision N --title "Project SDD"
 isp artifact result.html --block ID --revision N --title "Comparison"
 isp mermaid                     Export the graph as Mermaid

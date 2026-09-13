@@ -22,4 +22,4 @@ Git, Python and coding agents (including their dependencies and internal endpoin
 
 # SDD documents
 
-Document화 → SDD 작성 요청 queues a global request; it does not automatically run an agent. The local sdd.md guide directs Overview → Flow → block details in self-contained HTML. Register with `node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N`. Document화 shows registered versions and an HTML download. Documents remain local artifacts, separate from implementation Git history.
+Documentation → SDD 작성 요청 queues a global request; it does not automatically run an agent. The local sdd.md guide directs Overview → Flow → block details in self-contained HTML. Register with `node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N`. Documentation shows registered versions and an HTML download. Documents remain local artifacts, separate from implementation Git history.

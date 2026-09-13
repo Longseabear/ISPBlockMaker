@@ -1,3 +1,4 @@
+import { installViewer } from "./viewer.mjs";
 import { serverPaths } from "./paths.mjs";
 import express from "express";
 import { requestDocument } from "./documents.mjs";
@@ -79,6 +80,16 @@ app.use("/api", (req,res,next)=>{
   }catch(e){console.error("Activity log:",e.message);}});
  }
  next();
+});
+installViewer(app, {
+  current: () => ({workspace,state:store.get()}),
+  present: (requestId,message) => {
+    let delivered=0;
+    for(const client of wss.clients) if(client.readyState===WebSocket.OPEN) {
+      client.send(JSON.stringify({type:"present",presentation:{view:"viewer",requestId,message,blockIds:[],edgeIds:[]},state:store.get()}));delivered++;
+    }
+    return delivered;
+  }
 });
 app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
 app.get("/api/versions/commits/:hash",async(req,res)=>res.json(await commitChanges(workspace,req.params.hash)));

@@ -1,0 +1,20 @@
+# Image Viewer and user-selected crops
+
+Use this workflow when the user must choose a region for an ISP task. Work through the local workspace CLI (`node .isp/tools/isp.mjs`, or `.isp/tools/isp.cmd` on Windows without Node on PATH). Do not invent user-selected coordinates or silently crop a convenient region yourself.
+
+1. Inspect `viewer-list` for existing images and requests. Reuse the relevant imported image; ask for the file or format metadata if missing. Agent import paths must stay inside the active workspace. The user can upload external files through Image Viewer.
+2. Import BMP or 16bit-container RAW: `viewer-import input.raw --spec input-spec.json`. The spec must identify the actual storage format. RAW example:
+
+```json
+{"format":"raw","width":4000,"height":3000,"bitDepth":12,"alignment":"lsb","pattern":"GRBG","group":2,"offset":0,"stride":8000}
+```
+
+RAW is two bytes per pixel, little-endian. `bitDepth` specifies valid bits (8–16); `alignment` is `lsb` or `msb`. `offset` is header bytes and `stride` is row bytes (0 = width × 2). Packed RAW10/12 is not this format and must be converted explicitly first. BMP import uses `{"format":"bmp"}` and supports uncompressed 8-bit palette / 24/32-bit RGB. User PNG/JPEG/WebP uploads are browser-decoded to 8-bit RGBA; do not describe those as original high-bit-depth samples.
+
+`pattern` is the row-major base arrangement: RGGB, GRBG, GBRG or BGGR. Do not guess vendor numeric order codes. `group=1` means Bayer; 2 means Tetra (same-color 2×2 groups); 4 means TetraSquare (same-color 4×4 groups). The full CFA period is twice the group size. `originX`/`originY` record phase within that period and default to 0. Confirm a different vendor definition with the user.
+
+3. Request a specific region: `viewer-request IMAGE_ID --block BLOCK_ID --message "Select a flat patch away from edges for noise estimation"`. This persists a pending request and opens Image Viewer on connected screens. Check `delivered`; 0 means no screen received the request. Dirty inspector edits defer presentation; never discard them. Use `viewer-show REQUEST_ID` to present an existing request, not to create duplicates.
+4. Continue independent work or tell the user that region selection is needed. Read `viewer-result REQUEST_ID` when the user has selected it, or use `viewer-result REQUEST_ID --wait 120` to wait up to two minutes and return the result immediately after submission/cancellation. A timeout returns `pending`; it is not approval or a submitted crop. Do not process pending/cancelled requests as completed. Do not inject commands into the user's terminal or auto-complete unrelated JOBs.
+5. On `submitted`, use `result.paths.crop` and `result.paths.metadata` relative to the workspace. Coordinates use original pixels with a top-left (0,0) origin and exclusive right/bottom boundaries: `[x,x+width) × [y,y+height)`. The image hash identifies the exact source copy. RAW output preserves source pixel bytes exactly with tightly packed rows; header and row padding are removed. Read the output bit alignment and CFA origin, especially when the crop starts inside a Tetra group. For another crop, create another request; submitted results are immutable.
+
+`result.paths.preview` is an 8-bit PNG for inspection only. Color preview averages same-color groups within a CFA cell; it is not a production demosaic, radiometric conversion or a source for noise statistics. Use the raw crop for numerical work. Raster BMP/RGBA crops are lossless PNG pixel data, not original compressed file bytes. Report which ROI was used, what validation ran and any format limitations in the normal work summary.

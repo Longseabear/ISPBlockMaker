@@ -154,4 +154,8 @@ Activity history shows this summary alongside immutable commit diffs. Git automa
 
 
 ## SDD documentation
-For Document화 / SDD requests, read `sdd.md` beside this skill. Generate self-contained HTML in Overview → Flow → block details order and register with `isp document`.
+For Documentation / SDD requests, read `sdd.md` beside this skill. Generate self-contained HTML in Overview → Flow → block details order and register with `isp document`.
+
+## Image Viewer and user-selected crops
+
+When image analysis needs a user-selected region, read `viewer.md` beside this skill. Request and present an ROI, then read the submitted crop and metadata.

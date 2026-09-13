@@ -79,7 +79,8 @@ export type Api = <T = Project>(
   method?: string,
 ) => Promise<T>;
 export type Presentation = {
-  view: "graph" | "artifacts";
+  view: "graph" | "artifacts" | "viewer";
+  requestId?: string;
   blockIds: string[];
   edgeIds?: string[];
   artifactId?: string;

@@ -1,6 +1,6 @@
 # SDD — Software Development Document
 
-Use this guide for Document화 / SDD requests. Produce a readable, self-contained HTML document describing the current workspace graph and actual implementation. Documentation alone does not authorize algorithm changes.
+Use this guide for Documentation / SDD requests. Produce a readable, self-contained HTML document describing the current workspace graph and actual implementation. Documentation alone does not authorize algorithm changes.
 
 Read the pending global request, graph, relevant implementation symbols and existing validation evidence first. Split the request into manageable JOBs (inspect, write, verify) using the normal request lifecycle. Do not consume unrelated requests. Capture the project revision before reading and the verified Git hash/dirty status; if the graph or code changes while writing, recheck affected sections before registration.
 
@@ -21,4 +21,4 @@ Keep generated HTML under ignored `.isp/documents/`. Register it from this works
 node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N --title "Project SDD"
 ```
 
-N is the captured revision, not a guessed latest revision. This registers an immutable HTML artifact with `metadata.documentType = sdd`; Document화 lists its versions. The first block is a storage association only: document all graph blocks. Inspect the rendered document when browser tools are available; otherwise state the visual verification limitation. Check that every block is covered, diagrams match actual edges and no external resource is required. Complete the documentation JOBs only after registration and record a concise work summary. Use `present --artifact ID` with the returned ID to show the document; the UI routes SDD artifacts to Document화. Never claim a document was generated merely because the request was queued.
+N is the captured revision, not a guessed latest revision. This registers an immutable HTML artifact with `metadata.documentType = sdd`; Documentation lists its versions. The first block is a storage association only: document all graph blocks. Inspect the rendered document when browser tools are available; otherwise state the visual verification limitation. Check that every block is covered, diagrams match actual edges and no external resource is required. Complete the documentation JOBs only after registration and record a concise work summary. Use `present --artifact ID` with the returned ID to show the document; the UI routes SDD artifacts to Documentation. Never claim a document was generated merely because the request was queued.
