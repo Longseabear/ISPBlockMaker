@@ -57,7 +57,7 @@ import "./style.css";
 import "./sidebar.css";
 
 type FlowNode = Node<
-  { block: Block; highlighted?: boolean; onRequests: (id: string) => void },
+  { block: Block; highlighted?: boolean; onRequests: (id: string) => void; onDescription: (id: string) => void },
   "block"
 >;
 function BlockNode({ data, selected }: NodeProps<FlowNode>) {
@@ -86,7 +86,7 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
         </button>
         <span className={`node-dot ${b.status}`} />
       </div>
-      <p>{b.description}</p>
+      <button className="nodrag nopan node-description" aria-label={`${b.name} 설명 열기`} onClick={e=>{e.stopPropagation();data.onDescription(b.id);}}>{b.description || "블록 설명 작성하기"}<span>설명 보기 →</span></button>
       {!!b.jobs?.filter((j) => j.status !== "done").length && (
         <div className="request-badge">
           JOB · {b.jobs.filter((j) => j.status !== "done").length} 남음
@@ -155,11 +155,13 @@ function Inspector({
   artifacts,
   onResult,
   requestFocus,
+  descriptionFocus,
   global = false,
 }: {
   controls: React.RefObject<EditControls | null>;
   global?: boolean;
   requestFocus?: number;
+  descriptionFocus?: number;
   artifacts: Artifact[];
   onResult: (id: string) => void;
   block: Block;
@@ -179,6 +181,7 @@ function Inspector({
   const [dirty, setDirty] = useState(false),
     [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("spec");
+  useEffect(()=>{if(descriptionFocus)setTab("spec");},[descriptionFocus]);
   const [newRequest, setNewRequest] = useState("");
   const requestInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -325,7 +328,7 @@ function Inspector({
           className={tab === "spec" ? "active" : ""}
           onClick={() => setTab("spec")}
         >
-          Overview
+          사용자 설명
         </button>
         <button
           className={tab === "ports" ? "active" : ""}
@@ -337,7 +340,7 @@ function Inspector({
           className={tab === "agent" ? "active" : ""}
           onClick={() => setTab("agent")}
         >
-          Agent contract
+          에이전트 설명
         </button>
         <button
           className={tab === "results" ? "active" : ""}
@@ -916,6 +919,7 @@ function App() {
   const [workspacePath, setWorkspacePath] = useState("");
   const [workspacePicker, setWorkspacePicker] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
+  const [descriptionTarget,setDescriptionTarget]=useState<{id:string;nonce:number}|null>(null);
   const [requestTarget, setRequestTarget] = useState<{
     id: string;
     nonce: number;
@@ -1139,6 +1143,10 @@ function App() {
         data: {
           block,
           highlighted: highlighted.includes(block.id),
+          onDescription: (id: string) => {
+            if(dirty && (globalOpen || id!==selected))return notify("현재 편집을 저장하거나 취소하세요.");
+            selectBlock(id);setFocus("");setDescriptionTarget({id,nonce:Date.now()});
+          },
           onRequests: (id: string) => {
             if (dirty && (globalOpen || id !== selected))
               return notify(
@@ -1450,6 +1458,19 @@ function App() {
               </select>
             </div>
           </div>
+          <details className="agent-help">
+            <summary>에이전트가 할 수 있는 일</summary>
+            <p>터미널의 에이전트에게 평문으로 요청하세요.</p>
+            <ul>
+              <li>블록·간선 추가, 수정, 삭제 및 구현</li>
+              <li>블록·전체 요청을 JOB으로 나누고 처리</li>
+              <li>설명·계약 갱신, 검증 및 로컬 Git 커밋</li>
+              <li>시각화·SDD 생성, 결과 열기와 변경 강조</li>
+              <li>BMP·RAW를 Viewer에 올리고 CFA 크롭 요청</li>
+            </ul>
+            <p>예: “선택한 블록 설명을 읽고 메모를 구현한 뒤, 변경 효과를 시각화해줘.”</p>
+            <small>클릭한 노드와 터미널 작업 대상은 다를 수 있습니다. “현재 선택한 블록”이라고 요청하면 선택을 읽어 대상을 바꿀 수 있습니다. 스킬 작업 규칙이며 자동 실행은 아닙니다.</small>
+          </details>
           <div className="rail-bottom">
             {pendingPresentation && (
               <button onClick={() => present(pendingPresentation)}>
@@ -1534,11 +1555,6 @@ function App() {
                     >
                       <Background gap={20} size={1} color="#30383f" />
                       <Controls showInteractive={false} />
-                      <Panel position="top-right">
-                        <button onClick={() => switchView("code")}>
-                          <Code2 size={16} /> 구현 코드
-                        </button>
-                      </Panel>
                       <Panel
                         position="top-left"
                         className="global-request-float"
@@ -1606,9 +1622,6 @@ function App() {
                     <div>
                       <span className="eyebrow">EXPERIMENT OUTPUTS</span>
                       <h1>Visualizations</h1>
-                      <button onClick={() => switchView("code")}>
-                        <Code2 size={16} /> 구현 코드
-                      </button>
                     </div>
                     {artifact && (
                       <select
@@ -1693,6 +1706,7 @@ function App() {
             />
             <Inspector
               key={globalOpen ? "global-requests" : block.id}
+              descriptionFocus={!globalOpen && descriptionTarget?.id===block.id?descriptionTarget.nonce:undefined}
               global={globalOpen}
               requestFocus={
                 globalOpen
