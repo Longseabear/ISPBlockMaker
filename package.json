@@ -7,6 +7,8 @@
     "dev": "node server/index.mjs --dev",
     "build": "tsc --noEmit && vite build",
     "start": "node server/index.mjs",
+    "check:windows": "node scripts/start-local.mjs --check",
+    "build:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher.ps1",
     "test": "node --test tests/*.test.mjs",
     "isp": "node scripts/isp.mjs"
   },

@@ -1,3 +1,4 @@
+import { Documents } from "./Documents";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -972,7 +973,7 @@ function App() {
   function switchView(next: string) {
     setView(next);
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   function mode(next: string) {
@@ -1078,6 +1079,7 @@ function App() {
     setHighlightedEdges(result.edgeIds || []);
     if (result.view === "artifacts") {
       setArtifactId(result.artifactId || "");
+      if (project?.artifacts.find(a => a.id === result.artifactId)?.metadata?.documentType === "sdd") setView("documents");
       setLayout((current) => ({ ...current, inspector: false }));
     } else if (result.blockIds.length) {
       setSelected(result.blockIds[0]);
@@ -1396,6 +1398,7 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
+          <button className={view === "documents" ? "active" : ""} aria-label="Document화" onClick={() => switchView("documents")}><FileImage size={18}/><span>Document화</span></button>
           <button className={view === "gpu" ? "active" : ""} aria-label="GPU simulator" onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} aria-label="JOB Queue" onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <div className="layout-toolbar">
@@ -1455,7 +1458,9 @@ function App() {
         <main className="main-area">
           <div className="editor">
             <div className="editor-main">
-              {view === "jobs" ? (
+              {view === "documents" ? (
+                <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
+              ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {
                   if (dirty) return notify("현재 편집을 저장하거나 취소하세요.");
                   switchView("graph");

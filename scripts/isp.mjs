@@ -106,6 +106,11 @@ export async function main() {
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
   if (command === "summary") result = await request("/activity/summaries", {method:"POST",body:JSON.stringify(JSON.parse(fs.readFileSync(args[0],"utf8")))});
+  else if (command === "document") {
+    if (!args[0] || !/\.html?$/i.test(args[0]) || !option("revision")) throw new Error('Usage: isp document report.html --revision N [--title TEXT]');
+    const project = await request("/project");
+    result = await registerArtifact(path.resolve(args[0]), {blockId: project.blocks[0].id, revision: Number(option("revision")), title: option("title") || `${project.name} · SDD`, metadata: {documentType: "sdd"}});
+  }
   else if (command === "context")
     result = await request(
       `/context${!args.includes("--selection") && blockId ? `?blockId=${encodeURIComponent(blockId)}` : ""}`,
@@ -344,6 +349,7 @@ isp present --edges EDGE_ID,EDGE_ID --message "Updated connections"
 isp present --artifact ARTIFACT_ID --message "Comparison ready"
 isp present --graph
 isp update patch.json --block ID --revision N
+isp document sdd.html --revision N --title "Project SDD"
 isp artifact result.html --block ID --revision N --title "Comparison"
 isp mermaid                     Export the graph as Mermaid
 isp summary summary.json        Record work summary, verification and related IDs

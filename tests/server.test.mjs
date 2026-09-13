@@ -811,6 +811,25 @@ test(
         (await (await fetch(`${base}/api/bootstrap`)).json()).state.name,
         "Saved A",
       );
+      const health = await (await fetch(`${base}/health`)).json();
+      assert.equal(health.app, "ISPBlockMaker");
+      const latest = await (await fetch(`${base}/api/bootstrap`)).json();
+      const finalHeaders = {...headers, Authorization: `Bearer ${latest.token}`};
+      assert.equal((await fetch(`${base}/api/shutdown`, {method:"POST",headers,body:JSON.stringify({instance:health.instance})})).status,401);
+      assert.equal((await fetch(`${base}/api/shutdown`, {method:"POST",headers:finalHeaders,body:JSON.stringify({instance:"stale"})})).status,409);
+      const requested = await (await fetch(`${base}/api/documents/request`, {method:"POST",headers:finalHeaders,body:"{}"})).json();
+      assert.ok(requested.globalWork.userRequests.some(r => r.text.includes("sdd.md")));
+      const repeated = await (await fetch(`${base}/api/documents/request`, {method:"POST",headers:finalHeaders,body:"{}"})).json();
+      assert.equal(repeated.revision,requested.revision);
+      const html = path.join(folderA,"sdd.html");
+      fs.writeFileSync(html,'<!doctype html><html><body><h1>Overview</h1><h2>Flow</h2><h2>Blocks</h2></body></html>');
+      const sddRegistered = await promisify(execFile)(process.execPath,[path.join(folderA,".isp/tools/isp.mjs"),"document",html,"--revision",String(requested.revision)],{cwd:folderA,env:{...process.env,ISP_API_URL:base,ISP_API_TOKEN:latest.token}});
+      const document = JSON.parse(sddRegistered.stdout);
+      assert.equal(document.metadata.documentType,"sdd");
+      assert.equal(document.revision,requested.revision);
+      assert.match(await (await fetch(`${base}/artifacts/${document.file}`,{headers:finalHeaders})).text(),/Overview/);
+      assert.equal((await fetch(`${base}/api/shutdown`,{method:"POST",headers:finalHeaders,body:JSON.stringify({instance:health.instance})})).status,200);
+      await exited;
     } finally {
       ws?.terminate();
       child.kill();

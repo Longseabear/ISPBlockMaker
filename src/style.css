@@ -1027,3 +1027,8 @@ h1 {
     max-width: 100%;
   }
 }
+.sdd-view { display:flex; flex-direction:column; height:100%; min-height:0; padding:16px; gap:10px; }
+.sdd-view .artifact-toolbar { flex-wrap:wrap; flex-shrink:0; gap:12px; }
+.sdd-view .artifact-toolbar p { margin:4px 0; color:var(--muted); }
+.sdd-view iframe { width:100%; flex:1; min-height:180px; border:0; border-radius:8px; background:white; }
+.sdd-empty { max-width:760px; margin:50px auto; line-height:1.8; }

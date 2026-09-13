@@ -1,4 +1,5 @@
 import express from "express";
+import { requestDocument } from "./documents.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +31,7 @@ let cliPath = opened.cli;
 let token = crypto.randomBytes(32).toString("hex");
 const port = Number(process.env.PORT || 4310);
 const origin = `http://127.0.0.1:${port}`;
+const instance = crypto.randomUUID();
 const app = express();
 app.disable("x-powered-by");
 const server = http.createServer(app);
@@ -55,6 +57,7 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
+app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, instance, pid: process.pid }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.path === "/bootstrap" && req.method === "GET") return next();
@@ -102,6 +105,12 @@ app.get("/api/bootstrap", (req, res) => {
     path: "/artifacts",
   });
   res.json({ token, state: store.get(), workspace });
+});
+app.post("/api/documents/request", (req,res) => { const state=requestDocument(store); broadcast(); res.json(state); });
+app.post("/api/shutdown", (req,res) => {
+  if (req.body.instance !== instance) return res.status(409).json({error:"Server instance changed"});
+  res.json({stopping:true});
+  setTimeout(() => shutdown().then(() => process.exit(0)), 100);
 });
 app.get("/api/project", (req, res) => res.json(store.get()));
 app.get("/api/gpu/extensions", async (req, res) => res.json(await gpuExtensions(workspace)));
@@ -799,6 +808,7 @@ wss.on("connection", (socket) => {
         );
       else if (message.type === "stop") session.pty.kill();
     } catch (error) {
+      console.error("Terminal request failed:", error.message);
       send(socket, { type: "error", error: error.message });
     }
   });
@@ -847,6 +857,7 @@ function publishConnection() {
       { mode: 0o600 },
     );
 }
+server.on("error", error => { console.error(error.code === "EADDRINUSE" ? `Port ${port} is already in use. Close the other server or choose another PORT.` : error.message); process.exitCode=1; });
 server.listen(port, "127.0.0.1", () => {
   fs.mkdirSync(runtime, { recursive: true });
   if (!process.env.ISP_NO_DISCOVERY) publishConnection();
@@ -855,6 +866,9 @@ server.listen(port, "127.0.0.1", () => {
 async function shutdown() {
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
+    if (process.platform === "win32") {
+      await promisify(execFile)("taskkill.exe", ["/PID", String(session.pty.pid), "/T", "/F"], { windowsHide: true, timeout: 5000 }).catch(() => {});
+    }
     try {
       session.pty.kill();
     } catch {}
