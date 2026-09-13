@@ -74,7 +74,7 @@ class Launcher : Form {
         }
     }
     void Verify(Dictionary<string,object> health) {
-        if (!health.ContainsKey("app") || (string)health["app"] != "ISPBlockMaker" || !health.ContainsKey("root") || !String.Equals(Path.GetFullPath((string)health["root"]), root, StringComparison.OrdinalIgnoreCase) || !health.ContainsKey("workspace") || !String.Equals(Path.GetFullPath((string)health["workspace"]), workspace, StringComparison.OrdinalIgnoreCase)) throw new Exception("이 포트는 다른 앱/프레임워크가 사용 중입니다. 해당 앱을 종료하거나 PORT를 변경하세요.");
+        if (!health.ContainsKey("app") || (string)health["app"] != "ISPBlockMaker" || !health.ContainsKey("workspace") || !String.Equals(Path.GetFullPath((string)health["workspace"]), workspace, StringComparison.OrdinalIgnoreCase)) throw new Exception("이 포트는 다른 앱/프레임워크가 사용 중입니다. 해당 앱을 종료하거나 PORT를 변경하세요.");
     }
     string Node() {
         string bundled = Path.Combine(root,"node.exe"); if (File.Exists(bundled)) return bundled;
