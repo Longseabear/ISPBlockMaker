@@ -9,7 +9,7 @@ Use this skill only for this `workspace/` tree, including its subdirectories. It
 
 ## Local entry point
 
-Resolve `../../../isp.mjs` relative to this SKILL.md's directory to get the absolute workspace CLI path. Call `node "<absolute workspace>/isp.mjs" ...` from any directory within workspace. In the workspace root's cmd terminal, `isp ...` is a shortcut. Do not assume `../scripts` is valid from nested folders.
+Resolve `../../../.isp/tools/isp.mjs` relative to this SKILL.md's directory to get the absolute workspace CLI path. Call `node "<absolute workspace>/.isp/tools/isp.mjs" ...` from any directory within workspace. In the workspace root's cmd terminal, `isp ...` is a shortcut. Do not assume `../scripts` is valid from nested folders.
 
 The server must already be running. The CLI uses inherited session credentials or the repository's `.isp/connection.json`; never print those credentials or copy them into instructions. Only loopback HTTP is accepted and redirects are rejected. If the server is unavailable, report that it needs starting rather than switching to a remote service.
 
@@ -60,7 +60,7 @@ The editor's Global requests panel holds plain-text requests for the whole graph
 
 For global items, replace `--block ID` with `--global` in `split-request`, `start-job`, `complete-job`, and `reopen-job`. Example: `split-request REQUEST_ID --global --revision N --file jobs.json`. Global JOBs may coordinate several blocks but remain bounded by the graph implementation rules; they do not authorize unrelated application changes. Read `project` and relevant block contexts, preserve which blocks each JOB affects in its description, and record validation plus the commit hash when completing it. Do not invent a global processing node or use a fake block ID.
 
-Version `workspace/graph.json` together with implementation code in Git. This file contains only the graph specification; the bridge merges it with ignored local requests, JOBs, artifact records and session state for API responses. Never save a full `project` response directly into graph.json or commit `.isp` as graph history. Use the API for normal edits. After restoring graph/code with Git, re-read context/project and refresh the browser; previous revisions are stale. Local work/results remain attached by stable node ID even when that node is temporarily absent. Do not reuse an old ID for an unrelated block. Historical results are retained, not automatically rerun or validated against restored code.
+Version `graph.json` together with implementation code in Git. This file contains only the graph specification; the bridge merges it with ignored local requests, JOBs, artifact records and session state for API responses. Never save a full `project` response directly into graph.json or commit `.isp` as graph history. Use the API for normal edits. After restoring graph/code with Git, re-read context/project and refresh the browser; previous revisions are stale. Local work/results remain attached by stable node ID even when that node is temporarily absent. Do not reuse an old ID for an unrelated block. Historical results are retained, not automatically rerun or validated against restored code.
 
 Replace N below with the revision you inspected. Each successful graph mutation returns the new project and revision; use it for the next mutation. A conflict requires re-reading and reconciling, never blindly retrying with a fresh revision.
 
@@ -86,7 +86,7 @@ Deleting a connected node requires `--with-edges` and removes its incident edges
 
 The user authorizes local commits as part of implementing graph/block changes in this workspace. After implementation, relevant validation, and saving the corresponding graph metadata, create a local commit containing the coherent graph/code change before marking its JOB complete. Do this without asking for confirmation each time. Follow any later explicit instruction to skip commits. This is an agent workflow rule, not a filesystem watcher or automatic commit on every UI save; it does not authorize pushing, publishing, or rewriting history.
 
-Use the existing repository containing this workspace (`git rev-parse --show-toplevel`). Do not create a nested repository or move the workspace. The required versioned content is `workspace/graph.json` and the implementation sources, necessary helpers, and tests belonging to the change. New source files must be explicitly added; merely placing a file in workspace does not track it. Respect `.gitignore`: `.isp/`, generated visualization files under `workspace/artifacts/generated/`, credentials, runtime files, and temporary JOB JSON are not commit content.
+Use only the independent Git repository rooted exactly at this project folder. Verify that `git rev-parse --show-toplevel` resolves to the project root and that its own `.git` exists. Never use an ancestor/framework repository. If the project has no repository, report version management as unconfigured; do not commit to the framework. The required versioned content is `graph.json` and the implementation sources, necessary helpers, and tests belonging to the change. New source files must be explicitly added; merely placing a file in workspace does not track it. Respect `.gitignore`: `.isp/`, generated visualization files under `artifacts/generated/`, credentials, runtime files, and temporary JOB JSON are not commit content.
 
 Inspect Git status and diffs before editing and again before committing. Include only the task's relevant changes; do not use blanket `git add .`, `git add -A`, or `git commit -a`. Preserve existing user staging and unrelated work. If a file mixes unrelated edits, isolate the task's changes without discarding or committing the unrelated edits. If this cannot be done reliably, report the concrete blocker and leave the affected JOB open rather than claiming a saved version. Do not reset or stash user work to force a clean tree. Check the staged content and final commit paths so other staged changes are not accidentally included.
 
@@ -98,7 +98,7 @@ Verify the created commit and obtain its full hash with `git rev-parse HEAD`. Th
 
 Edit source files normally, run relevant validation, then update metadata through the CLI. Skills and metadata are instructions, not proof that an implementation passed validation.
 
-Create outputs under `workspace/artifacts/generated/`. Register with:
+Create outputs under `artifacts/generated/`. Register with:
 
 ```text
 artifact result.html --block ID --revision N --title "Comparison" --run RUN_ID

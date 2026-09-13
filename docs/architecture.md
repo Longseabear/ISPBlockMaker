@@ -79,3 +79,7 @@ artifact는 ID, 종류, 제목, 블록 ID, 실행 ID, 생성 시간, 프로젝�
 - xterm.js 흐름 제어: https://xtermjs.org/docs/guides/flowcontrol/
 - Codex 외부 MCP 연결: https://learn.chatgpt.com/docs/extend/mcp
 - Claude Code MCP 연결: https://code.claude.com/docs/en/mcp
+
+## Repository ownership
+
+The framework repository excludes the entire workspace/ container. Each selected project owns graph.json, implementation sources, agent guidance, and an independent .git at its root. Local requests, JOBs, artifacts and generated CLI live in that project's ignored .isp/. The framework runtime only discovers the active project. Version operations never fall back to an ancestor repository. Project skill templates live in templates/project/.

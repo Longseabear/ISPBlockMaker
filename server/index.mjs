@@ -9,39 +9,22 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
 import { z } from "zod";
-import { createStore } from "./store.mjs";
 import { contextFor, toMermaid } from "./model.mjs";
 import { readImplementation } from "./source.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion } from "./versions.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-let workspace = path.join(root, "workspace");
 const runtime = path.join(root, ".isp");
-let dataDir = process.env.ISP_DATA_DIR || runtime;
-let artifactDir = path.join(dataDir, "artifacts");
-fs.mkdirSync(artifactDir, { recursive: true });
-// A framework-only clone starts with an empty graph; preserve existing work.
-if (!process.env.ISP_DATA_DIR && !fs.existsSync(path.join(workspace, "graph.json")) && !fs.existsSync(path.join(dataDir, "project.json"))) {
-  fs.mkdirSync(workspace, { recursive: true });
-  openWorkspace(workspace, root);
-}
-let store = createStore(
-  dataDir,
-  process.env.ISP_DATA_DIR
-    ? path.join(dataDir, "graph.json")
-    : path.join(workspace, "graph.json"),
-);
-let cliPath = path.join(workspace, "isp.mjs");
 const workspaceConfig = path.join(runtime, "active-workspace.json");
-if (!process.env.ISP_DATA_DIR && fs.existsSync(workspaceConfig)) {
-  const opened = openWorkspace(
-    JSON.parse(fs.readFileSync(workspaceConfig, "utf8")).path,
-    root,
-  );
-  ({ workspace, dataDir, artifactDir, store } = opened);
-  cliPath = opened.cli;
-}
+const configured = !process.env.ISP_DATA_DIR && fs.existsSync(workspaceConfig)
+  ? JSON.parse(fs.readFileSync(workspaceConfig, "utf8")).path : null;
+const initialFolder = process.env.ISP_DATA_DIR ? path.dirname(process.env.ISP_DATA_DIR)
+  : configured || path.join(root, "workspace", "untitled");
+fs.mkdirSync(initialFolder, { recursive: true });
+const opened = openWorkspace(initialFolder, root);
+let { workspace, dataDir, artifactDir, store } = opened;
+let cliPath = opened.cli;
 let token = crypto.randomBytes(32).toString("hex");
 const port = Number(process.env.PORT || 4310);
 const origin = `http://127.0.0.1:${port}`;
@@ -632,11 +615,6 @@ let demoRunning = false;
 app.post("/api/demo", async (req, res, next) => {
   if (!fs.existsSync(path.join(workspace, "examples", "denoise.mjs")))
     return res.status(400).json({ error: "이 저장소에는 예제가 포함되지 않습니다. 작업 폴더의 구현을 터미널에서 실행하세요." });
-  if (workspace !== path.join(root, "workspace"))
-    return res.status(400).json({
-      error:
-        "Run example은 기본 예제 workspace에서만 사용할 수 있습니다. 선택한 폴더의 구현은 터미널에서 실행하세요.",
-    });
   if (demoRunning)
     return res.status(409).json({ error: "예제가 이미 실행 중입니다." });
   demoRunning = true;

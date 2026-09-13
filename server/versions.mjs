@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import fs from "node:fs";
 import crypto from "node:crypto";
 import { validateGraph } from "./model.mjs";
 
@@ -50,6 +51,8 @@ async function commitInfo(workspace, ref) {
   );
 }
 export async function versionStatus(workspace, history = false) {
+  if (!fs.existsSync(path.join(workspace, ".git")))
+    return { available: false, reason: "프로젝트 버전 관리 미설정: 이 폴더의 독립 Git 저장소가 필요합니다." };
   let repo;
   try {
     repo = (await git(workspace, ["rev-parse", "--show-toplevel"])).trim();
@@ -61,6 +64,8 @@ export async function versionStatus(workspace, history = false) {
       };
     throw error;
   }
+  if (fs.realpathSync(repo) !== fs.realpathSync(workspace))
+    return { available: false, reason: "상위 저장소는 프로젝트 버전 관리에 사용할 수 없습니다." };
   let branch = null,
     head = null;
   try {

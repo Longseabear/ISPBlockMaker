@@ -185,7 +185,7 @@ test(
 );
 
 test(
-  "Version preview refuses switching files outside the workspace or to missing graphs",
+  "Project versions reject ancestor repositories and accept independent project Git",
   { timeout: 30000 },
   async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "isp-version-scope-"));
@@ -210,15 +210,12 @@ test(
       git(dir, "add", "app.txt");
       git(dir, "commit", "-m", "Change app");
       git(dir, "switch", "main");
-      assert.match(
-        (await previewVersion(work, { kind: "branch", ref: "app-change" }))
-          .blockedReason,
-        /폴더 밖/,
-      );
-      await assert.rejects(
-        previewVersion(work, { kind: "commit", ref: empty }),
-        /graph.json/,
-      );
+      assert.equal((await versionStatus(work)).available, false);
+      await assert.rejects(previewVersion(work, {kind: "branch", ref: "app-change"}));
+      git(work, "init", "-b", "main");
+      assert.equal((await versionStatus(work)).head, null);
+      assert.equal((await versionStatus(work)).repo.replaceAll("\\", "/"), work.replaceAll("\\", "/"));
+
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

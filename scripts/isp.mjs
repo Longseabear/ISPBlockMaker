@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { blockSchema } from "../server/model.mjs";
 
@@ -312,7 +312,7 @@ export async function main() {
       runId: option("run"),
     });
   } else if (command === "demo") {
-    const { runDemo } = await import("../workspace/examples/denoise.mjs");
+    const { runDemo } = await import(pathToFileURL(path.join((await request("/bootstrap")).workspace, "examples/denoise.mjs")).href);
     result = await runDemo();
   } else if (command === "help")
     result = `ISP Block Maker bridge — HTTP, no MCP required

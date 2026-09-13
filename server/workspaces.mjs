@@ -7,10 +7,9 @@ export function openWorkspace(folder, root) {
   const workspace = fs.realpathSync(folder);
   if (!fs.statSync(workspace).isDirectory())
     throw new Error("폴더를 선택하세요.");
-  const isDefault = workspace === fs.realpathSync(path.join(root, "workspace"));
-  const dataDir = isDefault
-    ? path.join(root, ".isp")
-    : path.join(workspace, ".isp");
+  if ([root, path.join(root, "workspace"), path.join(root, "templates")].some(p => path.resolve(p) === workspace))
+    throw new Error("프레임워크 또는 workspace 컨테이너 대신 프로젝트 폴더를 선택하세요.");
+  const dataDir = path.join(workspace, ".isp");
   const graphFile = path.join(workspace, "graph.json");
   if (
     !fs.existsSync(graphFile) &&
@@ -46,10 +45,8 @@ export function openWorkspace(folder, root) {
   const store = createStore(dataDir, graphFile);
   const artifactDir = path.join(dataDir, "artifacts");
   fs.mkdirSync(artifactDir, { recursive: true });
-  const cli = isDefault
-    ? path.join(workspace, "isp.mjs")
-    : path.join(dataDir, "tools", "isp.mjs");
-  if (!isDefault) {
+  const cli = path.join(dataDir, "tools", "isp.mjs");
+  {
     fs.mkdirSync(path.dirname(cli), { recursive: true });
     fs.writeFileSync(
       cli,
@@ -66,7 +63,7 @@ export function openWorkspace(folder, root) {
     if (!fs.existsSync(skill)) {
       fs.mkdirSync(path.dirname(skill), { recursive: true });
       const template = fs.readFileSync(
-        path.join(root, "workspace/.agents/skills/isp-block-maker/SKILL.md"),
+        path.join(root, "templates/project/.agents/skills/isp-block-maker/SKILL.md"),
         "utf8",
       );
       fs.writeFileSync(
@@ -84,7 +81,7 @@ export function openWorkspace(folder, root) {
     if (!fs.existsSync(claudeSkill)) {
       fs.mkdirSync(path.dirname(claudeSkill), { recursive: true });
       fs.copyFileSync(
-        path.join(root, "workspace/.claude/skills/isp-block-maker/SKILL.md"),
+        path.join(root, "templates/project/.claude/skills/isp-block-maker/SKILL.md"),
         claudeSkill,
       );
     }
@@ -102,7 +99,7 @@ export function openWorkspace(folder, root) {
     }
     const ignore = path.join(workspace, ".gitignore");
     const text = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-    const missing = [".isp/", "artifacts/generated/"].filter(
+    const missing = [".isp/", "artifacts/generated/", "__pycache__/", "*.py[cod]"].filter(
       (line) => !text.split(/\r?\n/).includes(line),
     );
     if (missing.length)

@@ -8,6 +8,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
 import { WebSocket } from "ws";
+import { createStore } from "../server/store.mjs";
 
 test(
   "local API authenticates, validates writes, serves isolated artifacts and streams shell I/O",
@@ -15,6 +16,7 @@ test(
   async () => {
     const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "isp-api-test-"));
     const dir = path.join(testRoot, ".isp");
+    createStore(dir, path.join(testRoot, "graph.json"));
     const probe = net.createServer();
     probe.listen(0, "127.0.0.1");
     await once(probe, "listening");
@@ -86,7 +88,7 @@ test(
         });
       assert.equal((await write({ ...state, name: "API edit" })).status, 200);
       assert.equal((await write(state)).status, 409);
-      const cliFile = path.resolve("workspace/isp.mjs");
+      const cliFile = path.join(dir, "tools/isp.mjs");
       const cliEnv = {
         ...process.env,
         ISP_API_URL: base,
@@ -97,7 +99,7 @@ test(
           process.execPath,
           [cliFile, ...args],
           {
-            cwd: path.resolve("workspace/.agents"),
+            cwd: path.join(testRoot, ".agents"),
             env: cliEnv,
             windowsHide: true,
           },
@@ -259,7 +261,7 @@ test(
       );
       const htmlFile = path.join(testRoot, "cli-result.html");
       const globalSpecBefore = fs.readFileSync(
-        path.join(dir, "graph.json"),
+        path.join(testRoot, "graph.json"),
         "utf8",
       );
       response = await fetch(`${base}/api/global`, {
@@ -354,7 +356,7 @@ test(
         /not found/,
       );
       assert.equal(
-        fs.readFileSync(path.join(dir, "graph.json"), "utf8"),
+        fs.readFileSync(path.join(testRoot, "graph.json"), "utf8"),
         globalSpecBefore,
       );
       assert.equal(
@@ -556,7 +558,7 @@ test(
       assert.equal(cliArtifact.kind, "html");
       await assert.rejects(
         promisify(execFile)(process.execPath, [cliFile, "project"], {
-          cwd: testRoot,
+          cwd: path.resolve("."),
           env: cliEnv,
           windowsHide: true,
         }),
@@ -564,7 +566,7 @@ test(
       );
       await assert.rejects(
         promisify(execFile)(process.execPath, [cliFile, "project"], {
-          cwd: path.resolve("workspace/.agents"),
+          cwd: path.join(testRoot, ".agents"),
           env: { ...cliEnv, ISP_API_URL: "https://example.com" },
           windowsHide: true,
         }),
