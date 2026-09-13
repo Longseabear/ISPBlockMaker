@@ -75,6 +75,7 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
         <span>{b.name}</span>
         <button
           className="nodrag nopan node-request-button"
+          onDoubleClick={e=>{e.preventDefault();e.stopPropagation();}}
           title={`${b.name} 요청사항 열기`}
           aria-label={`${b.name} 요청사항 열기`}
           onClick={(e) => {
@@ -86,7 +87,7 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
         </button>
         <span className={`node-dot ${b.status}`} />
       </div>
-      <button className="nodrag nopan node-description" aria-label={`${b.name} 설명 열기`} onClick={e=>{e.stopPropagation();data.onDescription(b.id);}}>{b.description || "블록 설명 작성하기"}<span>설명 보기 →</span></button>
+      <button className="nodrag nopan node-description" onDoubleClick={e=>{e.preventDefault();e.stopPropagation();}} aria-label={`${b.name} 설명 열기`} onClick={e=>{e.stopPropagation();data.onDescription(b.id);}}>{b.description || "블록 설명 작성하기"}<span>설명 보기 →</span></button>
       {!!b.jobs?.filter((j) => j.status !== "done").length && (
         <div className="request-badge">
           JOB · {b.jobs.filter((j) => j.status !== "done").length} 남음
