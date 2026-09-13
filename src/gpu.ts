@@ -1,4 +1,5 @@
-export type GpuExtension={id:string;name:string;description:string;fragment:string;hash?:string;file?:string;blockId?:string;parameters:{name:string;label:string;min:number;max:number;step:number;default:number;blockId?:string;parameter?:string}[]};
+export type GpuSync={status:"unrecorded"|"unavailable"|"changed"|"match";details:string[]};
+export type GpuExtension={sync?:GpuSync;id:string;name:string;description:string;fragment:string;hash?:string;file?:string;blockId?:string;parameters:{name:string;label:string;min:number;max:number;step:number;default:number;blockId?:string;parameter?:string}[]};
 export const builtin:GpuExtension={id:'builtin-preview',name:'Image adjustment · 기본 미리보기',description:'WebGL2 RGBA8 이미지 미리보기. 현재 그래프의 자동 실행이 아닙니다. 프로젝트 확장을 선택하면 해당 GPU 구현을 사용합니다.',parameters:[{name:'gain',label:'Gain',min:0,max:3,step:.01,default:1},{name:'gamma',label:'Gamma',min:.1,max:3,step:.01,default:1}],fragment:`#version 300 es
 precision highp float;
 uniform sampler2D u_image;

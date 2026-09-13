@@ -34,3 +34,6 @@ Stop when the request/JOB scope is exhausted, the target is met, or a bound is r
 ## Copyable user prompt
 
 “선택한 프로젝트의 남은 JOB을 조회하고, 현재 구현을 기준으로 반복실험해줘. 입력과 seed를 고정하고 correctness 검증을 먼저 해. 최대 5회, 연속 실패 2회 또는 개선 없는 후보 3회에서 멈춰. 각 회차의 파라미터·소스 해시·지표·시각화를 남기고, 검증된 변경만 프로젝트 Git에 커밋해. 끝나면 최선 후보와 현재 적용 버전을 구분해서 보여줘. 품질 지표가 불명확하면 임의로 성공을 선언하지 마.”
+
+
+GPU source-change tracking: extension JSON may include reference.shaderSha256 (SHA256 of the UTF-8 fragment string) and reference.sources [{path, sha256}] (project-relative source files, raw byte hashes). Include relevant implementation/helpers. This is a snapshot of named files, not a parity certification. Review CPU/GPU changes before refreshing both shader/source hashes; never auto-refresh only to hide a warning. Unrecorded or missing sources must not be described as synchronized.
