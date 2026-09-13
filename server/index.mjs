@@ -1,3 +1,4 @@
+import { serverPaths } from "./paths.mjs";
 import express from "express";
 import { requestDocument } from "./documents.mjs";
 import http from "node:http";
@@ -18,12 +19,7 @@ import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion, commitChanges } from "./versions.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const runtime = path.join(root, ".isp");
-const workspaceConfig = path.join(runtime, "active-workspace.json");
-const configured = !process.env.ISP_DATA_DIR && fs.existsSync(workspaceConfig)
-  ? JSON.parse(fs.readFileSync(workspaceConfig, "utf8")).path : null;
-const initialFolder = process.env.ISP_DATA_DIR ? path.dirname(process.env.ISP_DATA_DIR)
-  : configured || path.join(root, "workspace", "untitled");
+const {runtime, workspaceConfig, initialFolder} = serverPaths(root);
 fs.mkdirSync(initialFolder, { recursive: true });
 const opened = openWorkspace(initialFolder, root);
 let { workspace, dataDir, artifactDir, store } = opened;
@@ -57,7 +53,7 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
-app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, instance, pid: process.pid }));
+app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   if (req.path === "/bootstrap" && req.method === "GET") return next();
@@ -191,6 +187,8 @@ app.post("/api/workspace", (req, res) => {
     return res
       .status(409)
       .json({ error: "실행 중인 예제가 끝난 뒤 폴더를 변경하세요." });
+  if (process.env.ISP_WORKSPACE && fs.realpathSync(input.path) !== workspace)
+    return res.status(409).json({error: "폴더별 서버입니다. 다른 폴더에서 isp-block-maker . 명령으로 새 서버를 여세요."});
   const opened = openWorkspace(input.path, root);
   if (opened.workspace === workspace) return res.json({ workspace });
   for (const session of sessions.values()) {
@@ -710,7 +708,7 @@ function startTerminal(socket, message) {
       ISP_API_TOKEN: token,
       ISP_BLOCK_ID: blockId,
       ISP_CLI: cliPath,
-      PATH: `${path.dirname(cliPath)}${path.delimiter}${process.env.PATH || ""}`,
+      PATH: `${path.dirname(cliPath)}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
       TERM: "xterm-256color",
     };
     const windows = process.platform === "win32";
@@ -874,11 +872,10 @@ async function shutdown() {
     } catch {}
   }
   for (const socket of wss.clients) socket.terminate();
-  const discovery = path.join(runtime, "connection.json");
-  try {
-    if (JSON.parse(fs.readFileSync(discovery, "utf8")).token === token)
-      fs.unlinkSync(discovery);
-  } catch {}
+  for (const folder of new Set([runtime, dataDir])) {
+    const discovery = path.join(folder, "connection.json");
+    try { if (JSON.parse(fs.readFileSync(discovery, "utf8")).token === token) fs.unlinkSync(discovery); } catch {}
+  }
   await vite?.close();
   server.close();
 }

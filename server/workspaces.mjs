@@ -54,7 +54,7 @@ export function openWorkspace(folder, root) {
     );
     fs.writeFileSync(
       path.join(dataDir, "tools", "isp.cmd"),
-      '@echo off\r\nnode "%~dp0isp.mjs" %*\r\n',
+      `@echo off\r\n"${process.execPath}" "%~dp0isp.mjs" %*\r\n`,
     );
     const skill = path.join(
       workspace,

@@ -1,3 +1,4 @@
+import { serverPaths } from "../server/paths.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,11 +11,8 @@ try {
   if (Number(process.versions.node.split(".")[0]) < 24) throw new Error("Node.js 24 or newer is required. Place node.exe beside ISPBlockMaker.exe.");
   for (const file of ["dist/index.html", "server/index.mjs", "templates/project/.agents/skills/isp-block-maker/SKILL.md"])
     if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing ${file}. Use the complete distribution folder; the executable alone is not sufficient.`);
-  for (const dependency of ["express", "ws", "zod", "node-pty"]) require.resolve(dependency);
-  const runtime = path.join(root, ".isp");
-  fs.mkdirSync(runtime, { recursive: true });
-  const config = path.join(runtime, "active-workspace.json");
-  const workspace = process.env.ISP_DATA_DIR ? path.dirname(process.env.ISP_DATA_DIR) : fs.existsSync(config) ? JSON.parse(fs.readFileSync(config, "utf8")).path : path.join(root, "workspace", "untitled");
+  for (const dependency of ["express", "ws", "zod", "node-pty", "prismjs"]) require.resolve(dependency);
+  const {runtime, initialFolder:workspace} = serverPaths(root);
   for (const folder of [runtime, workspace]) {
     fs.mkdirSync(folder, { recursive: true });
     const probe = path.join(folder, `.isp-write-check-${process.pid}`);
@@ -28,7 +26,8 @@ try {
   });
   console.log(`${new Date().toISOString()} Startup checks passed: Node ${process.versions.node}, dependencies, folder access, terminal.`);
   if (!process.argv.includes("--check")) await import("../server/index.mjs");
+  else process.exit(0);
 } catch (error) {
   console.error(`${new Date().toISOString()} Startup failed: ${error.message}`);
-  process.exitCode = 1;
+  process.exit(1);
 }

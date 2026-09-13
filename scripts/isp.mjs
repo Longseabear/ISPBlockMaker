@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { serverPaths } from "../server/paths.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -9,7 +10,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function connection() {
   if (process.env.ISP_API_URL && process.env.ISP_API_TOKEN)
     return { url: process.env.ISP_API_URL, token: process.env.ISP_API_TOKEN };
-  const file = path.join(root, ".isp", "connection.json");
+  let file = path.join(serverPaths(root).runtime, "connection.json");
+  for (let folder=process.cwd(); ; folder=path.dirname(folder)) {
+    const candidate=path.join(folder,".isp","connection.json");
+    if(fs.existsSync(candidate)){ file=candidate; break; }
+    if(path.dirname(folder)===folder) break;
+  }
+  if (!fs.existsSync(file)) file=path.join(root,".isp","connection.json");
   if (!fs.existsSync(file))
     throw new Error("ISP 서버를 먼저 시작하세요: npm run dev");
   const value = JSON.parse(fs.readFileSync(file, "utf8"));

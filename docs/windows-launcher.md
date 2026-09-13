@@ -1,15 +1,25 @@
-# Windows launcher
+# Windows offline installation
 
-Build the frontend with `npm run build`, then build `ISPBlockMaker.exe` with `npm run build:launcher` on Windows. The compiler is the Windows .NET Framework C# compiler. The launcher targets Windows 10/11 with .NET Framework 4.x and a supported Node.js 24+ runtime.
+Build with `npm run build:installer` on Windows. Outputs: `release/ISPBlockMaker-Setup.exe`, SHA-256 sidecar and offline ZIP. The package includes the current Windows Node runtime, native terminal files, production server dependencies and built frontend. Installation needs neither npm nor network access. The build downloads and caches the matching Node license. Architecture matches the build Node (x64 here); Windows 10/11 with .NET Framework 4.x is required.
 
-Double-click the EXE in the framework root. It checks the server identity, starts the local server if needed, and opens the default browser. Keep its small window open while working. **서버 종료** or closing the launcher stops the server and its terminal process trees. Clicking the EXE again opens the existing URL without launching a second server. A server for a different framework root on the same port is never stopped. Set the `PORT` environment variable before launching to use another port (default 4310).
+Run Setup to install per-user under `%LOCALAPPDATA%\Programs\ISPBlockMaker`. It registers `bin` in user PATH and adds a Start menu shortcut and uninstall entry. It does not install global Node or change machine PATH. Open a new terminal:
 
-The launcher prefers `node.exe` beside the EXE, then searches PATH. Startup checks verify built frontend files, dependencies, writable framework/workspace folders and a real Windows terminal launch. `npm run check:windows` runs the checks without starting the server. Errors and server output are stored under `%LOCALAPPDATA%\ISPBlockMaker\logs`; **로그 폴더** opens it. Logs do not capture terminal input/output or the API token. Browser errors remain in the browser console.
+```powershell
+cd D:\Workspace\adaptive-denoise
+isp-block-maker .
+isp-block-maker "D:\Workspace\another project"
+```
 
-For offline delivery, ship the complete framework folder containing the EXE, compatible Windows `node.exe`, `node_modules` including native node-pty files, `dist`, `server`, `scripts`, `templates` and `package.json`. Build/install these on a connected Windows machine first. The EXE is a launcher, not a single-file bundle; shipping only the EXE will not work. Exclude your `.git`, `.isp` and `workspace` folders. Git/Python/agent programs and their dependencies remain separate prerequisites for their respective features. Automatic installer creation and Python/agent bundling are not implemented here.
+The folder must exist. A new workspace gets graph.json, local skills, agent guidance and ignored .isp tools/state. Existing implementation, graph and customized skills are preserved. The Start menu shortcut opens a folder chooser.
+
+Same-folder commands reuse the existing launcher/server. Other folders get separate ports starting at 4310; PORT changes the starting port and the next 100 ports are considered. Closing a launcher or pressing its stop button stops its server and terminal trees. Folder-specific servers refuse in-place folder switching: run the command in the other folder. Development npm start retains folder switching.
+
+Updates install alongside older app versions under versions/. Close the old launcher before using the new version. Server configuration/discovery lives in `%LOCALAPPDATA%\ISPBlockMaker\state`; diagnostic logs live in `%LOCALAPPDATA%\ISPBlockMaker\logs`. Workspaces stay outside the installation. The bundled Node is available in the server terminal PATH.
+
+Uninstall through Windows installed apps after closing launchers. Only package-owned files are removed. Workspaces and local logs/state are retained. For ZIP deployment, extract and run install.ps1. Use `install.ps1 -NoRegistration` to prepare the local command without changing PATH, shortcuts or registry.
+
+Git, Python and coding agents (including their dependencies and internal endpoints) remain separate prerequisites for those features. This installer is unsigned; organizational signing can be applied before distribution.
 
 # SDD documents
 
-Open **Document화 → SDD 작성 요청** to queue a global request. The agent reads the workspace's `sdd.md` guide, splits the request into JOBs and creates static, self-contained HTML in Overview → Flow → block details order. This button queues work; it does not run an agent automatically.
-
-Register the resulting HTML from the workspace with `node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N --title "Project SDD"`. The document appears in Document화, with prior versions and an HTML download. Registered documents retain the revision they describe. They are local artifacts, separate from implementation Git history.
+Document화 → SDD 작성 요청 queues a global request; it does not automatically run an agent. The local sdd.md guide directs Overview → Flow → block details in self-contained HTML. Register with `node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N`. Document화 shows registered versions and an HTML download. Documents remain local artifacts, separate from implementation Git history.
