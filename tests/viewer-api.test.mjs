@@ -1,4 +1,5 @@
 import test from "node:test";
+import crypto from "node:crypto";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -41,7 +42,19 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
   const downloaded=await fetch(base+`/api/viewer/requests/${request.id}/files/crop`,{headers});assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),crop);
   const preview=await(await fetch(base+`/api/viewer/images/${imported.id}/preview`,{headers})).json();assert.match(preview.url,/^data:image\/png;base64,/);
+  const multi=await(await post("/viewer/requests",{imageId:imported.id,prompt:"여러 영역",show:false})).json();
+  const firstId=crypto.randomUUID(),secondId=crypto.randomUUID(),roi={x:0,y:0,width:8,height:8};
+  const first=await(await post(`/viewer/requests/${multi.id}/crops`,{id:firstId,roi})).json();assert.equal(first.crops.length,1);assert.equal(first.status,"submitted");
+  const duplicate=await(await post(`/viewer/requests/${multi.id}/crops`,{id:firstId,roi})).json();assert.equal(duplicate.crops.length,1);
+  const second=await(await post(`/viewer/requests/${multi.id}/crops`,{id:secondId,roi,description:"두 번째"})).json();assert.equal(second.crops.length,2);assert.notEqual(second.crops[0].paths.crop,second.crops[1].paths.crop);
+  const edited=await fetch(base+`/api/viewer/requests/${multi.id}/crops/${firstId}`,{method:"PATCH",headers,body:JSON.stringify({description:"평탄 영역 테스트",previousDescription:""})});assert.equal(edited.status,200);
+  const described=await edited.json();assert.equal(described.crops[0].description,"평탄 영역 테스트");assert.equal(described.result.description,"평탄 영역 테스트");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(temp,described.crops[0].paths.metadata),"utf8")).description,"평탄 영역 테스트");
+  assert.equal((await fetch(base+`/api/viewer/requests/${multi.id}/crops/${firstId}`,{method:"PATCH",headers,body:JSON.stringify({description:"stale",previousDescription:""})})).status,409);
+  const multiDownload=await fetch(base+`/api/viewer/requests/${multi.id}/files/crop?cropId=${secondId}`,{headers});assert.equal(multiDownload.status,200);assert.deepEqual(Buffer.from(await multiDownload.arrayBuffer()),data);
+  const multiRead=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-result",multi.id],{cwd:temp,windowsHide:true,encoding:"utf8"}));assert.equal(multiRead.crops.length,2);assert.equal(multiRead.crops[0].description,"평탄 영역 테스트");
   const cancelled=await(await post("/viewer/requests",{imageId:imported.id,prompt:"Cancel me",show:false})).json();await post(`/viewer/requests/${cancelled.id}/cancel`,{});assert.equal((await post(`/viewer/requests/${cancelled.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
+  assert.equal((await post(`/viewer/requests/${cancelled.id}/crops`,{id:crypto.randomUUID(),roi})).status,409);
   assert.equal(JSON.parse(fs.readFileSync(path.join(temp,".isp/viewer/requests.json"),"utf8"))[0].status,"submitted");
  }finally{if(fs.existsSync(external))fs.unlinkSync(external);socket?.terminate();child.kill();await exited;fs.rmSync(temp,{recursive:true,force:true});}
 });

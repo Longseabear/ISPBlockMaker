@@ -50,10 +50,42 @@ export function installViewer(app,{current,present}) {
     res.status(201).json({...request,delivered:input.show?present(request.id,input.prompt):0});
   });
   app.get("/api/viewer/requests/:id",(req,res)=>res.json(findRequest(req.params.id)));
+  app.post("/api/viewer/requests/:id/crops",(req,res)=>{
+    const request=findRequest(req.params.id);
+    if(request.status==="cancelled")return res.status(409).json({error:"취소된 요청입니다. 새 크롭 요청을 선택하세요."});
+    const input=z.object({id:z.string().uuid(),roi:z.object({x:z.number().int(),y:z.number().int(),width:z.number().int(),height:z.number().int()}),description:z.string().max(12000).default("")}).parse(req.body);
+    const crops=request.crops||(request.result?[{...request.result,id:request.id,description:"",createdAt:request.completedAt}]:[]);
+    if(crops.some(c=>c.id===input.id))return res.json({...request,crops});
+    if(crops.length>=200)throw new Error("요청당 크롭은 최대 200개입니다.");
+    const image=findImage(request.imageId),decoded=load(image),crop=cropImage(decoded,input.roi);
+    const resultDir=path.join(folder(),"results",request.id,input.id);
+    fs.mkdirSync(resultDir,{recursive:true});
+    const local=file=>path.relative(current().workspace,path.join(resultDir,file)).split(path.sep).join("/");
+    const result={id:input.id,description:input.description,createdAt:new Date().toISOString(),roi:input.roi,coordinateSystem:"zero-based source pixels; x/y inclusive; x+width/y+height exclusive",source:{imageId:image.id,sha256:image.sha256,spec:image.spec},output:crop.spec,paths:{crop:local("crop."+crop.extension),preview:local("preview.png"),metadata:local("metadata.json")},sha256:crypto.createHash("sha256").update(crop.bytes).digest("hex")};
+    fs.writeFileSync(path.join(resultDir,"crop."+crop.extension),crop.bytes);
+    fs.writeFileSync(path.join(resultDir,"preview.png"),preview(decoded,{roi:input.roi}).png);
+    fs.writeFileSync(path.join(resultDir,"metadata.json"),JSON.stringify(result,null,2));
+    request.crops=[...crops,result];request.result=request.crops[0];request.status="submitted";request.completedAt=result.createdAt;
+    write("requests",read("requests").map(r=>r.id===request.id?request:r));res.status(201).json(request);
+  });
+  app.patch("/api/viewer/requests/:id/crops/:cropId",(req,res)=>{
+    const request=findRequest(req.params.id),cropId=id(req.params.cropId);
+    const input=z.object({description:z.string().max(12000),previousDescription:z.string().max(12000)}).parse(req.body);
+    const crops=request.crops||(request.result?[{...request.result,id:request.id,description:"",createdAt:request.completedAt}]:[]);
+    const crop=crops.find(c=>c.id===cropId);if(!crop)throw new Error("크롭 항목을 찾을 수 없습니다.");
+    if((crop.description||"")!==input.previousDescription)return res.status(409).json({error:"다른 화면에서 설명을 변경했습니다. 최신 내용을 확인하세요."});
+    crop.description=input.description;crop.updatedAt=new Date().toISOString();
+    request.crops=crops;request.result=crops[0];
+    const metadata=path.resolve(current().workspace,crop.paths.metadata);
+    if(!metadata.startsWith(path.join(folder(),"results",request.id)+path.sep))throw new Error("잘못된 결과 경로입니다.");
+    fs.writeFileSync(metadata,JSON.stringify(crop,null,2));
+    write("requests",read("requests").map(r=>r.id===request.id?request:r));res.json(request);
+  });
   app.get("/api/viewer/requests/:id/files/:kind",(req,res)=>{
     const request=findRequest(req.params.id),kind=z.enum(["crop","preview","metadata"]).parse(req.params.kind);
-    if(!request.result)throw new Error("아직 제출된 크롭이 없습니다.");
-    const file=path.resolve(current().workspace,request.result.paths[kind]);
+    const result=req.query.cropId?(request.crops||[]).find(c=>c.id===id(req.query.cropId)):request.result;
+    if(!result)throw new Error("아직 제출된 크롭이 없습니다.");
+    const file=path.resolve(current().workspace,result.paths[kind]);
     if(!file.startsWith(path.join(folder(),"results",request.id)+path.sep))throw new Error("잘못된 결과 경로입니다.");
     res.download(file,path.basename(file),{dotfiles:"allow"});
   });
