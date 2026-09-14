@@ -1120,3 +1120,9 @@ h1 {
 
 .viewer-side-resizer {cursor:col-resize;touch-action:none;background:#29343d;border-radius:4px;}
 .viewer-side-resizer:hover,.viewer-side-resizer:focus-visible {background:#82c5a8;}
+
+.viewer-crop-card.crop-chosen {border-color:#8fdbb5;box-shadow:0 0 0 1px #8fdbb5;}
+.viewer-crop-heading {align-items:center;}
+.viewer-crop-heading button {flex:1;}
+.viewer-crop-heading input {width:16px;height:16px;accent-color:#8fdbb5;}
+.viewer-crop-batch {display:flex;flex-direction:column;gap:8px;padding:8px 0 12px;}

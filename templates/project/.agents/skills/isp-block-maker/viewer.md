@@ -20,6 +20,8 @@ The current image includes the visible canvas and annotations, not app chrome. I
 
 ## Source crops
 
+For “the crops I selected/sent”, read `viewer-crops` (GET `/api/viewer/crop-selection`). Users select a range with Shift+click on crop headings, toggle individual checkboxes, then explicitly click **선택한 크롭 전달**. Highlighting alone does not send. The latest sent batch replaces the previous batch and contains stable request/crop IDs, `imageId`, `sentAt`, resolved `crops` with current saved descriptions and paths, and `missing` for deleted items. Process only that batch, not every crop in the Viewer. Re-read before processing: unsaved description drafts are not included, and missing items must not be recreated or silently replaced. If no batch was sent the result is null. This exposes data to the agent; it does not automatically inject a prompt or execute work.
+
 Use this workflow when the user must choose a region for an ISP task. Work through the local workspace CLI (`node .isp/tools/isp.mjs`, or `.isp/tools/isp.cmd` on Windows without Node on PATH). Do not invent user-selected coordinates or silently crop a convenient region yourself.
 
 1. Inspect `viewer-list` for existing images and requests. Reuse the relevant imported image; ask for the file or format metadata if missing. Agent imports may read image files outside the active workspace using an absolute path (quote paths containing spaces). Relative paths resolve from the active workspace. Import only reads the source and stores a separate copy in the workspace Viewer; never modify or delete the source. The same format and 256MB size limits apply. The user can also upload files through Image Viewer.

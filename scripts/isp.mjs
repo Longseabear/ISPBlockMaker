@@ -113,6 +113,7 @@ export async function main() {
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
   if (command === "viewer-list") result=await request("/viewer");
+  else if (command === "viewer-crops") result=await request('/viewer/crop-selection');
   else if (command === "viewer-control") {
     if(!args[0])throw new Error('Usage: isp viewer-control command.json');
     result=await request('/viewer/commands',{method:'POST',body:fs.readFileSync(args[0],'utf8')});
@@ -387,6 +388,7 @@ isp present --artifact ARTIFACT_ID --message "Comparison ready"
 isp present --graph
 isp update patch.json --block ID --revision N
 isp viewer-list                 List images and crop requests
+isp viewer-crops                Read the user's latest explicitly sent crop selection
 isp viewer-control command.json  Present image, zoom, center, render and highlights
 isp viewer-command COMMAND_ID    Check applied/failed acknowledgement
 isp viewer-command-show COMMAND_ID  Present a stored command again

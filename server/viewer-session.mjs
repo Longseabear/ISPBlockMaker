@@ -12,6 +12,19 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
   const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';
+  const resolveSelection=selection=>{
+    const requests=read('requests'),crops=[],missing=[];
+    for(const item of selection.items){const request=requests.find(r=>r.id===item.requestId&&r.imageId===selection.imageId);const crop=(request?.crops||(request?.result?[{...request.result,id:request.id}]:[])).find(c=>c.id===item.cropId);if(crop)crops.push({...item,...crop});else missing.push(item);}
+    return {...selection,crops,missing};
+  };
+  app.post('/api/viewer/crop-selection',(req,res)=>{
+    const input=z.object({imageId:z.string().uuid(),items:z.array(z.object({requestId:z.string().uuid(),cropId:z.string().uuid()})).min(1).max(200)}).parse(req.body);findImage(input.imageId);
+    if(new Set(input.items.map(i=>i.requestId+':'+i.cropId)).size!==input.items.length)throw new Error('Duplicate crop selection');
+    const selection={...input,id:crypto.randomUUID(),sentAt:new Date().toISOString()},result=resolveSelection(selection);
+    if(result.missing.length)return res.status(409).json({error:'선택한 크롭이 변경되거나 제거됐습니다. 다시 선택하세요.'});
+    write('crop-selection',[selection]);res.json(result);
+  });
+  app.get('/api/viewer/crop-selection',(req,res)=>{const selection=read('crop-selection')[0];res.json(selection?resolveSelection(selection):null);});
   const liveFresh=()=>liveWorkspace===current().workspace&&live&&Date.now()-Date.parse(live.updatedAt)<10000;
   app.get('/api/viewer/view',(req,res)=>res.json({live:liveWorkspace===current().workspace&&live?{...live,active:!!liveFresh()}:null,snapshots:read('views').slice().reverse()}));
   app.post('/api/viewer/view',(req,res)=>{
