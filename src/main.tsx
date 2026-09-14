@@ -1421,10 +1421,10 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
-          <button className={view === "documents" ? "active" : ""} aria-label="Documentation" onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <button className={view === "viewer" ? "active" : ""} aria-label="Image Viewer" onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
           <button className={view === "gpu" ? "active" : ""} aria-label="GPU simulator" onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} aria-label="JOB Queue" onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
+          <button className={view === "documents" ? "active" : ""} aria-label="Documentation" onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="layout-toolbar">
             <div>
               <button onClick={() => mode("design")}>설계</button>
