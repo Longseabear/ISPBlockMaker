@@ -242,6 +242,7 @@ function Inspector({
           patch: {
             name: draft.name,
             description: draft.description,
+            detail: draft.detail || "",
             userRequests: [
               ...(draft.userRequests || []),
               ...(newRequest.trim()
@@ -518,12 +519,17 @@ function Inspector({
               />
             </label>
             <label>
-              Description
+              Node Description · 카드 요약
               <textarea
                 rows={3}
                 value={draft.description}
                 onChange={(e) => edit("description", e.target.value)}
               />
+            </label>
+            <p className="hint">그래프 카드에 표시할 역할만 1–2문장으로 적으세요. 자세한 설명은 아래에 작성합니다.</p>
+            <label>
+              Node Detail · 사용자 상세 설명
+              <textarea rows={10} value={draft.detail || ""} onChange={e=>edit("detail",e.target.value)} placeholder="동작 설명, 사용 예, 파라미터의 의미, 해석 방법과 주의사항"/>
             </label>
             <label>
               Status
@@ -573,11 +579,10 @@ function Inspector({
         ) : tab === "agent" ? (
           <>
             <p className="hint">
-              에이전트가 구현 전에 읽는 계약입니다. 요약과 입출력은 공통
-              원본에서 함께 제공됩니다. 빈 항목은 미정으로 취급합니다.
+              에이전트 전용 구현 지식입니다. 영어·수식·의사코드 등 정확한 구현과 검증에 유리한 언어와 구조를 사용합니다. 사용자용 설명은 Node Detail에 작성하세요. 빈 항목은 미정입니다.
             </p>
             <label>
-              How it works
+              Agent algorithm · 구현 원리
               <textarea
                 rows={6}
                 value={draft.principle}

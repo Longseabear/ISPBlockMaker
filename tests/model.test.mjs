@@ -135,10 +135,16 @@ test("legacy blocks gain agent contracts without losing descriptions and contrac
     const graph = structuredClone(store.get());
     const block = graph.blocks.find((b) => b.id === "flat-detection");
     assert.equal(block.agentContract.validation, "");
+    assert.equal(block.detail, "");
+    const originalSummary = block.description;
+    block.detail = "사용자 상세: 입력 예와 파라미터 해석.\n두 번째 문단.";
     block.agentContract.validation = "node ../scripts/isp.mjs demo";
     store.graph(graph, graph.revision);
     const context = contextFor(createStore(dir).get(), block.id);
     assert.equal(context.human.summary, block.description);
+    assert.equal(context.human.summary, originalSummary);
+    assert.equal(context.human.detail, block.detail);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"graph.json"),"utf8")).blocks.find(b=>b.id===block.id).detail,block.detail);
     assert.equal(
       context.agent.contract.validation,
       block.agentContract.validation,

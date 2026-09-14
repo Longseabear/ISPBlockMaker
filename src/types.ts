@@ -27,6 +27,7 @@ export type Block = {
   name: string;
   description: string;
   principle: string;
+  detail?: string;
   implementation: string;
   implementationSymbol?: string;
   agentContract?: {

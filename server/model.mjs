@@ -31,6 +31,7 @@ export const blockSchema = z.object({
   jobs: z.array(jobSchema).max(1000).default([]),
   name: z.string().min(1).max(100),
   description: z.string().max(12000),
+  detail: z.string().max(30000).default(""),
   principle: z.string().max(20000),
   implementation: z.string().max(1000),
   implementationSymbol: z.string().max(200).default(""),
@@ -137,7 +138,7 @@ export function contextFor(state, blockId) {
     project: state.name,
     revision: state.revision,
     block,
-    human: { summary: block.description, status: block.status },
+    human: { summary: block.description, detail: block.detail || "", status: block.status },
     agent: {
       userRequests: block.userRequests || [],
       jobs: block.jobs || [],

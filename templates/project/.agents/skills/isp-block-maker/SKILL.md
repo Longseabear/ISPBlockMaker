@@ -36,7 +36,7 @@ If a requested behavior needs a new stage or connection, represent it in the gra
 
 Apply this to every authorized block change, with or without a JOB. Code changes alone are not completion. Before marking work complete, inspect the affected block metadata and the tools that explain its results against the actual implementation.
 
-- Update `description` for the user: what the block now does and the practical effect. Update `principle` with the actual algorithm/formula and its assumptions. Rename a misleading display name while preserving the stable block ID.
+- Update `description` with only the brief graph-card summary; put the human-facing explanation and practical effects in `detail`. Update `principle` with the agent-facing algorithm/formula and its assumptions. Rename a misleading display name while preserving the stable block ID.
 - Synchronize affected ports, parameters, `implementation`, `implementationSymbol`, and `agentContract` fields: formats, boundaries, precision, steps, validation, and acceptance. Check downstream consumers and other nodes sharing changed code; change only metadata affected by the implementation.
 - For example, changing mean/mean-square variance to min/max requires describing the actual range estimator (such as `(max-min)^2/12` when that is what the code computes). Explain that it is an approximation, not the same sample variance, and assess the impact on threshold behavior. Do not retain "moments" or the old variance formula as the current explanation merely because the stable node ID is unchanged.
 - Inspect related visualization generators, interactive controls, captions, legends, units, metrics, and existing SDD source descriptions. Update those made inaccurate by the change. An interactive visualization that still executes the old formula is stale even if its title is updated. Check related alternate implementations/references when applicable; do not merely update a reference hash to imply equivalence.
@@ -47,6 +47,14 @@ Apply this to every authorized block change, with or without a JOB. Code changes
 - Commit the coherent source/metadata/generator changes using the local Git rules below, record a concise work summary, then present the exact new artifact when it best explains the change. Otherwise highlight the affected blocks and relevant surviving edges. Preserve the user's terminal and unsaved edits as specified under presentation.
 
 Scale this to the change: spelling, layout, or behavior-preserving refactors need accurate metadata and relevant checks, not an artificial new experiment. This is an agent completion workflow, not an automatic code-to-description synchronization service.
+
+## Three separate audiences for block information
+
+- `description` (Node Description): only what should appear on the graph card. Prefer 1–2 short sentences identifying the processing role/output; omit derivations, implementation notes, stable-ID explanations and long examples.
+- `detail` (Node Detail, exposed as `human.detail`): human-readable detailed behavior, rationale, parameter interpretation, examples, limitations and how to interpret results. Use the user's language unless requested otherwise. It is persisted with the graph but never rendered on the node card.
+- `principle` and `agentContract` (agent-only explanation): optimize for another agent's accurate implementation and validation, not presentation prose. Choose English or another language, equations, concise structured bullets, pseudocode and exact symbol references as useful. Record data layout, invariants, boundary cases, numerical semantics, dependencies and executable validation. Prefer precise, explicit information over verbose prose or opaque shorthand; no language inherently guarantees better model performance. Do not record hidden reasoning or secrets. Shared ports and parameters remain canonical rather than duplicated.
+
+On authorized edits, keep all three aligned with actual code. Move overly detailed card text into `detail` without losing useful information, then write a short card summary. Preserve existing agent knowledge; do not replace the technical contract with user-facing prose. For unchanged legacy blocks an empty detail is valid; do not invent missing details or rewrite unrelated blocks merely to populate it.
 
 ## User request memos
 
@@ -92,7 +100,7 @@ mermaid
 
 `add-block` requires a JSON object with stable `id` and `name`. Optional fields are description, principle, implementation, agentContract, status (draft/implemented), inputs, outputs, parameters and position. Omitted ports are empty; omitted text is empty, status is draft, and position is (300,300). A port is `{"id":"image","name":"Image","type":"image"}`; supported types are image/mask/signal. Write enough description and contract for another agent to implement the block; use `context` on an existing block as a schema example.
 
-`update` is a partial block object. Put human-facing purpose in description, algorithm in principle, and detailed constraints in agentContract: dataFormat, boundaries, numerics, steps, validation, acceptance. Keep common ports/parameters in their canonical fields.
+`update` is a partial block object. Put the short graph-card purpose in description, human-facing detailed explanation in detail, agent-facing algorithm in principle, and implementation constraints in agentContract: dataFormat, boundaries, numerics, steps, validation, acceptance. Keep common ports/parameters in their canonical fields.
 
 Set `implementationSymbol` to the node's entry function/class (for example `flat_detection` or Python `Denoiser.process`), especially when nodes share an implementation file. Keep it updated when renaming or moving the entry point. The code viewer jumps to this symbol; if omitted it tries the block ID with hyphens replaced by underscores. Missing or ambiguous symbols leave the view at the top with a notice. Do not invent separate entry points for nodes that still share a monolithic operation; reflect actual code structure.
 
