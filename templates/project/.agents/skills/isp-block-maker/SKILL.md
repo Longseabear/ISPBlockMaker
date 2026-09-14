@@ -56,6 +56,12 @@ Scale this to the change: spelling, layout, or behavior-preserving refactors nee
 
 On authorized edits, keep all three aligned with actual code. Move overly detailed card text into `detail` without losing useful information, then write a short card summary. Preserve existing agent knowledge; do not replace the technical contract with user-facing prose. For unchanged legacy blocks an empty detail is valid; do not invent missing details or rewrite unrelated blocks merely to populate it.
 
+## Input/output explanations and free-form agent knowledge
+
+Explain the block through its inputs and outputs first. Use `agentContract.inputs` for each input's meaning, producer, shape, units/range, assumptions and a useful example. Use `agentContract.outputs` for each output's meaning, relation to inputs, guarantees, interpretation and consumers. Refer to actual port IDs; canonical ports/connections/parameters stay in shared fields. A source or sink can explicitly say that it has no inputs or outputs.
+
+The contract headings are organizational aids, not a closed checklist or the limit of what may be recorded. Use `agentContract.notes` for useful knowledge that does not fit: design rationale, alternatives/tradeoffs, cross-block relationships, caveats, open questions and implementation hints. Write freely with your own headings, English or the most precise language, equations, pseudocode and examples. Do not omit relevant information because no predefined field exists, and do not pad empty categories with invented facts. Prefer maintainable facts and decisions over duplicated text or hidden reasoning. Read and maintain notes alongside the structured fields whenever changing a block.
+
 ## User request memos
 
 Users write plain text in a block's request box; do not require them to split or format tasks. Each block has `userRequests` (original text) and `jobs` (agent-managed work cards). JOB cards are attached to an IP node; they are not processing nodes or pipeline stages. `context` includes both in `agent.userRequests` and `agent.jobs`. Reading never consumes either.

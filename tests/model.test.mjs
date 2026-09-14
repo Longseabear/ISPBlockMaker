@@ -135,6 +135,12 @@ test("legacy blocks gain agent contracts without losing descriptions and contrac
     const graph = structuredClone(store.get());
     const block = graph.blocks.find((b) => b.id === "flat-detection");
     assert.equal(block.agentContract.validation, "");
+    assert.equal(block.agentContract.inputs, "");
+    assert.equal(block.agentContract.outputs, "");
+    assert.equal(block.agentContract.notes, "");
+    block.agentContract.inputs = "image: normalized grayscale, H x W. Example: constant 0.5.";
+    block.agentContract.outputs = "mask: 1 means flat; shape matches image.";
+    block.agentContract.notes = "Design notes\nKeep strict threshold comparison; equality is not flat.";
     assert.equal(block.detail, "");
     const originalSummary = block.description;
     block.detail = "사용자 상세: 입력 예와 파라미터 해석.\n두 번째 문단.";
@@ -150,6 +156,9 @@ test("legacy blocks gain agent contracts without losing descriptions and contrac
       block.agentContract.validation,
     );
     assert.deepEqual(context.agent.shared.inputs, block.inputs);
+    assert.equal(context.agent.contract.inputs, block.agentContract.inputs);
+    assert.equal(context.agent.contract.outputs, block.agentContract.outputs);
+    assert.equal(context.agent.contract.notes, block.agentContract.notes);
     assert.equal(context.agent.algorithm, block.principle);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

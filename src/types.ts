@@ -31,6 +31,9 @@ export type Block = {
   implementation: string;
   implementationSymbol?: string;
   agentContract?: {
+    inputs?: string;
+    outputs?: string;
+    notes?: string;
     dataFormat: string;
     boundaries: string;
     numerics: string;

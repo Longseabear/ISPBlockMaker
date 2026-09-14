@@ -37,6 +37,9 @@ export const blockSchema = z.object({
   implementationSymbol: z.string().max(200).default(""),
   agentContract: z
     .object({
+      inputs: z.string().max(12000).default(""),
+      outputs: z.string().max(12000).default(""),
+      notes: z.string().max(30000).default(""),
       dataFormat: z.string().max(6000).default(""),
       boundaries: z.string().max(6000).default(""),
       numerics: z.string().max(6000).default(""),
@@ -45,6 +48,9 @@ export const blockSchema = z.object({
       acceptance: z.string().max(6000).default(""),
     })
     .default({
+      inputs: "",
+      outputs: "",
+      notes: "",
       dataFormat: "",
       boundaries: "",
       numerics: "",

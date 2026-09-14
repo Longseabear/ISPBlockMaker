@@ -137,6 +137,9 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
 const nodeTypes = { block: BlockNode };
 
 const emptyContract = {
+  inputs: "",
+  outputs: "",
+  notes: "",
   dataFormat: "",
   boundaries: "",
   numerics: "",
@@ -581,6 +584,8 @@ function Inspector({
             <p className="hint">
               에이전트 전용 구현 지식입니다. 영어·수식·의사코드 등 정확한 구현과 검증에 유리한 언어와 구조를 사용합니다. 사용자용 설명은 Node Detail에 작성하세요. 빈 항목은 미정입니다.
             </p>
+            {([['inputs','Input 설명','입력별 의미, 생성 주체, shape·단위·범위, 전제조건과 예시'],['outputs','Output 설명','출력별 의미, 입력과의 관계, shape·단위·범위, 해석 방법과 예시']] as const).map(([key,label,placeholder])=><label key={key}>{label}<textarea rows={5} value={draft.agentContract?.[key] || ""} placeholder={placeholder} onChange={e=>{mark();setDraft(current=>({...current,agentContract:{...emptyContract,...current.agentContract,[key]:e.target.value}}));}}/></label>)}
+            <p className="hint">포트 ID로 대상을 구분해 자유롭게 설명하세요. 실제 포트·연결·파라미터는 Shared I/O가 기준입니다.</p>
             <label>
               Agent algorithm · 구현 원리
               <textarea
@@ -635,13 +640,14 @@ function Inspector({
                   "실행할 명령과 테스트 데이터 경로",
                 ],
                 ["acceptance", "Acceptance criteria", "완료 조건과 허용 오차"],
+                ["notes", "자유 메모 · Agent notes", "분류되지 않는 구현 지식, 설계 의도, 대안과 트레이드오프, 미해결 질문, 주의사항. 자유 형식으로 작성하세요."],
               ] as const
             ).map(([key, label, placeholder]) => (
               <label key={key}>
                 {label}
                 <textarea
-                  rows={3}
-                  value={(draft.agentContract || emptyContract)[key]}
+                  rows={key === "notes" ? 8 : 3}
+                  value={(draft.agentContract || emptyContract)[key] || ""}
                   placeholder={placeholder}
                   onChange={(e) => {
                     mark();
