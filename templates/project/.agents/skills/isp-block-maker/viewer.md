@@ -2,7 +2,7 @@
 
 Use this workflow when the user must choose a region for an ISP task. Work through the local workspace CLI (`node .isp/tools/isp.mjs`, or `.isp/tools/isp.cmd` on Windows without Node on PATH). Do not invent user-selected coordinates or silently crop a convenient region yourself.
 
-1. Inspect `viewer-list` for existing images and requests. Reuse the relevant imported image; ask for the file or format metadata if missing. Agent import paths must stay inside the active workspace. The user can upload external files through Image Viewer.
+1. Inspect `viewer-list` for existing images and requests. Reuse the relevant imported image; ask for the file or format metadata if missing. Agent imports may read image files outside the active workspace using an absolute path (quote paths containing spaces). Relative paths resolve from the active workspace. Import only reads the source and stores a separate copy in the workspace Viewer; never modify or delete the source. The same format and 256MB size limits apply. The user can also upload files through Image Viewer.
 2. Import BMP or 16bit-container RAW: `viewer-import input.raw --spec input-spec.json`. The spec must identify the actual storage format. RAW example:
 
 ```json

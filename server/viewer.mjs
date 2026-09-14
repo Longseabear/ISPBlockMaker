@@ -30,8 +30,7 @@ export function installViewer(app,{current,present}) {
   app.post("/api/viewer/images/import",(req,res)=>{
     const workspace=fs.realpathSync(current().workspace);
     const file=fs.realpathSync(path.resolve(workspace,z.string().min(1).parse(req.body.path)));
-    const relative=path.relative(workspace,file);
-    if(relative.startsWith(".."+path.sep)||relative===".."||path.isAbsolute(relative))throw new Error("에이전트 파일은 현재 workspace 안에 있어야 합니다. 외부 파일은 Viewer에서 업로드하세요.");
+    // External image paths are read-only inputs; register stores a workspace-local copy.
     if(!fs.statSync(file).isFile()||fs.statSync(file).size>256*1024*1024)throw new Error("파일 크기/형식을 확인하세요.");
     res.status(201).json(register(fs.readFileSync(file),{name:req.body.name||path.basename(file),spec:req.body.spec}));
   });
