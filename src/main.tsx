@@ -764,6 +764,12 @@ function TerminalPane({
     terminal.loadAddon(fitter);
     terminal.open(host.current!);
     terminal.attachCustomKeyEventHandler(terminalClipboardHandler({
+      selection: () => terminal.getSelection(),
+      selectAll: () => terminal.selectAll(),
+      writeText: async text => {
+        if(!navigator.clipboard?.writeText)throw new Error("Clipboard API unavailable");
+        await navigator.clipboard.writeText(text);
+      },
       readText: async () => {
         if (!navigator.clipboard?.readText) throw new Error("Clipboard API unavailable");
         return navigator.clipboard.readText();
