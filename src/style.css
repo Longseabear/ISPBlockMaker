@@ -1106,3 +1106,9 @@ h1 {
 .viewer-roi input[type=number] {width:64px;}
 .viewer-canvas canvas {image-rendering:pixelated;}
 @media(max-width:850px){.viewer-content{grid-template-columns:minmax(0,1fr) 200px;}.viewer-toolbar{gap:6px;}.viewer-toolbar select{max-width:220px;}}
+
+.viewer-share {padding:10px 0 14px;border-bottom:1px solid #39424b;margin-bottom:12px;}
+.viewer-share textarea {width:100%;min-height:65px;resize:vertical;}
+.viewer-share p,.viewer-share small {font-size:11px;color:#a2b0bd;line-height:1.5;}
+.viewer-share small,.viewer-share code {display:block;overflow-wrap:anywhere;}
+.viewer-share article {padding:10px 0;border-bottom:1px solid #39424b;}

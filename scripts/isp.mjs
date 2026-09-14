@@ -113,6 +113,17 @@ export async function main() {
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
   if (command === "viewer-list") result=await request("/viewer");
+  else if (command === "viewer-control") {
+    if(!args[0])throw new Error('Usage: isp viewer-control command.json');
+    result=await request('/viewer/commands',{method:'POST',body:fs.readFileSync(args[0],'utf8')});
+  }
+  else if (command === "viewer-command") result=await request(`/viewer/commands/${encodeURIComponent(args[0])}`);
+  else if (command === "viewer-command-show") result=await request(`/viewer/commands/${encodeURIComponent(args[0])}/show`,{method:'POST',body:'{}'});
+  else if (command === "viewer-view") result=await request(args[0]?`/viewer/views/${encodeURIComponent(args[0])}`:'/viewer/view');
+  else if (command === "viewer-image") {
+    if(!args[0])throw new Error('Usage: isp viewer-image VIEW_ID [--vision]');
+    result=await request(`/viewer/views/${encodeURIComponent(args[0])}/attachment${args.includes('--vision')?'?vision=true':''}`);
+  }
   else if (command === "viewer-import") {
     if(!args[0]||!option("spec"))throw new Error("Usage: isp viewer-import image.raw --spec image.json");
     result=await request("/viewer/images/import",{method:"POST",body:JSON.stringify({path:path.resolve(args[0]),spec:JSON.parse(fs.readFileSync(option("spec"),"utf8")),name:option("title")})});
@@ -376,6 +387,11 @@ isp present --artifact ARTIFACT_ID --message "Comparison ready"
 isp present --graph
 isp update patch.json --block ID --revision N
 isp viewer-list                 List images and crop requests
+isp viewer-control command.json  Present image, zoom, center, render and highlights
+isp viewer-command COMMAND_ID    Check applied/failed acknowledgement
+isp viewer-command-show COMMAND_ID  Present a stored command again
+isp viewer-view [VIEW_ID]        Read live display metadata / explicitly shared screens
+isp viewer-image VIEW_ID [--vision]  Image path; opt-in image content for vision adapters
 isp viewer-import image.raw --spec image.json
 isp viewer-request IMAGE_ID --message "Select a flat patch" --block BLOCK_ID
 isp viewer-result REQUEST_ID [--wait 120]   Read status/results, optionally wait for user selection

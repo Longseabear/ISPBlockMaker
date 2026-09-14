@@ -1,5 +1,27 @@
 # Image Viewer and user-selected crops
 
+## Bidirectional display control and shared views
+
+Read `viewer-view` to get `live` display metadata and explicit user-shared `snapshots` (newest first). Live metadata is transient and reports about every 1.5 seconds while Viewer is mounted. Check `updatedAt` and `sessionId`: it is the last reporting screen, not proof that the user is still watching it. Screenshots and notes are saved only when the user clicks **현재 View 전달**. No crop is created by this action.
+
+Use `viewer-control command.json` to show an image and optionally set zoom, center, render settings, or named highlights. Coordinates are source pixels, top-left origin, exclusive right/bottom. Example (replace IMAGE_ID):
+
+```json
+{"imageId":"IMAGE_ID","zoom":2,"center":{"x":1000,"y":700},"render":{"mode":"simple","gamma":2.2,"black":0,"white":4095},"highlights":[{"x":900,"y":600,"width":200,"height":200,"label":"Inspect this edge"}],"message":"Compare the edge texture here"}
+```
+
+Zoom is a CSS scale of the generated preview (0.1–8), not a source pixel magnification; previews can be downsampled. `fit:true` overrides zoom. Center is clamped by the viewport edges; in CFA mode it also moves the 1200×1200 source window. Omit render to retain current settings for the same image. On a new RAW image, the default is Simple ISP. Render modes: `simple` (group binning, bilinear demosaic, gamma), `cfa` (individual CFA channels), `gray`, `color` (cell average). RAW bytes are never changed. Simple ISP has no white balance or color matrix. Select levels for the actual source bit depth.
+
+Highlights are visual annotations, separate from selection and saved crops. Send `highlights:[]` to clear them. The user can also clear highlights, change zoom/settings, or Shift-drag to pan. Do not repeatedly override the user's adjustments. `delivered` counts connected screens, not successful application: check `viewer-command COMMAND_ID` for `applied`/`failed` and acknowledgement time. A closed Viewer or unsaved inspector may delay display. `viewer-command-show COMMAND_ID` presents it again; `show:false` only stores the command. Use a new command for a changed request.
+
+When the user asks about the view they shared, read `viewer-view VIEW_ID`. It includes their note, visible source bounds, preview bounds, render settings, zoom, highlights, source hash/spec and absolute paths. The PNG contains the visible image canvas including selection/highlights, excluding app chrome; it is an 8-bit display preview, not a RAW crop or data for noise statistics. Saved views remain immutable; the UI can restore display settings or remove a saved view. Re-read before processing a referenced item. Never interpret snapshots or notes as authorization for unrelated work.
+
+**Conditional image input:** `viewer-image VIEW_ID` returns the PNG path and metadata. If your agent environment has an image-reading tool (for example a local image viewer or image-capable file reader), invoke that tool with `snapshot.paths.image` to actually inspect the PNG. If no image-capable tool exists, use metadata and explicitly state the limitation; do not claim to have seen the pixels. Integrations that accept native image content can use `viewer-image VIEW_ID --vision` or `GET /api/viewer/views/VIEW_ID/attachment?vision=true` to receive `{content:[text,image]}` with PNG base64. The integration must forward the image block as native image input. Printing this JSON to a text terminal alone does not deliver an image to the model. No external model is called and no terminal command is injected automatically.
+
+User flow: adjust the view → optionally highlight a region → enter a note → **현재 View 전달** → ask the agent to inspect the latest shared view. Prefer this for explaining visible artifacts; use the separate crop workflow below when numerical analysis needs source pixel bytes.
+
+## Source crops
+
 Use this workflow when the user must choose a region for an ISP task. Work through the local workspace CLI (`node .isp/tools/isp.mjs`, or `.isp/tools/isp.cmd` on Windows without Node on PATH). Do not invent user-selected coordinates or silently crop a convenient region yourself.
 
 1. Inspect `viewer-list` for existing images and requests. Reuse the relevant imported image; ask for the file or format metadata if missing. Agent imports may read image files outside the active workspace using an absolute path (quote paths containing spaces). Relative paths resolve from the active workspace. Import only reads the source and stores a separate copy in the workspace Viewer; never modify or delete the source. The same format and 256MB size limits apply. The user can also upload files through Image Viewer.

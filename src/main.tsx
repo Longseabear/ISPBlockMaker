@@ -1098,6 +1098,7 @@ function App() {
     [token, accept],
   );
   const [viewerRequestId,setViewerRequestId] = useState("");
+  const [viewerCommandId,setViewerCommandId] = useState("");
   function present(result: Presentation) {
     if (dirty) {
       setPendingPresentation(result);
@@ -1114,6 +1115,7 @@ function App() {
     setHighlightedEdges(result.edgeIds || []);
     if (result.view === "viewer") {
       setViewerRequestId(result.requestId || "");
+      setViewerCommandId(result.commandId ? `${result.commandId}|${Date.now()}` : "");
       setLayout(current=>({...current,inspector:false}));
     } else if (result.view === "artifacts") {
       setArtifactId(result.artifactId || "");
@@ -1516,7 +1518,7 @@ function App() {
           <div className="editor">
             <div className="editor-main">
               {view === "viewer" ? (
-                <Viewer api={api} token={token} requestId={viewerRequestId} onExpand={()=>setFocus("editor")}/>
+                <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} onExpand={()=>setFocus("editor")}/>
               ) : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (

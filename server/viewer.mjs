@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import express from "express";
 import {z} from "zod";
 import {openImage,preview,cropImage} from "./viewer-image.mjs";
+import {installViewerSession} from "./viewer-session.mjs";
 
 export function installViewer(app,{current,present}) {
   const id=value=>z.string().uuid().parse(value);
@@ -12,6 +13,7 @@ export function installViewer(app,{current,present}) {
   const write=(name,value)=>{fs.mkdirSync(folder(),{recursive:true});const file=path.join(folder(),name+".json");fs.writeFileSync(file+".tmp",JSON.stringify(value));fs.renameSync(file+".tmp",file);};
   const findImage=value=>{const image=read("images").find(i=>i.id===id(value));if(!image)throw new Error("이미지를 찾을 수 없습니다.");return image;};
   const load=image=>openImage(fs.readFileSync(path.join(folder(),image.id+".bin")),image.spec);
+  installViewerSession(app,{current,present,read,write,findImage,folder});
   const register=(bytes,input)=>{
     if(!bytes.length||bytes.length>256*1024*1024)throw new Error("이미지는 최대 256MB입니다.");
     const images=read("images");if(images.length>=200)throw new Error("Viewer 이미지 한도(200개)에 도달했습니다.");

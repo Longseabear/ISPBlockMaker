@@ -188,4 +188,4 @@ For Documentation / SDD requests, read `sdd.md` beside this skill. Generate self
 
 ## Image Viewer and user-selected crops
 
-When image analysis needs a user-selected region, read `viewer.md` beside this skill. Request and present an ROI, then read the submitted crop and metadata.
+For image display, zoom/pan/highlights, user-shared rendered views, image attachments, or user-selected crops, read `viewer.md` beside this skill. Use the bidirectional Viewer bridge; distinguish a display snapshot from a RAW crop.

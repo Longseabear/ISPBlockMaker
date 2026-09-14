@@ -84,10 +84,10 @@ app.use("/api", (req,res,next)=>{
 });
 installViewer(app, {
   current: () => ({workspace,state:store.get()}),
-  present: (requestId,message) => {
+  present: (requestId,message,commandId) => {
     let delivered=0;
     for(const client of wss.clients) if(client.readyState===WebSocket.OPEN) {
-      client.send(JSON.stringify({type:"present",presentation:{view:"viewer",requestId,message,blockIds:[],edgeIds:[]},state:store.get()}));delivered++;
+      client.send(JSON.stringify({type:"present",presentation:{view:"viewer",requestId,commandId,message,blockIds:[],edgeIds:[]},state:store.get()}));delivered++;
     }
     return delivered;
   }

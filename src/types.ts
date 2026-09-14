@@ -85,6 +85,7 @@ export type Api = <T = Project>(
 export type Presentation = {
   view: "graph" | "artifacts" | "viewer";
   requestId?: string;
+  commandId?: string;
   blockIds: string[];
   edgeIds?: string[];
   artifactId?: string;
