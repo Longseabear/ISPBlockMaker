@@ -1112,3 +1112,8 @@ h1 {
 .viewer-share p,.viewer-share small {font-size:11px;color:#a2b0bd;line-height:1.5;}
 .viewer-share small,.viewer-share code {display:block;overflow-wrap:anywhere;}
 .viewer-share article {padding:10px 0;border-bottom:1px solid #39424b;}
+.viewer .viewer-icon-button {width:32px;height:32px;min-width:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;}
+.viewer .viewer-icon-button svg {flex-shrink:0;pointer-events:none;}
+.viewer-card-actions .viewer-remove {margin-left:auto;}
+.viewer .viewer-remove:hover:not(:disabled) {color:#ff9c9c;border-color:#a45b5b;}
+.viewer-share article .viewer-icon-button {margin:6px 6px 0 0;}
