@@ -12,10 +12,23 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
   const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';
-  app.get('/api/viewer/view',(req,res)=>res.json({live:liveWorkspace===current().workspace?live:null,snapshots:read('views').slice().reverse()}));
+  const liveFresh=()=>liveWorkspace===current().workspace&&live&&Date.now()-Date.parse(live.updatedAt)<10000;
+  app.get('/api/viewer/view',(req,res)=>res.json({live:liveWorkspace===current().workspace&&live?{...live,active:!!liveFresh()}:null,snapshots:read('views').slice().reverse()}));
   app.post('/api/viewer/view',(req,res)=>{
-    const input=view.extend({sessionId:z.string().uuid()}).parse(req.body);checkView(input);
-    liveWorkspace=current().workspace;live={...input,updatedAt:new Date().toISOString()};res.json(live);
+    const input=view.extend({sessionId:z.string().uuid(),png:z.string().max(12*1024*1024).optional()}).parse(req.body);checkView(input);
+    const {png,...metadata}=input;
+    let imagePath;
+    if(png){
+      if(!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png))throw new Error('PNG image required');
+      const bytes=Buffer.from(png.split(',')[1],'base64');if(bytes.length<24||bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||!bytes.readUInt32BE(16)||!bytes.readUInt32BE(20)||bytes.readUInt32BE(16)>2048||bytes.readUInt32BE(20)>2048)throw new Error('Invalid view PNG');
+      fs.mkdirSync(folder(),{recursive:true});imagePath=path.join(folder(),'current-view.png');fs.writeFileSync(imagePath+'.tmp',bytes);fs.renameSync(imagePath+'.tmp',imagePath);
+    }
+    liveWorkspace=current().workspace;live={...metadata,...(imagePath?{paths:{image:imagePath}}:{}),updatedAt:new Date().toISOString()};res.json(live);
+  });
+  app.get('/api/viewer/current/attachment',(req,res)=>{
+    if(!liveFresh()||!live.paths)return res.status(409).json({error:'현재 Viewer 화면이 없습니다. Image Viewer를 열고 이미지가 표시될 때까지 기다리세요.'});
+    if(req.query.vision!=='true')return res.json({live,imageSupported:false,instruction:'Read live.paths.image with an available image tool. This file is replaced as the visible view changes.'});
+    res.json({live,content:[{type:'text',text:JSON.stringify(live)},{type:'image',mimeType:'image/png',data:fs.readFileSync(live.paths.image).toString('base64')}]});
   });
   app.post('/api/viewer/commands',(req,res)=>{
     const input=z.object({imageId:z.string().uuid(),zoom:z.number().min(.1).max(8).optional(),center:point.optional(),fit:z.boolean().optional(),render:render.optional(),highlights:highlights.optional(),message:z.string().max(4000).default(''),show:z.boolean().default(true)}).parse(req.body);

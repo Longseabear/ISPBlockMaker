@@ -47,6 +47,15 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post('/viewer/commands',{imageId:imported.id,center:{x:8,y:0}})).status,400);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,highlights:[{x:7,y:0,width:2,height:1}]})).status,400);
   const sessionId=crypto.randomUUID();assert.equal((await post(`/viewer/commands/${command.id}/ack`,{status:'applied',sessionId})).status,200);
+  assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,409);
+  assert.equal((await post('/viewer/view',{...view,sessionId,png:preview.url})).status,200);
+  const currentImage=await(await fetch(base+'/api/viewer/current/attachment?vision=true',{headers})).json();assert.equal(currentImage.content[1].data,preview.url.split(',')[1]);
+  assert.ok(fs.existsSync(currentImage.live.paths.image));
+  const moved={...view,visible:{x:2,y:2,width:2,height:2}};
+  await post('/viewer/view',{...moved,sessionId,png:preview.url});
+  const currentAgain=await(await fetch(base+'/api/viewer/current/attachment',{headers})).json();assert.equal(currentAgain.live.paths.image,currentImage.live.paths.image);assert.deepEqual(currentAgain.live.visible,moved.visible);
+  assert.equal((await(await fetch(base+'/api/viewer/view',{headers})).json()).snapshots.length,0);
+  const currentCli=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-image'],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(currentCli.live.imageId,imported.id);
   assert.equal((await(await fetch(base+`/api/viewer/commands/${command.id}`,{headers})).json()).status,'applied');
   assert.equal((await post('/viewer/view',{...view,sessionId})).status,200);
   assert.deepEqual((await(await fetch(base+'/api/viewer/view',{headers})).json()).live.visible,view.visible);
