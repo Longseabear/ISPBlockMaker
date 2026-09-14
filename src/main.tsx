@@ -1,4 +1,5 @@
 import { Viewer } from "./Viewer";
+import { terminalClipboardHandler } from "./terminal-clipboard";
 import { Documents } from "./Documents";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -760,6 +761,15 @@ function TerminalPane({
     const fitter = new FitAddon();
     terminal.loadAddon(fitter);
     terminal.open(host.current!);
+    terminal.attachCustomKeyEventHandler(terminalClipboardHandler({
+      readText: async () => {
+        if (!navigator.clipboard?.readText) throw new Error("Clipboard API unavailable");
+        return navigator.clipboard.readText();
+      },
+      paste: text => terminal.paste(text),
+      ready: () => runningRef.current && socket.current?.readyState === WebSocket.OPEN,
+      error: message => notifyCallback.current(message),
+    }));
     fitter.fit();
     term.current = terminal;
     fit.current = fitter;
