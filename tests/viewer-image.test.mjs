@@ -46,3 +46,23 @@ test("CFA crops align both boundaries for every pattern, group and imported phas
  }
  assert.throws(()=>alignCfaRoi({format:"raw",group:4,width:7,height:7},{x:0,y:0,width:7,height:7}),/CFA/);
 });
+
+function pixels(png){const parts=[];for(let p=8;p<png.length;){const n=png.readUInt32BE(p);if(png.toString("ascii",p+4,p+8)==="IDAT")parts.push(png.subarray(p+8,p+8+n));p+=n+12;}return inflateSync(Buffer.concat(parts));}
+test("CFA colors preserve every pattern/group and Simple ISP reconstructs constant color planes with gamma",()=>{
+ for(const group of [1,2,4])for(const pattern of ["RGGB","GRBG","GBRG","BGGR"]){
+  const spec={format:"raw",width:24,height:24,group,pattern,originX:1,originY:1,bitDepth:12};const bytes=Buffer.alloc(24*24*2),values={R:1024,G:2048,B:3072};
+  for(let y=0;y<24;y++)for(let x=0;x<24;x++)bytes.writeUInt16LE(values[channelAt(spec,x,y)],(y*24+x)*2);
+  const before=Buffer.from(bytes),image=openImage(bytes,spec),cfa=preview(image,{mode:"cfa",viewX:3,viewY:2}),data=pixels(cfa.png);
+  assert.deepEqual(cfa.area,{x:3,y:2,width:21,height:22});
+  for(let y=0;y<cfa.height;y++)for(let x=0;x<cfa.width;x++){
+   const c=channelAt(spec,x+3,y+2),p=y*(cfa.width*4+1)+1+x*4;
+   assert.deepEqual([...data.subarray(p,p+3)],["R","G","B"].map(k=>k===c?Math.round(values[c]/4095*255):0));
+  }
+  for(const gamma of [1,2.2]){const output=preview(image,{mode:"simple",gamma}),rgb=pixels(output.png);for(let y=0;y<24;y++)for(let x=0;x<24;x++){const p=y*97+1+x*4;assert.deepEqual([...rgb.subarray(p,p+3)],Object.values(values).map(v=>Math.round(255*(v/4095)**(1/gamma))));}}
+  assert.deepEqual(bytes,before);
+ }
+ const image=openImage(Buffer.alloc(1300*2*2),{format:"raw",width:1300,height:2});
+ assert.equal(preview(image,{mode:"cfa"}).width,1200);
+ assert.throws(()=>preview(image,{mode:"simple",gamma:0}),/Gamma/);
+ assert.throws(()=>preview(image,{mode:"cfa",viewX:-1}),/좌표/);
+});

@@ -37,9 +37,9 @@ export function installViewer(app,{current,present}) {
   });
   app.get("/api/viewer/images/:id/preview",(req,res)=>{
     const image=findImage(req.params.id);
-    const mode=z.enum(["gray","color"]).parse(req.query.mode||"color");
-    const output=preview(load(image),{mode,black:Number(req.query.black||0),white:req.query.white===undefined?2**image.spec.bitDepth-1:Number(req.query.white)});
-    res.json({width:output.width,height:output.height,url:"data:image/png;base64,"+output.png.toString("base64")});
+    const mode=z.enum(["gray","color","cfa","simple"]).parse(req.query.mode||"color");
+    const output=preview(load(image),{mode,gamma:Number(req.query.gamma??2.2),viewX:Number(req.query.viewX??0),viewY:Number(req.query.viewY??0),black:Number(req.query.black||0),white:req.query.white===undefined?2**image.spec.bitDepth-1:Number(req.query.white)});
+    res.json({width:output.width,height:output.height,area:output.area,url:"data:image/png;base64,"+output.png.toString("base64")});
   });
   app.post("/api/viewer/requests",(req,res)=>{
     const input=z.object({imageId:z.string().uuid(),prompt:z.string().min(1).max(4000),blockId:z.string().optional(),show:z.boolean().default(true)}).parse(req.body);

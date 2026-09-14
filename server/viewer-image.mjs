@@ -44,15 +44,54 @@ export function encodePng(width,height,rgba){
   for(let y=0;y<height;y++)rgba.copy(scan,y*(width*4+1)+1,y*width*4,(y+1)*width*4);
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",header),chunk("IDAT",deflateSync(scan)),chunk("IEND",Buffer.alloc(0))]);
 }
-export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,roi}={}){
+export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,gamma=2.2,viewX=0,viewY=0,roi}={}){
   if(!Number.isFinite(black)||!Number.isFinite(white)||white<=black)throw new Error("White level은 black level보다 커야 합니다.");
-  const s=image.spec,area=roi||{x:0,y:0,width:s.width,height:s.height};
+  if(!["gray","color","cfa","simple"].includes(mode))throw new Error("잘못된 preview mode");
+  if(!Number.isFinite(gamma)||gamma<0.1||gamma>5)throw new Error("Gamma는 0.1–5 범위여야 합니다.");
+  const s=image.spec;
+  let area=roi||{x:0,y:0,width:s.width,height:s.height};
+  if(mode==="cfa"&&image.sample&&!roi){
+    if(!Number.isInteger(viewX)||!Number.isInteger(viewY)||viewX<0||viewY<0||viewX>=s.width||viewY>=s.height)throw new Error("CFA view 좌표가 범위를 벗어났습니다.");
+    area={x:viewX,y:viewY,width:Math.min(1200,s.width-viewX),height:Math.min(1200,s.height-viewY)};
+  }
   const scale=Math.min(1,1200/Math.max(area.width,area.height));const w=Math.max(1,Math.round(area.width*scale)),h=Math.max(1,Math.round(area.height*scale));const out=Buffer.alloc(w*h*4);
   const level=v=>Math.round(Math.max(0,Math.min(1,(v-black)/(white-black)))*255);
+  const groupCache=new Map();
+  const groupValue=(gx,gy)=>{
+    const key=gy*65544+gx;
+    if(s.group>1&&groupCache.has(key))return groupCache.get(key);
+    let sum=0,count=0;
+    for(let yy=Math.max(0,gy*s.group-s.originY);yy<Math.min(s.height,(gy+1)*s.group-s.originY);yy++)
+      for(let xx=Math.max(0,gx*s.group-s.originX);xx<Math.min(s.width,(gx+1)*s.group-s.originX);xx++){sum+=image.sample(xx,yy);count++;}
+    const value=count?sum/count:0;
+    if(s.group>1)groupCache.set(key,value);
+    return value;
+  };
+  // Bilinear interpolation of the four CFA phase planes. Tetra groups are binned first.
+  const plane=(sx,sy,px,py)=>{
+    const gx=(sx+s.originX-(s.group-1)/2)/s.group,gy=(sy+s.originY-(s.group-1)/2)/s.group;
+    const bx=px+2*Math.floor((gx-px)/2),by=py+2*Math.floor((gy-py)/2),tx=(gx-bx)/2,ty=(gy-by)/2;
+    const maxX=Math.floor((s.width-1+s.originX)/s.group),maxY=Math.floor((s.height-1+s.originY)/s.group);
+    const minX=Math.floor(s.originX/s.group),minY=Math.floor(s.originY/s.group);
+    const clampPhase=(v,min,max,p)=>{const lo=min+((p-min%2+2)%2),hi=max-((max%2-p+2)%2);return hi<lo?null:Math.max(lo,Math.min(hi,v));};
+    let result=0;
+    for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+      const x=clampPhase(bx+dx*2,minX,maxX,px),y=clampPhase(by+dy*2,minY,maxY,py);
+      result+=(x===null||y===null?image.sample(sx,sy):groupValue(x,y))*(dx?tx:1-tx)*(dy?ty:1-ty);
+    }
+    return result;
+  };
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const sx=area.x+Math.min(area.width-1,Math.floor(x/scale)),sy=area.y+Math.min(area.height-1,Math.floor(y/scale));let pixel;
     if(image.rgba)pixel=image.rgba(sx,sy);
     else if(mode==="gray"){const v=level(image.sample(sx,sy));pixel=[v,v,v,255];}
+    else if(mode==="cfa") {const c=channelAt(s,sx,sy),v=level(image.sample(sx,sy));pixel=[c==="R"?v:0,c==="G"?v:0,c==="B"?v:0,255];}
+    else if(mode==="simple") {
+      const channels={R:0,G:0,B:0};
+      for(let p=0;p<4;p++)channels[s.pattern[p]]+=plane(sx,sy,p%2,Math.floor(p/2))/(s.pattern[p]==="G"?2:1);
+      const tone=v=>Math.round(255*Math.pow(Math.max(0,Math.min(1,(v-black)/(white-black))),1/gamma));
+      pixel=[tone(channels.R),tone(channels.G),tone(channels.B),255];
+    }
     else {
       // Preview only: average each same-colour group in the surrounding CFA cell.
       const period=2*s.group,bx=Math.floor((sx+s.originX)/period)*period-s.originX,by=Math.floor((sy+s.originY)/period)*period-s.originY;
@@ -62,7 +101,7 @@ export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDept
     }
     out.set(pixel,(y*w+x)*4);
   }
-  return {width:w,height:h,png:encodePng(w,h,out)};
+  return {width:w,height:h,area,png:encodePng(w,h,out)};
 }
 export function cropImage(image,roi){
   const s=image.spec;
