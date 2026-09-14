@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from "react";
+import {flushSync} from "react-dom";
 import {alignCfaRoi} from "../server/cfa-roi.mjs";
 import type {Api} from "./types";
 
@@ -42,6 +43,28 @@ export function Viewer({api,token,requestId,commandId,onExpand}:{api:Api;token:s
  const expectedKey=JSON.stringify([image?.id,mode,gamma,displayLevels.black,displayLevels.white,viewOrigin.x,viewOrigin.y]);
  const cropItems=state.requests.filter(r=>r.imageId===image?.id).flatMap(r=>(r.crops||(r.result?[r.result]:[])).map(crop=>({crop,requestId:r.id})));
  function fitPreview(){if(preview&&viewport.current)setZoom(Math.min(viewport.current.clientWidth/preview.width,viewport.current.clientHeight/preview.height));}
+ useEffect(()=>{
+   const v=viewport.current,c=canvas.current;if(!v||!c||!preview)return;
+   const wheel=(event:WheelEvent)=>{
+     if(!event.deltaY)return;
+     event.preventDefault();
+     if(start.current||pan.current)return;
+     const bounds=c.getBoundingClientRect(),frame=v.getBoundingClientRect();
+     const oldZoom=bounds.width/preview.width;if(!oldZoom)return;
+     const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?v.clientHeight:1);
+     const nextZoom=Math.max(.1,Math.min(8,oldZoom*Math.exp(-Math.max(-300,Math.min(300,delta))*.002)));
+     if(nextZoom===oldZoom)return;
+     const x=Math.max(0,Math.min(bounds.width,event.clientX-bounds.left))/oldZoom;
+     const y=Math.max(0,Math.min(bounds.height,event.clientY-bounds.top))/oldZoom;
+     const pointerX=event.clientX-frame.left-v.clientLeft,pointerY=event.clientY-frame.top-v.clientTop;
+     flushSync(()=>setZoom(nextZoom));
+     v.scrollLeft=x*nextZoom-pointerX;
+     v.scrollTop=y*nextZoom-pointerY;
+   };
+   // React wheel handlers are passive; prevent page scrolling with a native listener.
+   v.addEventListener('wheel',wheel,{passive:false});
+   return()=>v.removeEventListener('wheel',wheel);
+ },[preview]);
  async function refresh(){const next=await api<State>("/viewer");setState(next);}
  useEffect(()=>{let alive=true;const load=()=>api<State>("/viewer").then(s=>{if(alive)setState(s);}).catch(e=>{if(alive)setError(String(e));});void load();const timer=setInterval(load,2500);return()=>{alive=false;clearInterval(timer);};},[api]);
  useEffect(()=>{setSelected(requestId);},[requestId]);
@@ -107,7 +130,7 @@ export function Viewer({api,token,requestId,commandId,onExpand}:{api:Api;token:s
  <button disabled={busy||!preview||!active} onClick={()=>void capture(roi)}>크롭 추가</button>{request?.status==="pending"&&<button disabled={busy} onClick={()=>action(`/viewer/requests/${request.id}/cancel`,{})}>Cancel request</button>}<small>{busy?"크롭 저장 중…":"영역 선택 후 크롭 추가를 누르세요."}</small></div></div>
  <aside className="viewer-crop-list" aria-label="크롭 목록"><section className="viewer-share"><h3>현재 View 전달</h3><p>보이는 화면 · 렌더링 설정 · 강조를 함께 전달합니다. 크롭과 별개입니다.</p><textarea aria-label="View 메모" placeholder="에이전트에게 이 화면에서 봐줬으면 하는 점…" value={note} maxLength={12000} onChange={e=>setNote(e.target.value)}/><button disabled={sharing||loadedKey!==expectedKey||!preview} onClick={()=>void shareView()}>{sharing?'전달 중…':'현재 View 전달'}</button>{shared&&<small>저장됐습니다. 에이전트에게 “방금 전달한 화면을 봐줘”라고 요청하세요.</small>}<details><summary>전달한 화면 ({savedViews.length})</summary>{savedViews.map(s=><article key={s.id}><strong>{new Date(s.createdAt).toLocaleString()}</strong><p>{s.note||'메모 없음'}</p><code>{s.id}</code><button onClick={()=>{setSelected('');setImageId(s.view.imageId);setCommand({id:`local-${s.id}-${Date.now()}`,imageId:s.view.imageId,render:s.view.render,viewOrigin:{x:s.view.area.x,y:s.view.area.y},zoom:s.view.zoom,center:{x:s.view.visible.x+s.view.visible.width/2,y:s.view.visible.y+s.view.visible.height/2},highlights:s.view.highlights,message:''});}}>화면 복원</button><button onClick={()=>void api(`/viewer/views/${s.id}`,{},'DELETE').then(loadViews).catch(e=>setError(String(e)))}>제거</button></article>)}</details></section><h3>크롭 영역 <span>{cropItems.length}</span></h3>{!cropItems.length&&<p>이미지에서 드래그한 뒤 크롭 추가를 누르세요. 여러 영역을 모으고 각각 설명을 남길 수 있습니다.</p>}{cropItems.map(({crop,requestId:owner},index)=><CropCard key={`${owner}:${crop.id||owner}`} crop={crop} requestId={owner} index={index} api={api} onSaved={refresh} onSelect={()=>{setShowSelection(true);setRoi(crop.roi);if(mode==="cfa")setViewOrigin({x:crop.roi.x,y:crop.roi.y});}} onDownload={kind=>void download(owner,crop,kind)}/>)}</aside></div>
  <details className="viewer-help"><summary>좌표 / 미리보기 안내</summary>
- <small>Shift + 드래그 또는 마우스 가운데 버튼으로 화면을 이동합니다. 좌표는 원본 픽셀 기준, 좌상단 (0, 0)입니다. CFA colors는 원본 픽셀의 R/G/B 채널만 표시합니다. 최대 1200×1200 원본 영역이며 View x/y로 이동합니다. Simple ISP는 동일 색 그룹 평균 → 보간 → 감마(기본 2.2) 미리보기이며 색 보정·화이트밸런스는 하지 않습니다. RAW 크롭 값은 변경하지 않습니다. RAW는 드래그와 숫자 입력 모두 완전한 CFA 셀로 정렬합니다. 숫자 입력은 포커스를 옮기면 정렬되며 가장자리의 불완전한 셀은 제외됩니다. end 좌표는 영역에 포함되지 않습니다.</small></details></>}
+ <small>휠로 마우스 위치를 중심으로 확대·축소합니다. Shift + 드래그 또는 마우스 가운데 버튼으로 화면을 이동합니다. 좌표는 원본 픽셀 기준, 좌상단 (0, 0)입니다. CFA colors는 원본 픽셀의 R/G/B 채널만 표시합니다. 최대 1200×1200 원본 영역이며 View x/y로 이동합니다. Simple ISP는 동일 색 그룹 평균 → 보간 → 감마(기본 2.2) 미리보기이며 색 보정·화이트밸런스는 하지 않습니다. RAW 크롭 값은 변경하지 않습니다. RAW는 드래그와 숫자 입력 모두 완전한 CFA 셀로 정렬합니다. 숫자 입력은 포커스를 옮기면 정렬되며 가장자리의 불완전한 셀은 제외됩니다. end 좌표는 영역에 포함되지 않습니다.</small></details></>}
  {!image&&<div className="sdd-empty">이미지를 열거나 에이전트의 크롭 요청을 선택하세요.</div>}
  </section>;
 }
