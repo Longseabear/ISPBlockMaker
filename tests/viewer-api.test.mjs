@@ -53,6 +53,13 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await fetch(base+`/api/viewer/requests/${multi.id}/crops/${firstId}`,{method:"PATCH",headers,body:JSON.stringify({description:"stale",previousDescription:""})})).status,409);
   const multiDownload=await fetch(base+`/api/viewer/requests/${multi.id}/files/crop?cropId=${secondId}`,{headers});assert.equal(multiDownload.status,200);assert.deepEqual(Buffer.from(await multiDownload.arrayBuffer()),data);
   const multiRead=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-result",multi.id],{cwd:temp,windowsHide:true,encoding:"utf8"}));assert.equal(multiRead.crops.length,2);assert.equal(multiRead.crops[0].description,"평탄 영역 테스트");
+  const removed=await fetch(base+`/api/viewer/requests/${multi.id}/crops/${firstId}`,{method:"DELETE",headers,body:"{}"});assert.equal(removed.status,200);
+  const afterRemove=await removed.json();assert.equal(afterRemove.crops.length,1);assert.equal(afterRemove.result.id,secondId);
+  for(const file of Object.values(described.crops[0].paths))assert.equal(fs.existsSync(path.join(temp,file)),false);
+  assert.equal(fs.existsSync(path.join(temp,"input.raw")),true);
+  assert.equal((await fetch(base+`/api/viewer/requests/${multi.id}/files/crop?cropId=${firstId}`,{headers})).status,400);
+  const lastRemoved=await(await fetch(base+`/api/viewer/requests/${multi.id}/crops/${secondId}`,{method:"DELETE",headers,body:"{}"})).json();assert.equal(lastRemoved.status,"pending");assert.equal(lastRemoved.crops.length,0);assert.equal(lastRemoved.result,undefined);
+  assert.equal((await fetch(base+`/api/viewer/requests/${multi.id}/crops/${secondId}`,{method:"DELETE",headers,body:"{}"})).status,404);
   const cancelled=await(await post("/viewer/requests",{imageId:imported.id,prompt:"Cancel me",show:false})).json();await post(`/viewer/requests/${cancelled.id}/cancel`,{});assert.equal((await post(`/viewer/requests/${cancelled.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
   assert.equal((await post(`/viewer/requests/${cancelled.id}/crops`,{id:crypto.randomUUID(),roi})).status,409);
   assert.equal(JSON.parse(fs.readFileSync(path.join(temp,".isp/viewer/requests.json"),"utf8"))[0].status,"submitted");

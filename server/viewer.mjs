@@ -81,6 +81,26 @@ export function installViewer(app,{current,present}) {
     fs.writeFileSync(metadata,JSON.stringify(crop,null,2));
     write("requests",read("requests").map(r=>r.id===request.id?request:r));res.json(request);
   });
+  app.delete("/api/viewer/requests/:id/crops/:cropId",(req,res)=>{
+    const request=findRequest(req.params.id),cropId=id(req.params.cropId);
+    const crops=request.crops||(request.result?[{...request.result,id:request.id,description:""}]:[]);
+    const crop=crops.find(c=>c.id===cropId);if(!crop) return res.status(404).json({error:"이미 제거된 크롭입니다."});
+    const remaining=crops.filter(c=>c.id!==cropId),staged=[];
+    try {
+      for(const relative of Object.values(crop.paths)){
+        if(remaining.some(c=>Object.values(c.paths).includes(relative)))continue;
+        const file=path.resolve(current().workspace,relative);
+        if(!file.startsWith(path.join(folder(),"results",request.id)+path.sep))throw new Error("잘못된 결과 경로입니다.");
+        if(fs.existsSync(file)){const temp=file+".delete-"+crypto.randomUUID();fs.renameSync(file,temp);staged.push({file,temp});}
+      }
+      request.crops=remaining;request.result=remaining[0];
+      if(!remaining.length){request.status="pending";delete request.completedAt;}
+      write("requests",read("requests").map(r=>r.id===request.id?request:r));
+    }catch(error){for(const item of staged.reverse())fs.renameSync(item.temp,item.file);throw error;}
+    const cleanupPending=[];
+    for(const item of staged){try{fs.unlinkSync(item.temp);}catch{cleanupPending.push(path.basename(item.temp));}}
+    res.json({...request,cleanupPending});
+  });
   app.get("/api/viewer/requests/:id/files/:kind",(req,res)=>{
     const request=findRequest(req.params.id),kind=z.enum(["crop","preview","metadata"]).parse(req.params.kind);
     const result=req.query.cropId?(request.crops||[]).find(c=>c.id===id(req.query.cropId)):request.result;
