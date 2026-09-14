@@ -37,6 +37,8 @@ import {
   Image,
   Layers3,
   MessageSquarePlus,
+  Maximize2,
+  Minimize2,
   Play,
   Plus,
   RotateCcw,
@@ -995,6 +997,8 @@ function App() {
   const [focus, setFocus] = useState<"" | "editor" | "inspector" | "terminal">(
     "",
   );
+  const [visualizationExpanded, setVisualizationExpanded] = useState(false);
+  useEffect(() => { setVisualizationExpanded(false); }, [view]);
   useEffect(() => {
     try {
       localStorage.setItem("isp-layout-v1", JSON.stringify(layout));
@@ -1332,7 +1336,7 @@ function App() {
   };
   return (
     <div
-      className={`app ${!layout.inspector ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""}`}
+      className={`app ${!layout.inspector ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""} ${view === "artifacts" && visualizationExpanded ? "visualization-expanded" : ""}`}
       ref={rootRef}
       style={
         {
@@ -1644,6 +1648,15 @@ function App() {
                 </div>
               ) : (
                 <div className="artifact-area">
+                  <button
+                    className="visualization-expand-float"
+                    title={visualizationExpanded ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
+                    aria-label={visualizationExpanded ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
+                    aria-pressed={visualizationExpanded}
+                    onClick={() => setVisualizationExpanded(current => !current)}
+                  >
+                    {visualizationExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                  </button>
                   <div className="artifact-toolbar">
                     <div>
                       <span className="eyebrow">EXPERIMENT OUTPUTS</span>

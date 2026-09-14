@@ -794,6 +794,7 @@ h1 {
   color: #98b8a9;
 }
 .artifact-area {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -805,7 +806,41 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 21px 25px 18px;
+  padding: 21px 64px 18px 25px;
+}
+.visualization-expand-float {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #24332e;
+  color: #a6dfc6;
+  border: 1px solid #557b67;
+  box-shadow: 0 3px 12px #0006;
+}
+.visualization-expanded .topbar,
+.visualization-expanded .workspace-sidebar,
+.visualization-expanded .terminal-pane,
+.visualization-expanded .inspector,
+.visualization-expanded .splitter,
+.visualization-expanded .statusbar,
+.visualization-expanded .artifact-toolbar,
+.visualization-expanded .artifact-meta {
+  display: none !important;
+}
+.visualization-expanded .editor,
+.visualization-expanded .editor-main {
+  display: flex !important;
+}
+.visualization-expanded .artifact-preview {
+  padding: 0;
 }
 .artifact-toolbar h1 {
   font-size: 22px;
