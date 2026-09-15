@@ -62,7 +62,7 @@ async function validateLocalRecords(stage,files){
  const local=await json('.isp/project.json');
  if(local){if(local.storageVersion!==2||!Array.isArray(local.blocks)||!Array.isArray(local.artifacts))throw new Error('Invalid project records');for(const a of local.artifacts){safeName(a.file);if(a.file.includes('/')||!files.has(('.isp/artifacts/'+a.file).toLowerCase()))throw new Error('Missing or unsafe artifact file');}}
  const requests=await json('.isp/viewer/requests.json');
- if(requests){if(!Array.isArray(requests))throw new Error('Invalid Viewer requests');for(const r of requests)for(const crop of [...(r.crops||[]),...(r.result?[r.result]:[])]){for(const value of Object.values(crop.paths||{})){safeName(value);if(!value.startsWith('.isp/viewer/results/')||!files.has(value.toLowerCase()))throw new Error('Missing or unsafe crop file');}}}
+ if(requests){if(!Array.isArray(requests))throw new Error('Invalid Viewer requests');for(const r of requests)for(const crop of [...(r.crops||[]),...(r.result?[r.result]:[])]){for(const value of [Object.values(crop.paths||{}),...(crop.regions||[]).map(region=>Object.values(region.paths||{}))].flat()){safeName(value);if(!value.startsWith('.isp/viewer/results/')||!files.has(value.toLowerCase()))throw new Error('Missing or unsafe crop file');}}}
 }
 export async function unpackBundle(input,destination){
  destination=path.resolve(destination);if(await fs.lstat(destination).then(()=>true,()=>false))throw new Error('Destination already exists. Choose a new folder.');const parent=await fs.realpath(path.dirname(destination));destination=path.join(parent,path.basename(destination));const zip=await openZip(input);let stage;

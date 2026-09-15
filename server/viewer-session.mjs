@@ -8,18 +8,18 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   const region=point.extend({width:z.number().finite().positive(),height:z.number().finite().positive()});
   const highlights=z.array(region.extend({label:z.string().max(120).default('')})).max(20);
   const render=z.object({mode:z.enum(['color','gray','cfa','simple']),gamma:z.number().min(.1).max(5),black:z.number().finite(),white:z.number().finite()}).refine(v=>v.white>v.black,'White must exceed black');
-  const view=z.object({imageId:z.string().uuid(),render,zoom:z.number().positive().max(100),area:region,visible:region,highlights,selection:region.optional()});
+  const view=z.object({imageId:z.string().uuid(),render,zoom:z.number().positive().max(100),area:region,visible:region,highlights,selection:region.optional(),selections:z.array(region).min(1).max(32).optional()});
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
-  const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));return image;};
+  const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));v.selections?.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';
   app.post('/api/viewer/view/hidden',(req,res)=>{const sessionId=z.string().uuid().parse(req.body.sessionId);if(live?.sessionId===sessionId&&liveWorkspace===current().workspace)live=null;res.json({ok:true});});
   const resolveSelection=selection=>{
     const requests=read('requests'),crops=[],missing=[];
     for(const item of selection.items){const request=requests.find(r=>r.id===item.requestId&&r.imageId===selection.imageId);const crop=(request?.crops||(request?.result?[{...request.result,id:request.id}]:[])).find(c=>c.id===item.cropId);if(crop)crops.push({...item,...crop});else missing.push(item);}
-    return {...selection,crops,missing};
+    return {...selection,description:selection.description || "",crops,missing};
   };
   app.post('/api/viewer/crop-selection',(req,res)=>{
-    const input=z.object({imageId:z.string().uuid(),items:z.array(z.object({requestId:z.string().uuid(),cropId:z.string().uuid()})).min(1).max(200)}).parse(req.body);findImage(input.imageId);
+    const input=z.object({description:z.string().max(12000).default(""),imageId:z.string().uuid(),items:z.array(z.object({requestId:z.string().uuid(),cropId:z.string().uuid()})).min(1).max(200)}).parse(req.body);findImage(input.imageId);
     if(new Set(input.items.map(i=>i.requestId+':'+i.cropId)).size!==input.items.length)throw new Error('Duplicate crop selection');
     const selection={...input,id:crypto.randomUUID(),sentAt:new Date().toISOString()},result=resolveSelection(selection);
     if(result.missing.length)return res.status(409).json({error:'선택한 크롭이 변경되거나 제거됐습니다. 다시 선택하세요.'});

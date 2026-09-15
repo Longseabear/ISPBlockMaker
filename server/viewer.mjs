@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import express from "express";
 import {z} from "zod";
 import {openImage,preview,cropImage} from "./viewer-image.mjs";
+import {writeZip} from "./bundle-zip.mjs";
 import {installViewerSession} from "./viewer-session.mjs";
 
 export function installViewer(app,{current,present}) {
@@ -54,23 +55,53 @@ export function installViewer(app,{current,present}) {
     res.status(201).json({...request,delivered:input.show?present(request.id,input.prompt):0});
   });
   app.get("/api/viewer/requests/:id",(req,res)=>res.json(findRequest(req.params.id)));
-  app.post("/api/viewer/requests/:id/crops",(req,res)=>{
+  const cropFiles = crop => [...new Set([Object.values(crop.paths || {}), ...(crop.regions || []).map(region => Object.values(region.paths || {}))].flat())];
+  const pendingCrops = new Set();
+  app.post("/api/viewer/requests/:id/crops",async(req,res)=>{
     const request=findRequest(req.params.id);
     if(request.status==="cancelled")return res.status(409).json({error:"취소된 요청입니다. 새 크롭 요청을 선택하세요."});
-    const input=z.object({id:z.string().uuid(),roi:z.object({x:z.number().int(),y:z.number().int(),width:z.number().int(),height:z.number().int()}),description:z.string().max(12000).default("")}).parse(req.body);
-    const crops=request.crops||(request.result?[{...request.result,id:request.id,description:"",createdAt:request.completedAt}]:[]);
-    if(crops.some(c=>c.id===input.id))return res.json({...request,crops});
-    if(crops.length>=200)throw new Error("요청당 크롭은 최대 200개입니다.");
-    const image=findImage(request.imageId),decoded=load(image),crop=cropImage(decoded,input.roi);
+    const roiSchema=z.object({x:z.number().int(),y:z.number().int(),width:z.number().int().positive(),height:z.number().int().positive()});
+    const input=z.object({id:z.string().uuid(),roi:roiSchema.optional(),rois:z.array(roiSchema).min(1).max(32).optional(),description:z.string().max(12000).default("")}).refine(v=>!!v.roi!==!!v.rois,"Supply roi or rois, not both").parse(req.body);
+    const list = r => r.crops||(r.result?[{...r.result,id:r.id,description:"",createdAt:r.completedAt}]:[]);
+    if(list(request).some(c=>c.id===input.id))return res.json({...request,crops:list(request)});
+    if(list(request).length>=200)throw new Error("요청당 크롭은 최대 200개입니다.");
+    const key=request.id+":"+input.id;
+    if(pendingCrops.has(key))return res.status(409).json({error:"같은 크롭을 저장 중입니다. 잠시 후 다시 확인하세요."});
+    const rois=input.rois || [input.roi];
+    if(rois.reduce((sum,r)=>sum+r.width*r.height,0)>64*1024*1024)throw new Error("한 묶음은 최대 64M pixels입니다.");
+    pendingCrops.add(key);
     const resultDir=path.join(folder(),"results",request.id,input.id);
-    fs.mkdirSync(resultDir,{recursive:true});
-    const local=file=>path.relative(current().workspace,path.join(resultDir,file)).split(path.sep).join("/");
-    const result={id:input.id,description:input.description,createdAt:new Date().toISOString(),roi:input.roi,coordinateSystem:"zero-based source pixels; x/y inclusive; x+width/y+height exclusive",source:{imageId:image.id,sha256:image.sha256,spec:image.spec},output:crop.spec,paths:{crop:local("crop."+crop.extension),preview:local("preview.png"),metadata:local("metadata.json")},sha256:crypto.createHash("sha256").update(crop.bytes).digest("hex")};
-    fs.writeFileSync(path.join(resultDir,"crop."+crop.extension),crop.bytes);
-    fs.writeFileSync(path.join(resultDir,"preview.png"),preview(decoded,{roi:input.roi}).png);
-    fs.writeFileSync(path.join(resultDir,"metadata.json"),JSON.stringify(result,null,2));
-    request.crops=[...crops,result];request.result=request.crops[0];request.status="submitted";request.completedAt=result.createdAt;
-    write("requests",read("requests").map(r=>r.id===request.id?request:r));res.status(201).json(request);
+    let owned=false;
+    try {
+      const image=findImage(request.imageId),decoded=load(image);
+      // Validate every region (including CFA phase) before writing any result.
+      const outputs=rois.map(roi=>cropImage(decoded,roi));
+      fs.mkdirSync(path.dirname(resultDir),{recursive:true});fs.mkdirSync(resultDir);owned=true;
+      const local=file=>path.relative(current().workspace,path.join(resultDir,file)).split(path.sep).join("/");
+      const common={coordinateSystem:"zero-based source pixels; x/y inclusive; x+width/y+height exclusive",source:{imageId:image.id,sha256:image.sha256,spec:image.spec}};
+      const regions=outputs.map((crop,index)=>{
+        const prefix=rois.length>1?`region-${index+1}-`:"";
+        const region={...common,roi:rois[index],output:crop.spec,paths:{crop:local(prefix+"crop."+crop.extension),preview:local(prefix+"preview.png"),metadata:local(prefix+"metadata.json")},sha256:crypto.createHash("sha256").update(crop.bytes).digest("hex")};
+        fs.writeFileSync(path.join(resultDir,prefix+"crop."+crop.extension),crop.bytes);
+        fs.writeFileSync(path.join(resultDir,prefix+"preview.png"),preview(decoded,{roi:rois[index]}).png);
+        if(rois.length>1)fs.writeFileSync(path.join(resultDir,prefix+"metadata.json"),JSON.stringify(region,null,2));
+        return region;
+      });
+      const result={...regions[0],id:input.id,description:input.description,createdAt:new Date().toISOString()};
+      if(regions.length>1){
+        result.kind="crop-group";result.regions=regions;
+        result.paths={crop:local("crops.zip"),preview:regions[0].paths.preview,metadata:local("metadata.json")};
+        await writeZip(path.join(resultDir,"crops.zip"),regions.flatMap(r=>Object.values(r.paths).map(relative=>({path:path.basename(relative),source:path.resolve(current().workspace,relative)}))));
+        result.sha256=crypto.createHash("sha256").update(fs.readFileSync(path.join(resultDir,"crops.zip"))).digest("hex");
+      }
+      fs.writeFileSync(path.join(resultDir,"metadata.json"),JSON.stringify(result,null,2));
+      // ZIP creation yields; re-read to preserve concurrent additions / description edits.
+      const latest=findRequest(request.id),crops=list(latest);
+      if(latest.status==="cancelled"||crops.length>=200)throw new Error("크롭 요청이 변경됐습니다. 다시 확인하세요.");
+      latest.crops=[...crops,result];latest.result=latest.crops[0];latest.status="submitted";latest.completedAt=result.createdAt;
+      write("requests",read("requests").map(r=>r.id===latest.id?latest:r));res.status(201).json(latest);
+    } catch(error) {if(owned)fs.rmSync(resultDir,{recursive:true,force:true});throw error;}
+    finally {pendingCrops.delete(key);}
   });
   app.patch("/api/viewer/requests/:id/crops/:cropId",(req,res)=>{
     const request=findRequest(req.params.id),cropId=id(req.params.cropId);
@@ -91,8 +122,8 @@ export function installViewer(app,{current,present}) {
     const crop=crops.find(c=>c.id===cropId);if(!crop) return res.status(404).json({error:"이미 제거된 크롭입니다."});
     const remaining=crops.filter(c=>c.id!==cropId),staged=[];
     try {
-      for(const relative of Object.values(crop.paths)){
-        if(remaining.some(c=>Object.values(c.paths).includes(relative)))continue;
+      for(const relative of cropFiles(crop)){
+        if(remaining.some(c=>cropFiles(c).includes(relative)))continue;
         const file=path.resolve(current().workspace,relative);
         if(!file.startsWith(path.join(folder(),"results",request.id)+path.sep))throw new Error("잘못된 결과 경로입니다.");
         if(fs.existsSync(file)){const temp=file+".delete-"+crypto.randomUUID();fs.renameSync(file,temp);staged.push({file,temp});}

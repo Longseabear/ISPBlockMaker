@@ -1147,3 +1147,50 @@ h1 {
 .bundle-share-button{display:inline-flex;align-items:center;gap:6px;}
 .bundle-dialog{width:min(680px,94vw);max-height:90vh;overflow:auto;padding:24px;background:#171e24;border:1px solid #394a48;border-radius:12px;box-shadow:0 20px 70px #0008;}
 .bundle-dialog header{display:flex;justify-content:space-between;align-items:start;gap:20px;}.bundle-dialog h2{margin:0 0 8px;font-size:22px;}.bundle-dialog p,.bundle-dialog small{color:#a2b3b3;font-size:12px;line-height:1.7;}.bundle-option{display:flex;align-items:start;gap:10px;padding:12px 0;font-size:14px;}.bundle-option input{width:16px;height:16px;margin-top:3px;accent-color:#92cfad;}.bundle-option small{display:block;margin-top:4px;}.bundle-hint{padding:12px;background:#222e2c;border-radius:6px;}.bundle-size{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0;}.bundle-size small{flex:1 0 100%;}.bundle-dialog details{border-top:1px solid #35433f;padding:10px 0;}.bundle-dialog summary{cursor:pointer;font-size:13px;}.bundle-files{max-height:180px;overflow:auto;list-style:none;padding:0;font-size:11px;}.bundle-files li{display:flex;gap:16px;justify-content:space-between;margin:6px 0;}.bundle-files code{overflow-wrap:anywhere;}.bundle-files span{white-space:nowrap;color:#8da49b;}.bundle-dialog footer{border-top:1px solid #35433f;padding-top:14px;display:flex;align-items:end;gap:14px;flex-wrap:wrap;}.bundle-dialog footer p{flex:1;margin:0;}.bundle-dialog footer code{display:block;overflow-wrap:anywhere;}.bundle-dialog [role=alert]{color:#ffaeae;}
+
+.viewer-crop-batch label {display:flex;flex-direction:column;gap:6px;}
+.viewer-crop-batch textarea {width:100%;box-sizing:border-box;resize:vertical;min-height:72px;}
+/* Compact image workspace: canvas first, terminal size is unchanged. */
+.viewer.work-board {position:relative;padding:6px;gap:6px;overflow:hidden;}
+.viewer .viewer-toolbar-compact {flex-wrap:nowrap;gap:6px;min-height:32px;}
+.viewer-title-icon {display:flex;align-items:center;color:#a8c9bd;flex-shrink:0;}
+.viewer .viewer-toolbar-compact select {height:32px;padding:4px 7px;font-size:12px;min-width:0;}
+.viewer .viewer-image-select {flex:1 1 170px;max-width:320px;}
+.viewer .viewer-render-select {flex:0 1 165px;max-width:190px;}
+.viewer-zoom-controls {display:flex;align-items:center;gap:3px;flex-shrink:0;}
+.viewer-zoom-controls span {min-width:38px;text-align:center;font-size:11px;color:#c6d2da;}
+.viewer-crops-toggle {display:flex;align-items:center;gap:5px;height:32px;padding:0 8px;flex-shrink:0;}
+.viewer-crops-toggle[aria-expanded=true] {background:#263e34;border-color:#6ca98e;color:#b9e9d1;}
+.viewer-settings {position:relative;flex-shrink:0;}
+.viewer-settings>summary {list-style:none;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid #35434d;border-radius:6px;box-sizing:border-box;}
+.viewer-settings>summary::-webkit-details-marker {display:none;}
+.viewer-settings[open]>summary {background:#263e34;}
+.viewer-settings-body {position:absolute;top:38px;right:0;z-index:20;display:flex;flex-wrap:wrap;align-items:end;gap:10px;width:min(390px,75vw);max-height:55vh;overflow:auto;padding:14px;background:#1b242cf5;border:1px solid #52616d;border-radius:8px;box-shadow:0 8px 24px #0009;}
+.viewer-levels {display:flex;flex-wrap:wrap;align-items:end;gap:8px;width:100%;border-top:1px solid #35434d;padding-top:10px;}
+.viewer-error {position:absolute;top:46px;left:12px;right:12px;z-index:25;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #ae7261;border-radius:7px;background:#382521f5;box-shadow:0 4px 14px #0006;font-size:12px;}
+.viewer-error span {flex:1;overflow-wrap:anywhere;}
+.viewer-error button {display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:5px;}
+.viewer .viewer-content {position:relative;min-height:120px;gap:0;}
+.viewer-content.crops-closed,.viewer-content.crops-overlay {grid-template-columns:minmax(0,1fr);}
+.viewer-content.crops-closed>.viewer-side-resizer {display:none;}
+.viewer-content.crops-closed>.viewer-crop-list {display:none;}
+.viewer-content.crops-open.crops-pinned {grid-template-columns:minmax(120px,1fr) 6px minmax(180px,min(var(--viewer-side-width,260px),55%));gap:6px;}
+.viewer-content.crops-open.crops-overlay>.viewer-crop-list {position:absolute;right:0;top:0;bottom:0;width:min(var(--viewer-side-width,260px),calc(100% - 44px));box-shadow:-8px 0 24px #0008;z-index:8;}
+.viewer-content.crops-open.crops-overlay>.viewer-side-resizer {position:absolute;top:0;bottom:0;right:min(var(--viewer-side-width,260px),calc(100% - 44px));width:6px;z-index:9;}
+.viewer .viewer-crop-list {box-sizing:border-box;background:#12191ff8;padding:0 10px 10px;overscroll-behavior:contain;}
+.viewer-crop-list>h3 {position:static;}
+.viewer-drawer-heading {position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:4px;background:#12191f;padding:7px 0;border-bottom:1px solid #35434d;margin-bottom:10px;}
+.viewer-drawer-heading strong {flex:1;font-size:13px;}
+.viewer-drawer-heading button[aria-pressed=true] {background:#263e34;color:#b9e9d1;}
+.viewer-request-select {display:flex;flex-direction:column;gap:5px;font-size:11px;margin-bottom:10px;}
+.viewer-request-select select {width:100%;min-width:0;font-size:12px;padding:5px;}
+.viewer-selection-float {position:absolute;left:10px;bottom:10px;z-index:4;display:flex;align-items:center;gap:6px;padding:5px 6px;border:1px solid #526a60;background:#1b2c24ef;border-radius:8px;box-shadow:0 3px 12px #0006;}
+.viewer-selection-float span {font-size:11px;color:#bbe5cd;}
+.viewer-selection-float button {display:flex;align-items:center;gap:3px;padding:5px;font-size:11px;}
+.viewer-info-float .viewer-help {margin-top:10px;border-top:1px solid #35434d;padding-top:8px;}
+.viewer-info-float .viewer-help small {display:block;padding-top:8px;line-height:1.6;}
+@media(max-width:650px) {.viewer .viewer-toolbar-compact {gap:4px;}.viewer-title-icon,.viewer-zoom-controls .zoom-step {display:none;}.viewer .viewer-image-select {flex-basis:100px;}.viewer .viewer-render-select {max-width:130px;}.viewer-zoom-controls span {min-width:32px;}}
+.viewer-empty-content {flex:1;min-height:0;overflow:auto;}
+.viewer.work-board details.viewer-settings {padding:0;border:0;height:32px;border-radius:0;} .viewer.work-board details.viewer-info-float {padding:0;} .viewer.work-board .viewer-toolbar-compact {height:32px;}
+
+.crop-region-coordinates {display:flex;flex-direction:column;gap:4px;max-height:180px;overflow:auto;}

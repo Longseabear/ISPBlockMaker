@@ -37,10 +37,13 @@ import {
   FlaskConical,
   GitBranch,
   Image,
+  Info,
   Layers3,
   MessageSquarePlus,
   Maximize2,
   Minimize2,
+  Pin,
+  PinOff,
   Play,
   Plus,
   RotateCcw,
@@ -349,7 +352,6 @@ function Inspector({
           Shared I/O
         </button>
         <button
-          style={global ? {display: "none"} : undefined}
           className={tab === "agent" ? "active" : ""}
           onClick={() => setTab("agent")}
         >
@@ -521,13 +523,18 @@ function Inspector({
               전부 구현해줘”라고 요청할 수 있습니다.
             </p>
           </div>
+        ) : global && tab === "agent" ? (
+          <>
+            <p className="hint">이 프로젝트를 이해하고 작업하는 에이전트를 위한 설명입니다. 전체 그래프 context에 전달되며 코드와 함께 버전 관리됩니다.</p>
+            <label>프로젝트 에이전트 설명<textarea rows={18} maxLength={30000} value={draft.principle} onChange={e=>edit("principle",e.target.value)} placeholder="프로젝트의 목적, 전체 입출력, 코드 진입점과 구조, 중요한 제약, 검증 방법, 미해결 사항 등을 자유롭게 기록하세요. 영어·수식·의사 코드 등 에이전트가 정확히 이해하기 좋은 형식도 가능합니다." /></label>
+          </>
         ) : global ? (
           <>
             <p className="hint">전체 파이프라인의 목적과 실행 방법을 기록합니다. 코드와 함께 Git으로 관리되며 에이전트 context에도 전달됩니다.</p>
             <label>Graph Description · 목적 / 요약<textarea rows={3} maxLength={12000} value={draft.description} onChange={e=>edit("description",e.target.value)} placeholder="무엇을 입력받아 어떤 결과를 만드는 그래프인가요?" /></label>
             <label>Graph Detail · 흐름 / 중요 사항<textarea rows={8} maxLength={30000} value={draft.detail || ""} onChange={e=>edit("detail",e.target.value)} placeholder="전체 처리 흐름, 주요 설계 결정, 제약과 주의사항" /></label>
             <label>Entry point · 진입점 / 실행 방법<textarea rows={5} maxLength={12000} value={draft.implementation} onChange={e=>edit("implementation",e.target.value)} placeholder="workspace 상대 경로, 함수 또는 클래스, 실행 명령, 필요한 입력" /></label>
-            <label>Agent notes · 자유 메모<textarea rows={8} maxLength={30000} value={draft.principle} onChange={e=>edit("principle",e.target.value)} placeholder="에이전트가 알아야 할 맥락, 불변 조건, 미확인 사항. 형식과 언어는 자유롭게." /></label>
+
           </>
         ) : tab === "spec" ? (
           <>
@@ -959,6 +966,62 @@ function TerminalPane({
   );
 }
 
+function ArtifactInformation({ artifact, revision, relatedArtifacts, onDelete }: {
+  artifact: Artifact;
+  revision: number;
+  relatedArtifacts: Artifact[];
+  onDelete: (artifacts: Artifact[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!container.current?.contains(event.target as globalThis.Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  return (
+    <div className="artifact-info" ref={container} onBlur={event => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as globalThis.Node)) setOpen(false);
+    }}>
+      <button
+        ref={trigger}
+        className="artifact-info-trigger"
+        title="시각화 정보 및 삭제"
+        aria-label="시각화 정보 및 삭제"
+        aria-expanded={open}
+        aria-controls="artifact-info-popover"
+        onClick={() => setOpen(current => !current)}
+      ><Info size={16} /></button>
+      <section id="artifact-info-popover" className="artifact-info-popover" aria-label="시각화 정보" hidden={!open}>
+        <strong>{artifact.title}</strong>
+        <dl>
+          <dt>블록</dt><dd>{artifact.blockId || "전체"}</dd>
+          <dt>버전</dt><dd>r{artifact.revision} · {artifact.revision < revision ? "earlier version" : "current"}</dd>
+          <dt>생성 시각</dt><dd>{new Date(artifact.createdAt).toLocaleString()}</dd>
+          <dt>형식</dt><dd>{artifact.kind.toUpperCase()}</dd>
+        </dl>
+        <div className="artifact-info-actions">
+          <button onClick={() => { setOpen(false); onDelete([artifact]); }}><Trash2 size={14} /> 이 결과 삭제</button>
+          {relatedArtifacts.length > 1 && <button onClick={() => { setOpen(false); onDelete(relatedArtifacts); }}>같은 실행 결과 삭제 ({relatedArtifacts.length})</button>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const flowRef = useRef<ReactFlowInstance<FlowNode> | null>(null);
   const [deleteCandidates,setDeleteCandidates]=useState<Artifact[]>([]);
@@ -1006,6 +1069,49 @@ function App() {
   const [view, setView] = useState("graph"),
     [artifactId, setArtifactId] = useState(""),
     [demoBusy, setDemoBusy] = useState(false);
+  const compactPreview = view === "artifacts" || view === "viewer";
+  const [sidebarPinned, setSidebarPinned] = useState(() => {
+    try { return localStorage.getItem("isp-sidebar-pinned") === "true"; } catch { return false; }
+  });
+  const [sidebarPeeking, setSidebarPeeking] = useState(false);
+  const sidebarSlot = useRef<HTMLDivElement>(null);
+  const sidebarPinButton = useRef<HTMLButtonElement>(null);
+  const sidebarPointerInside = useRef(false), sidebarKeyboardInside = useRef(false), suppressSidebarFocus = useRef(false);
+  const sidebarOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidebarCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function clearSidebarTimers() {
+    if (sidebarOpenTimer.current !== null) clearTimeout(sidebarOpenTimer.current);
+    if (sidebarCloseTimer.current !== null) clearTimeout(sidebarCloseTimer.current);
+    sidebarOpenTimer.current = null; sidebarCloseTimer.current = null;
+  }
+  function closeSidebarSoon(skipEditingControl = false) {
+    clearSidebarTimers();
+    sidebarCloseTimer.current = setTimeout(() => {
+      sidebarCloseTimer.current = null;
+      const active = document.activeElement;
+      if (sidebarPointerInside.current || sidebarKeyboardInside.current) return;
+      const nativeSelectOpen = active instanceof HTMLSelectElement && (!CSS.supports('selector(select:open)') || active.matches(':open'));
+      const editingControl = !skipEditingControl && active instanceof HTMLElement && sidebarSlot.current?.contains(active) && (nativeSelectOpen || active.matches('input,textarea,[contenteditable="true"]'));
+      if (editingControl) closeSidebarSoon();
+      else setSidebarPeeking(false);
+    }, 250);
+  }
+  function toggleSidebarPin() {
+    clearSidebarTimers(); sidebarKeyboardInside.current = false;
+    setSidebarPeeking(false); setSidebarPinned(current => !current);
+  }
+  useEffect(() => {
+    try { localStorage.setItem("isp-sidebar-pinned", String(sidebarPinned)); } catch {}
+    clearSidebarTimers();
+  }, [sidebarPinned]);
+  useEffect(() => () => clearSidebarTimers(), []);
+  useEffect(() => {
+    clearSidebarTimers();
+    if (sidebarPointerInside.current && !sidebarPinned) {
+      sidebarOpenTimer.current = setTimeout(() => { sidebarOpenTimer.current = null; setSidebarPeeking(true); }, 200);
+    } else if (!sidebarKeyboardInside.current) closeSidebarSoon(true);
+  }, [view]);
+  const sidebarExpanded = sidebarPinned || sidebarPeeking;
   const [layout, setLayout] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("isp-layout-v1") || "null");
@@ -1023,6 +1129,10 @@ function App() {
   );
   const [visualizationExpanded, setVisualizationExpanded] = useState(false);
   useEffect(() => { setVisualizationExpanded(false); }, [view]);
+  useEffect(() => {
+    clearSidebarTimers(); sidebarPointerInside.current = false; sidebarKeyboardInside.current = false;
+    setSidebarPeeking(false);
+  }, [visualizationExpanded]);
   useEffect(() => {
     try {
       localStorage.setItem("isp-layout-v1", JSON.stringify(layout));
@@ -1049,7 +1159,7 @@ function App() {
     const navigation=(e:MouseEvent)=>{
       if(!dirty)return;
       const target=e.target as HTMLElement;
-      if(target.closest('[data-unsaved-dialog]'))return;
+      if(target.closest('[data-unsaved-dialog],.artifact-info-trigger'))return;
       const destination=target.closest('.workspace-sidebar > button,.layout-toolbar > div:first-child button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
       if(!destination)return;
       e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
@@ -1366,7 +1476,7 @@ function App() {
   };
   return (
     <div
-      className={`app ${!layout.inspector ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""} ${view === "artifacts" && visualizationExpanded ? "visualization-expanded" : ""}`}
+      className={`app ${compactPreview ? "compact-preview-view" : ""} ${sidebarPinned ? "sidebar-pinned" : "sidebar-floating"} ${!sidebarExpanded ? "sidebar-collapsed" : "sidebar-expanded"} ${!layout.inspector ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""} ${view === "artifacts" && visualizationExpanded ? "visualization-expanded" : ""}`}
       ref={rootRef}
       style={
         {
@@ -1411,9 +1521,9 @@ function App() {
             <Check size={13} />{" "}
             {pending ? "Saving…" : `Saved · r${project.revision}`}
           </span>
-          <button className="primary" onClick={runDemo} disabled={demoBusy}>
+          <button className="primary run-example-button" title="Run example" aria-label="Run example" onClick={runDemo} disabled={demoBusy}>
             <FlaskConical size={15} />
-            {demoBusy ? "Running…" : "Run example"}
+            <span>{demoBusy ? "Running…" : "Run example"}</span>
           </button>
         </div>
       </header>
@@ -1427,8 +1537,85 @@ function App() {
         )}
         {!!deleteCandidates.length&&<div className="workspace-picker-backdrop" data-unsaved-dialog="true"><section className="leave-dialog" role="dialog" aria-modal="true" aria-label="시각화 삭제"><h2>시각화 {deleteCandidates.length}개를 삭제할까요?</h2><ul>{deleteCandidates.map(a=><li key={a.id}>{a.title}</li>)}</ul><p>등록된 HTML·이미지 파일과 내장 데이터, 메타데이터를 영구 삭제합니다.</p><p>구현 코드, 원본 입력, 생성 스크립트·작업 폴더의 출력 원본, JOB·활동 기록은 유지합니다.</p>{deleteError&&<p role="alert">{deleteError}</p>}<div className="work-controls"><button autoFocus disabled={deleteBusy} onClick={()=>setDeleteCandidates([])}>취소</button><button disabled={deleteBusy} onClick={async()=>{setDeleteBusy(true);setDeleteError("");try{const result=await api<{cleanupPending:string[]}>("/artifacts",{ids:deleteCandidates.map(a=>a.id)},"DELETE");setDeleteCandidates([]);setArtifactId("");if(result.cleanupPending.length)notify("목록은 삭제됐지만 일부 파일 정리가 실패했습니다: "+result.cleanupPending.join(", "));}catch(e){setDeleteError(String(e));}finally{setDeleteBusy(false);}}}>{deleteBusy?"삭제 중…":"영구 삭제"}</button></div></section></div>}
         {leaveTarget&&<div className="workspace-picker-backdrop" data-unsaved-dialog="true"><section className="leave-dialog" role="dialog" aria-modal="true" aria-label="저장하지 않은 변경" onKeyDown={e=>{if(e.key==='Escape'&&!leaveBusy)setLeaveTarget(null);}}><h2>변경사항을 저장할까요?</h2><p>선택한 화면으로 이동하기 전에 현재 편집을 처리하세요.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div className="work-controls"><button autoFocus disabled={leaveBusy} onClick={()=>setLeaveTarget(null)}>계속 편집</button><button disabled={leaveBusy} onClick={()=>void resolveLeave(false)}>변경 버리고 이동</button><button className="primary" disabled={leaveBusy} onClick={()=>void resolveLeave(true)}>{leaveBusy?'처리 중…':'저장 후 이동'}</button></div></section></div>}
-        <nav className="rail workspace-sidebar" aria-label="Workspace controls">
-          {" "}
+        <div className="sidebar-slot" ref={sidebarSlot}
+          onPointerEnter={event => {
+            if (event.pointerType === "touch") return;
+            sidebarPointerInside.current = true; clearSidebarTimers();
+            if (!sidebarPinned) sidebarOpenTimer.current = setTimeout(() => { sidebarOpenTimer.current = null; setSidebarPeeking(true); }, 200);
+          }}
+          onPointerLeave={() => { sidebarPointerInside.current = false; closeSidebarSoon(); }}
+          onPointerDownCapture={() => { sidebarKeyboardInside.current = false; }}
+          onFocusCapture={event => {
+            if (suppressSidebarFocus.current) return;
+            if (sidebarKeyboardInside.current || (event.target as HTMLElement).matches(':focus-visible')) {
+              sidebarKeyboardInside.current = true; clearSidebarTimers(); setSidebarPeeking(true);
+            }
+          }}
+          onBlurCapture={event => {
+            if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget as globalThis.Node)) return;
+            sidebarKeyboardInside.current = false; if (!sidebarPointerInside.current) closeSidebarSoon();
+          }}
+          onChangeCapture={event => {
+            if (event.target instanceof HTMLSelectElement && !sidebarPointerInside.current && !sidebarKeyboardInside.current) closeSidebarSoon(true);
+          }}
+          onKeyDown={event => {
+            if (event.key !== "Escape" || sidebarPinned) return;
+            event.preventDefault(); event.stopPropagation(); clearSidebarTimers();
+            sidebarKeyboardInside.current = false; setSidebarPeeking(false);
+            suppressSidebarFocus.current = true; sidebarPinButton.current?.focus(); suppressSidebarFocus.current = false;
+          }}
+        >
+        <nav id="workspace-sidebar" className="rail workspace-sidebar" aria-label="Workspace controls">
+          <div className="sidebar-toggle">
+            <button ref={sidebarPinButton}
+              title={sidebarPinned ? "사이드바 고정 해제" : "사이드바 고정 · 펼친 상태 유지"}
+              aria-label="사이드바 고정"
+              aria-pressed={sidebarPinned}
+              aria-expanded={sidebarExpanded}
+              aria-controls="workspace-sidebar"
+              onClick={toggleSidebarPin}
+            >
+              {sidebarPinned ? <PinOff size={18} /> : <Pin size={18} />}
+              <span>{sidebarPinned ? "고정 해제" : "사이드바 고정"}</span>
+            </button>
+          </div>
+          <button
+            className={view === "graph" ? "active" : ""}
+            title="Block graph"
+            aria-label="Block graph"
+            aria-current={view === "graph" ? "page" : undefined}
+            onClick={() => switchView("graph")}
+          >
+            <GitBranch size={18} />
+            <span>Block graph</span>
+            <small>{project.blocks.length}</small>
+          </button>
+          <button
+            className={view === "code" ? "active" : ""}
+            title="Node implementations"
+            aria-label="Node implementations"
+            aria-current={view === "code" ? "page" : undefined}
+            onClick={() => switchView("code")}
+          >
+            <Code2 size={18} />
+            <span>Node implementations</span>
+          </button>
+          <button
+            className={view === "artifacts" ? "active" : ""}
+            title="Visualizations"
+            aria-label="Visualizations"
+            aria-current={view === "artifacts" ? "page" : undefined}
+            onClick={() => switchView("artifacts")}
+          >
+            <Image size={18} />
+            <span>Visualizations</span>
+            <small>{project.artifacts.length}</small>
+            {project.artifacts.length > 0 && <i />}
+          </button>
+          <button className={view === "viewer" ? "active" : ""} title="Image Viewer" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
+          <button className={view === "gpu" ? "active" : ""} title="GPU simulator" aria-label="GPU simulator" aria-current={view === "gpu" ? "page" : undefined} onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
+          <button className={view === "jobs" ? "active job-nav" : "job-nav"} title="JOB Queue" aria-label="JOB Queue" aria-current={view === "jobs" ? "page" : undefined} onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
+          <button className={view === "documents" ? "active" : ""} title="Documentation" aria-label="Documentation" aria-current={view === "documents" ? "page" : undefined} onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="graph-toolbar">
             <div>
               <span className="eyebrow">IMAGE SIGNAL PROCESSING</span>
@@ -1444,40 +1631,6 @@ function App() {
               </button>
             </div>
           </div>
-          <button
-            className={view === "graph" ? "active" : ""}
-            title="Block graph"
-            aria-label="Block graph"
-            onClick={() => switchView("graph")}
-          >
-            <GitBranch size={18} />
-            <span>Block graph</span>
-            <small>{project.blocks.length}</small>
-          </button>
-          <button
-            className={view === "code" ? "active" : ""}
-            title="Node implementations"
-            aria-label="Node implementations"
-            onClick={() => switchView("code")}
-          >
-            <Code2 size={18} />
-            <span>Node implementations</span>
-          </button>
-          <button
-            className={view === "artifacts" ? "active" : ""}
-            title="Visualizations"
-            aria-label="Visualizations"
-            onClick={() => switchView("artifacts")}
-          >
-            <Image size={18} />
-            <span>Visualizations</span>
-            <small>{project.artifacts.length}</small>
-            {project.artifacts.length > 0 && <i />}
-          </button>
-          <button className={view === "viewer" ? "active" : ""} aria-label="Image Viewer" onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
-          <button className={view === "gpu" ? "active" : ""} aria-label="GPU simulator" onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
-          <button className={view === "jobs" ? "active job-nav" : "job-nav"} aria-label="JOB Queue" onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
-          <button className={view === "documents" ? "active" : ""} aria-label="Documentation" onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="layout-toolbar">
             <div>
               <button onClick={() => mode("design")}>설계</button>
@@ -1536,8 +1689,8 @@ function App() {
           </details>
           <div className="rail-bottom">
             {pendingPresentation && (
-              <button onClick={() => present(pendingPresentation)}>
-                결과 보기
+              <button title="결과 보기" aria-label="결과 보기" onClick={() => present(pendingPresentation)}>
+                <ArrowRight size={18} /><span>결과 보기</span>
               </button>
             )}
             <span title="Local HTTP bridge">
@@ -1545,6 +1698,7 @@ function App() {
             </span>
           </div>
         </nav>
+        </div>
         <div className="sidebar-resizer" role="separator" aria-label="왼쪽 사이드바 너비 조절" aria-orientation="vertical" aria-valuemin={150} aria-valuemax={420} aria-valuenow={sidebarWidth} tabIndex={0} onDoubleClick={()=>setSidebarWidth(200)} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setSidebarWidth(w=>Math.max(150,Math.min(420,w+(e.key==='ArrowRight'?20:-20))));}}} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();sidebarDrag.current={x:e.clientX,width:e.currentTarget.previousElementSibling!.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(sidebarDrag.current)setSidebarWidth(Math.max(150,Math.min(420,sidebarDrag.current.width+e.clientX-sidebarDrag.current.x)));}} onPointerUp={()=>{sidebarDrag.current=null;}} onPointerCancel={()=>{sidebarDrag.current=null;}} onLostPointerCapture={()=>{sidebarDrag.current=null;}}/>
 
         <main className="main-area">
@@ -1693,11 +1847,7 @@ function App() {
                     {visualizationExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                   </button>
                   <div className="artifact-toolbar">
-                    <div>
-                      <span className="eyebrow">EXPERIMENT OUTPUTS</span>
-                      <h1>Visualizations</h1>
-                    </div>
-                    {artifact && (
+                    {artifact ? <>
                       <select
                         aria-label="Select visualization"
                         value={artifact.id}
@@ -1709,29 +1859,17 @@ function App() {
                           </option>
                         ))}
                       </select>
-                    )}
+                      <ArtifactInformation
+                        key={artifact.id}
+                        artifact={artifact}
+                        revision={project.revision}
+                        relatedArtifacts={artifact.runId ? project.artifacts.filter(a => a.runId === artifact.runId) : [artifact]}
+                        onDelete={artifacts => { setDeleteError(""); setDeleteCandidates(artifacts); }}
+                      />
+                    </> : <h1>Visualizations</h1>}
                   </div>
                   {artifact ? (
                     <>
-                      <div className="artifact-meta">
-                        <span>
-                          <Box size={12} />
-                          {artifact.blockId}
-                        </span>
-                        <span>
-                          revision {artifact.revision}
-                          {artifact.revision < project.revision
-                            ? " · earlier version"
-                            : " · current"}
-                        </span>
-                        <span>
-                          {new Date(artifact.createdAt).toLocaleTimeString()}
-                        </span>
-                        <span className="spacer" />
-                        <span>{artifact.kind.toUpperCase()}</span>
-                        <button onClick={()=>{setDeleteError("");setDeleteCandidates([artifact]);}}><Trash2 size={14}/> 삭제</button>
-                        {artifact.runId && project.artifacts.filter(a=>a.runId===artifact.runId).length>1 && <button onClick={()=>{setDeleteError("");setDeleteCandidates(project.artifacts.filter(a=>a.runId===artifact.runId));}}>같은 실행 결과 삭제</button>}
-                      </div>
                       <div className="artifact-preview">
                         {artifact.kind === "html" ? (
                           <iframe

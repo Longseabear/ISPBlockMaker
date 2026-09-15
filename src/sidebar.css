@@ -722,3 +722,225 @@
 .sidebar-resizer:hover,.sidebar-resizer:focus-visible{background:#7fb99b;}
 .visualization-expanded .sidebar-resizer{display:none;}
 .bundle-field{display:flex;flex-direction:column;gap:8px;margin:18px 0;font-size:13px;}.bundle-field input{width:100%;min-width:0;}.bundle-dialog .bundle-field input[type=file]{font-size:13px;}
+
+.compact-preview-view .topbar {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+.compact-preview-view .brand {
+  gap: 7px;
+  flex-shrink: 0;
+}
+.compact-preview-view .brand-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.compact-preview-view .brand-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.compact-preview-view .brand strong {
+  font-size: 12px;
+}
+.compact-preview-view .top-actions {
+  gap: 8px;
+  flex-shrink: 0;
+}
+.compact-preview-view .topbar > button,
+.compact-preview-view .top-actions > button {
+  height: 30px;
+  padding: 4px 8px;
+  gap: 6px;
+  font-size: 11px;
+}
+.compact-preview-view .version-badge {
+  max-width: 180px;
+}
+.workspace-sidebar .sidebar-toggle button {
+  min-height: 34px;
+  color: #a5c8b8;
+}
+.sidebar-collapsed .rail.workspace-sidebar {
+  width: 48px;
+  min-width: 48px;
+  padding: 6px;
+  gap: 5px;
+}
+.sidebar-collapsed .workspace-sidebar .graph-toolbar,
+.sidebar-collapsed .workspace-sidebar .layout-toolbar,
+.sidebar-collapsed .workspace-sidebar .agent-help,
+.sidebar-collapsed .workspace-sidebar button span,
+.sidebar-collapsed .workspace-sidebar button small,
+.sidebar-collapsed .sidebar-resizer {
+  display: none;
+}
+.sidebar-collapsed .workspace-sidebar > button,
+.sidebar-collapsed .workspace-sidebar .sidebar-toggle button,
+.sidebar-collapsed .workspace-sidebar .rail-bottom button {
+  width: 35px;
+  height: 35px;
+  min-height: 35px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-collapsed .workspace-sidebar button svg {
+  flex-shrink: 0;
+}
+.sidebar-collapsed .workspace-sidebar .sidebar-toggle {
+  padding-bottom: 6px;
+  margin-bottom: 1px;
+  border-bottom: 1px solid #2b353e;
+}
+.sidebar-collapsed .workspace-sidebar .job-nav {
+  margin-top: 7px;
+}
+.sidebar-collapsed .workspace-sidebar .rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+.compact-preview-view .artifact-area > .artifact-toolbar {
+  height: 44px;
+  min-height: 44px;
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 48px 6px 8px;
+  border-bottom: 1px solid #2d363f;
+}
+.compact-preview-view .artifact-area > .artifact-toolbar h1 {
+  font-size: 13px;
+}
+.compact-preview-view .artifact-area > .artifact-toolbar select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  height: 32px;
+  padding: 4px 8px;
+  text-overflow: ellipsis;
+}
+.compact-preview-view .visualization-expand-float {
+  top: 6px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  box-shadow: none;
+}
+.compact-preview-view:not(.visualization-expanded) .artifact-preview {
+  padding: 4px;
+}
+.artifact-info {
+  position: relative;
+  flex: none;
+}
+.artifact-info-trigger {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.artifact-info-trigger[aria-expanded="true"] {
+  color: #a6dfc6;
+  border-color: #557b67;
+  background: #24332e;
+}
+.artifact-info-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 100px));
+  max-height: clamp(120px, calc(100dvh - var(--terminal-height, 238px) - 136px), 380px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #465b50;
+  border-radius: 8px;
+  background: #1a2429;
+  box-shadow: 0 8px 28px #0008;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.artifact-info-popover > strong {
+  display: block;
+  color: #d6e2e9;
+  line-height: 1.5;
+}
+.artifact-info-popover dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 14px 0;
+  font-size: 11px;
+}
+.artifact-info-popover dt {
+  color: #8faaa1;
+}
+.artifact-info-popover dd {
+  margin: 0;
+  color: #c0ccd5;
+}
+.artifact-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid #35433f;
+}
+.artifact-info-actions button {
+  min-height: 30px;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+@media (max-width: 1100px) {
+  .compact-preview-view .brand .version,
+  .compact-preview-view .topbar .saved {
+    display: none;
+  }
+  .compact-preview-view .topbar {
+    gap: 10px;
+  }
+}
+@media (max-width: 900px) {
+  .compact-preview-view .top-actions .bundle-share-button span,
+  .compact-preview-view .top-actions .run-example-button span {
+    display: none;
+  }
+  .compact-preview-view .version-badge {
+    max-width: 130px;
+  }
+  .compact-preview-view .top-actions {
+    gap: 5px;
+  }
+  .compact-preview-view .topbar .workspace-switch {
+    gap: 5px;
+  }
+}
+
+/* Hover expansion reserves only the icon rail; pinning alone changes the canvas width. */
+.sidebar-slot {position:relative;flex:none;width:48px;min-width:48px;min-height:0;z-index:26;}
+.sidebar-slot .rail.workspace-sidebar {position:absolute;inset:0 auto 0 0;width:48px;min-width:48px;max-width:none;padding:6px;gap:5px;}
+.sidebar-expanded .sidebar-slot .rail.workspace-sidebar {width:max(150px,min(var(--sidebar-width,200px),80vw));}
+.sidebar-floating.sidebar-expanded .sidebar-slot .rail.workspace-sidebar {box-shadow:8px 0 24px #0008;border-right-color:#52685e;}
+.sidebar-pinned .sidebar-slot {width:max(150px,min(var(--sidebar-width,200px),40vw));}
+.sidebar-pinned .sidebar-slot .rail.workspace-sidebar {width:100%;}
+.sidebar-floating > .work-area > .sidebar-resizer {display:none;}
+.sidebar-slot .workspace-sidebar > button {height:35px;min-height:35px;padding:0 8px;white-space:nowrap;flex-shrink:0;}
+.sidebar-slot .workspace-sidebar > button svg {flex-shrink:0;}
+.sidebar-slot .workspace-sidebar > button span {overflow:hidden;text-overflow:ellipsis;}
+.sidebar-slot .workspace-sidebar .sidebar-toggle {position:sticky;top:-6px;z-index:2;background:#14181e;padding:0 0 6px;margin-bottom:1px;border-bottom:1px solid #2b353e;flex-shrink:0;}
+.sidebar-slot .workspace-sidebar .sidebar-toggle button {height:35px;min-height:35px;padding:0 8px;white-space:nowrap;}
+.sidebar-slot .workspace-sidebar .sidebar-toggle button[aria-pressed=true] {color:#ade0c6;background:#24382e;}
+.sidebar-slot .workspace-sidebar > .job-nav {margin-top:7px;}
+.sidebar-slot .workspace-sidebar .graph-toolbar {margin-top:12px;padding:12px 4px 16px;border-top:1px solid #2b353e;flex-shrink:0;}
+.sidebar-slot .workspace-sidebar .layout-toolbar,.sidebar-slot .workspace-sidebar .agent-help {flex-shrink:0;}
+.sidebar-collapsed .sidebar-slot .workspace-sidebar > button,.sidebar-collapsed .sidebar-slot .workspace-sidebar .sidebar-toggle button {padding:0;}
+.visualization-expanded .sidebar-slot {display:none;}

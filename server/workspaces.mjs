@@ -76,6 +76,10 @@ export function openWorkspace(folder, root) {
     }
     const viewerGuide=path.join(path.dirname(skill),"viewer.md");
     if(!fs.existsSync(viewerGuide))fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),viewerGuide);
+    if(!fs.readFileSync(viewerGuide,"utf8").includes("## Crop batch description")){const guide=fs.readFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),"utf8");fs.appendFileSync(viewerGuide,"\n\n## Crop batch description"+guide.split("## Crop batch description")[1]);}
+    if(!fs.readFileSync(viewerGuide,"utf8").includes("## Multi-region crop items")){const guide=fs.readFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),"utf8");fs.appendFileSync(viewerGuide,"\n\n## Multi-region crop items"+guide.split("## Multi-region crop items")[1]);}
+    const viewerGuideText=fs.readFileSync(viewerGuide,"utf8");
+    if(viewerGuideText.includes("Shift-drag to pan"))fs.writeFileSync(viewerGuide,viewerGuideText.replaceAll("Shift-drag to pan","right/middle-drag to pan"));
     if(!fs.readFileSync(skill,"utf8").includes("viewer.md"))fs.appendFileSync(skill,"\n\n## Image Viewer and user-selected crops\nWhen image analysis needs a user-selected region, read `viewer.md` beside this skill. Request and present an ROI, then read the submitted crop and metadata.\n");
     const sddGuide = path.join(path.dirname(skill), "sdd.md");
     if (!fs.existsSync(sddGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/sdd.md"), sddGuide);
