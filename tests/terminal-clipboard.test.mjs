@@ -25,7 +25,16 @@ test("native paste stays available and selected Ctrl+C copies without interrupti
  const copied=[];let selection="selected output",all=0;
  const handler=terminalClipboardHandler({readText:assert.fail,paste:assert.fail,ready:()=>true,error:assert.fail,selection:()=>selection,writeText:async text=>{copied.push(text);},selectAll:()=>all++});
  const paste=key();assert.equal(handler(paste),false);assert.equal(paste.prevented,undefined);
- const copy=key({key:"c"});assert.equal(handler(copy),false);assert.equal(copy.prevented,true);await tick();assert.deepEqual(copied,[selection]);
+ const copy=key({key:"c"});assert.equal(handler(copy),false);assert.equal(copy.prevented,undefined);await tick();assert.deepEqual(copied,[]);
+ const insert=key({key:"Insert"});assert.equal(handler(insert),false);assert.equal(insert.prevented,undefined);
+ handler(key({key:'c',shiftKey:true}));await tick();assert.deepEqual(copied,[selection]);
  selection="";assert.equal(handler(key({key:"c"})),true);assert.equal(handler(key({key:"c",shiftKey:true})),false);
  handler(key({key:"a",shiftKey:true}));assert.equal(all,1);
+});
+
+test('Ctrl+Shift+C uses the native copy command before permission-based fallback',()=>{
+ let copies=0;
+ const handler=terminalClipboardHandler({readText:assert.fail,paste:assert.fail,ready:()=>true,error:assert.fail,selection:()=> 'selected text',writeText:assert.fail,copySelection:()=>{copies++;return true;}});
+ const event=key({key:'c',shiftKey:true});assert.equal(handler(event),false);assert.equal(event.prevented,true);assert.equal(copies,1);
+ handler(key({key:'c',shiftKey:true,repeat:true}));handler(key({key:'c',shiftKey:true,type:'keyup'}));assert.equal(copies,1);
 });

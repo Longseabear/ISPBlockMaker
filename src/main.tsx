@@ -765,6 +765,7 @@ function TerminalPane({
     terminal.open(host.current!);
     terminal.attachCustomKeyEventHandler(terminalClipboardHandler({
       selection: () => terminal.getSelection(),
+      copySelection: () => document.execCommand("copy"),
       selectAll: () => terminal.selectAll(),
       writeText: async text => {
         if(!navigator.clipboard?.writeText)throw new Error("Clipboard API unavailable");

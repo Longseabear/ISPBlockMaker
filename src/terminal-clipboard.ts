@@ -5,6 +5,7 @@ export function terminalClipboardHandler(options: {
   error: (message: string) => void;
   selection?: () => string;
   writeText?: (text: string) => Promise<void>;
+  copySelection?: () => boolean;
   selectAll?: () => void;
 }) {
   let pending = false;
@@ -15,11 +16,17 @@ export function terminalClipboardHandler(options: {
       if(event.type==="keydown")options.selectAll?.();
       return false;
     }
-    if(modifier&&!event.altKey&&event.key.toLowerCase()==="c") {
+    if(modifier&&!event.altKey&&(event.key.toLowerCase()==="c"||(!event.shiftKey&&event.key==="Insert"))) {
       const text=options.selection?.()||"";
       if(!text&&!event.shiftKey)return true; // Preserve Ctrl+C to interrupt the shell.
+      if(text&&!event.shiftKey){
+        // Let the browser dispatch its native copy event to xterm's copy handler.
+        // Preventing default here forces clipboard-write permission unnecessarily.
+        event.stopPropagation();return false;
+      }
       event.preventDefault();event.stopPropagation();
       if(event.type==="keydown"&&!event.repeat&&text) {
+        if(options.copySelection?.())return false;
         if(options.writeText)void options.writeText(text).catch(()=>options.error("복사하지 못했습니다. 브라우저 클립보드 권한을 확인하세요."));
         else options.error("클립보드 복사를 지원하지 않습니다.");
       }
