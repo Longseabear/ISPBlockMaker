@@ -1,3 +1,5 @@
+import os from "node:os";
+import {planBundle,packBundle} from "./bundles.mjs";
 import { installViewer } from "./viewer.mjs";
 import { deleteArtifacts } from "./artifact-delete.mjs";
 import { serverPaths } from "./paths.mjs";
@@ -91,6 +93,14 @@ installViewer(app, {
     }
     return delivered;
   }
+});
+const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false)});
+app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true'});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+app.post('/api/bundle/export',async(req,res)=>{
+ const options=bundleOptions.parse(req.body);if(req.body.revision!==undefined&&req.body.revision!==store.get().revision)return res.status(409).json({error:'프로젝트가 변경됐습니다. 목록을 새로 확인하세요.'});
+ versionChanging=true;let temp;
+ try{temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-share-'));const result=await packBundle(workspace,path.join(temp,'workspace.bundle'),options);versionChanging=false;const cleanup=()=>fs.rm(temp,{recursive:true,force:true},()=>{});res.download(result.path,'workspace.bundle',cleanup);}
+ catch(e){versionChanging=false;if(temp)fs.rmSync(temp,{recursive:true,force:true});throw e;}
 });
 app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
 app.get("/api/versions/commits/:hash",async(req,res)=>res.json(await commitChanges(workspace,req.params.hash)));

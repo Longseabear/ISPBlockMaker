@@ -1,0 +1,14 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import net from 'node:net';import {spawn,execFileSync} from 'node:child_process';import {unpackBundle} from '../server/bundles.mjs';
+test('Authenticated bundle API previews options, guards revisions and serves bundles to UI and CLI',async()=>{
+ const temp=await fs.mkdtemp(path.join(os.tmpdir(),'isp-bundle-api-')),workspace=path.join(temp,'work');await fs.mkdir(workspace);
+ const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
+ const child=spawn(process.execPath,['server/index.mjs'],{cwd:process.cwd(),env:{...process.env,ISP_WORKSPACE:workspace,ISP_STATE_HOME:path.join(temp,'state'),PORT:String(port)},windowsHide:true,stdio:'pipe'});let log='';child.stderr.on('data',b=>log+=b);child.stdout.on('data',()=>{});const exited=new Promise(r=>child.on('exit',r));
+ try{const base='http://127.0.0.1:'+port;let boot;for(let i=0;i<80;i++){try{boot=await fetch(base+'/api/bootstrap').then(r=>r.json());break;}catch{await new Promise(r=>setTimeout(r,100));}}assert.ok(boot,log);const headers={Authorization:'Bearer '+boot.token,'Content-Type':'application/json'};
+ await fs.mkdir(path.join(workspace,'.isp/viewer'),{recursive:true});await fs.writeFile(path.join(workspace,'.isp/viewer/sample.bin'),Buffer.from([1,2,3]));
+ assert.equal((await fetch(base+'/api/bundle/preview')).status,401);
+ const plan=await fetch(base+'/api/bundle/preview?includeImages=false',{headers}).then(r=>r.json());assert.ok(plan.files.some(f=>f.path==='graph.json'));assert.ok(!plan.files.some(f=>f.path.endsWith('.bin')));assert.ok(plan.skipped.includes('.isp/connection.json'));
+ assert.equal((await fetch(base+'/api/bundle/export',{method:'POST',headers,body:JSON.stringify({revision:-1})})).status,409);
+ const response=await fetch(base+'/api/bundle/export',{method:'POST',headers,body:JSON.stringify({includeImages:false,revision:plan.revision})});assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/workspace.bundle/);const output=path.join(temp,'api.bundle');await fs.writeFile(output,Buffer.from(await response.arrayBuffer()));await unpackBundle(output,path.join(temp,'copy'));await assert.rejects(()=>fs.stat(path.join(temp,'copy/.isp/connection.json')));
+ const cliOut=path.join(temp,'cli.bundle');execFileSync(process.execPath,[path.resolve('scripts/workspace-cli.mjs'),'pack',workspace,'-o',cliOut],{windowsHide:true,timeout:20000});await unpackBundle(cliOut,path.join(temp,'cli-copy'));assert.deepEqual(await fs.readFile(path.join(temp,'cli-copy/.isp/viewer/sample.bin')),Buffer.from([1,2,3]));
+ }finally{child.kill();await exited;await fs.rm(temp,{recursive:true,force:true});}
+});

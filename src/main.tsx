@@ -1,3 +1,4 @@
+import {BundleShare} from "./BundleShare";
 import { Viewer } from "./Viewer";
 import { terminalClipboardHandler } from "./terminal-clipboard";
 import { Documents } from "./Documents";
@@ -1382,6 +1383,7 @@ function App() {
           <ChevronDown size={13} />
         </button>
         <div className="top-actions">
+          <BundleShare api={api} token={token} dirty={dirty || pending} />
           <VersionControl api={api} revision={project.revision} dirty={dirty} />
           <span className="saved">
             <Check size={13} />{" "}

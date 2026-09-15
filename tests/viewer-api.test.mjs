@@ -33,6 +33,8 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   const opened=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-open','input.raw','--spec','spec.json'],{cwd:temp,windowsHide:true,encoding:'utf8'}));
   assert.equal(opened.image.reused,true);assert.equal(opened.displayed,false);assert.equal(opened.delivered,0);assert.equal(opened.command.imageId,opened.image.id);
   const reopened=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-open','input.raw','--spec','spec.json','--wait','0'],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(reopened.image.id,opened.image.id);
+  const missingOriginal=path.join(temp,'.isp/viewer',opened.image.id+'.bin');fs.unlinkSync(missingOriginal);
+  const restoredOriginal=await(await post('/viewer/images/import',{path:path.join(temp,'input.raw'),spec,reuse:true})).json();assert.equal(restoredOriginal.id,opened.image.id);assert.deepEqual(fs.readFileSync(missingOriginal),data);
   socket=new WebSocket(`ws://127.0.0.1:${port}/ws?token=${boot.token}`);await once(socket,"open");
   const presented=new Promise(resolve=>socket.on("message",d=>{const m=JSON.parse(d);if(m.type==="present")resolve(m.presentation);}));
   const request=await(await post("/viewer/requests",{imageId:imported.id,prompt:"Select flat area",blockId:"input"})).json();assert.equal(request.status,"pending");assert.equal((await presented).requestId,request.id);

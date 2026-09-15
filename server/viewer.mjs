@@ -12,13 +12,13 @@ export function installViewer(app,{current,present}) {
   const read=name=>{const file=path.join(folder(),name+".json");return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];};
   const write=(name,value)=>{fs.mkdirSync(folder(),{recursive:true});const file=path.join(folder(),name+".json");fs.writeFileSync(file+".tmp",JSON.stringify(value));fs.renameSync(file+".tmp",file);};
   const findImage=value=>{const image=read("images").find(i=>i.id===id(value));if(!image)throw new Error("이미지를 찾을 수 없습니다.");return image;};
-  const load=image=>openImage(fs.readFileSync(path.join(folder(),image.id+".bin")),image.spec);
+  const load=image=>{const file=path.join(folder(),image.id+".bin");if(!fs.existsSync(file))throw new Error("Viewer 원본이 없습니다. 원본 포함 번들을 사용하거나 이미지를 다시 등록하세요. 저장된 크롭은 다운로드할 수 있습니다.");return openImage(fs.readFileSync(file),image.spec);};
   installViewerSession(app,{current,present,read,write,findImage,folder});
   const register=(bytes,input)=>{
     if(!bytes.length||bytes.length>256*1024*1024)throw new Error("이미지는 최대 256MB입니다.");
     const images=read("images");
     const decoded=openImage(bytes,input.spec);
-    if(input.reuse){const sha=crypto.createHash("sha256").update(bytes).digest("hex");const existing=images.find(i=>i.sha256===sha&&JSON.stringify(i.spec)===JSON.stringify(decoded.spec));if(existing)return {...existing,reused:true};}
+    if(input.reuse){const sha=crypto.createHash("sha256").update(bytes).digest("hex");const existing=images.find(i=>i.sha256===sha&&JSON.stringify(i.spec)===JSON.stringify(decoded.spec));if(existing){const original=path.join(folder(),existing.id+'.bin');if(!fs.existsSync(original))fs.writeFileSync(original,bytes,{flag:'wx'});return {...existing,reused:true};}}
     if(images.length>=200)throw new Error("Viewer 이미지 한도(200개)에 도달했습니다.");
     const image={id:crypto.randomUUID(),name:z.string().min(1).max(200).parse(input.name),spec:decoded.spec,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),createdAt:new Date().toISOString()};
     fs.mkdirSync(folder(),{recursive:true});fs.writeFileSync(path.join(folder(),image.id+".bin"),bytes);

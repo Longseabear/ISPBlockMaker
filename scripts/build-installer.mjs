@@ -17,7 +17,7 @@ for(const name of ["dist","server","templates","package.json","ISPBlockMaker.exe
   fs.cpSync(path.join(root,name),path.join(app,name),{recursive:true});
 }
 fs.mkdirSync(path.join(app,"scripts"));
-for(const name of ["isp.mjs","start-local.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
+for(const name of ["isp.mjs","start-local.mjs","workspace-cli.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
 fs.copyFileSync(process.execPath,path.join(app,"node.exe"));
 const lock=JSON.parse(fs.readFileSync(path.join(root,"package-lock.json"),"utf8"));
 const required = new Set();

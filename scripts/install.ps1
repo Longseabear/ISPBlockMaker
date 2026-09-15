@@ -7,7 +7,7 @@ if (!(Test-Path -LiteralPath (Join-Path $appRoot 'ISPBlockMaker.exe'))) { throw 
 $bin = Join-Path $installRoot 'bin'
 New-Item -ItemType Directory -Path $bin -Force | Out-Null
 # The caller's working directory is deliberately preserved.
-$command = '@echo off' + "`r`n" + '@start "" "%~dp0..\' + $package.app.Replace('/','\') + '\ISPBlockMaker.exe" %*' + "`r`n"
+$command = '@echo off' + "`r`n" + '@"%~dp0..\' + $package.app.Replace('/','\') + '\node.exe" "%~dp0..\' + $package.app.Replace('/','\') + '\scripts\workspace-cli.mjs" %*' + "`r`n"
 [IO.File]::WriteAllText((Join-Path $bin 'isp-block-maker.cmd'), $command, [Text.Encoding]::ASCII)
 $owned = @()
 $manifest = Join-Path $installRoot 'installed-files.json'

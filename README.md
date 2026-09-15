@@ -23,9 +23,9 @@ ISPBlockMaker/                  # 프레임워크 Git
 
 ## 실행
 
-### Windows 배포 v0.1.8
+### Windows 배포 v0.1.9
 
-[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.8)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
+[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.9)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
 
 설치 후 새 터미널에서 작업 폴더로 이동해 `isp-block-maker .`를 실행하면 해당 폴더를 초기화하고 서버와 브라우저를 엽니다. 시작 메뉴에서 실행하면 폴더를 선택할 수 있습니다. Git, Python, Claude Code/Codex 및 에이전트의 모델 연결은 별도 환경을 사용합니다. 폐쇄망에서는 사용할 에이전트와 모델 접속 환경을 별도로 준비해야 합니다.
 
@@ -205,10 +205,23 @@ GPU 확장의 선택적 `reference`는 `{ "shaderSha256": "<fragment 문자열�
 
 GPU 탭은 열려 있는 동안 15초 간격 및 ‘확장 새로고침’으로 기준과 현재 파일을 비교합니다. 상태만 갱신될 때 슬라이더 값은 보존합니다. 미등록, 기준 일치, 변경 감지, 파일 확인 불가를 구분하며 결과 메타데이터에도 조회된 상태를 남깁니다. 기준 일치는 기록한 파일이 그대로라는 의미이며 CPU/GPU 동등성 검증을 보증하지 않습니다. 경고를 없애려고 자동으로 기준을 갱신하지 말고, 변경을 검토한 뒤 관련 소스와 셰이더 기준을 함께 갱신하세요.
 
-## 작업 프로젝트 공유
+## 작업 프로젝트 공유 (.bundle)
 
-그래프와 구현을 함께 개발하려면 프레임워크가 아닌 프로젝트의 독립 Git 저장소를 공유하세요. 받는 사람은 clone한 폴더에서 `isp-block-maker .`로 시작합니다.
+v0.1.9부터 상단 **공유 → .bundle 저장**으로 그래프·코드·프로젝트 스킬·요청/JOB·시각화/SDD·Viewer 크롭을 한 파일로 전달합니다. 저장 전 포함/제외 목록과 예상 용량을 확인하세요. Viewer 원본은 기본 포함이며 Git 이력은 선택입니다.
 
-요청/JOB·시각화·Viewer 이미지와 크롭까지 전달하려면 서버의 쓰기 작업을 종료한 뒤 프로젝트 사본에 `graph.json`, 구현 및 의존성 파일, `.isp/project.json`, `.isp/artifacts/`, `.isp/viewer/`, 필요한 `.isp/activity.json`을 함께 담으세요. `.isp/connection.json`과 `.isp/tools/`는 제외합니다. 새 PC에서 실행할 때 접속 정보와 로컬 CLI가 재생성됩니다. API 키와 개인 에이전트 설정은 공유하지 마세요.
+```powershell
+isp-block-maker pack . -o project.bundle
+isp-block-maker open project.bundle --into C:\Work\MyISP
+```
 
-자세한 포함 파일과 새 PC의 확인 절차는 [프로젝트 공유 가이드](https://longseabear.github.io/ISPBlockMaker/#sharing)를 참고하세요. 안내 사이트는 `docs/`에서 관리합니다.
+복원 대상은 존재하지 않는 새 폴더여야 하고 부모 폴더는 미리 준비합니다. 복원 후 로컬 CLI와 프로젝트 스킬을 준비하고 서버·브라우저를 엽니다. `--no-open`은 복원과 초기화만 수행합니다. 현재 폴더를 여는 `isp-block-maker .`도 그대로 지원합니다.
+
+`pack` 옵션: `--without-images` (Viewer 원본 제외), `--with-git` (독립 프로젝트의 Git 브랜치·태그·HEAD 이력 포함), `--dry-run` (파일 목록/용량만 확인). Git 이력을 제외해도 현재 구현 파일은 포함하며, 이력을 포함해도 미커밋 구현은 보존됩니다. Git 원격 설정·훅은 복원하지 않습니다.
+
+번들은 ZIP 저장 방식과 버전 1 명세/체크섬을 사용합니다. 최대 2 GiB, 파일당 256 MiB, 10,000개 파일입니다. 일반 ZIP이나 git bundle 형식과는 다릅니다. 가져올 때 파일 경로와 SHA-256/CRC를 검사하며 기존 대상 폴더는 덮어쓰지 않습니다.
+
+`.isp/connection.json`, `.isp/tools/`, node_modules, 가상환경, 알려진 비밀 파일명·개인 에이전트 설정과 링크는 제외됩니다. 소스에 직접 적힌 API 키나 Git 과거 커밋의 비밀값까지 검사하는 기능은 아닙니다. 에이전트 쓰기 작업을 잠시 멈추고 UI 편집을 저장한 뒤 공유하세요. 내보내기 중 변경이 감지되면 재시도를 요청합니다.
+
+원본 제외 시 기존 크롭은 다운로드할 수 있지만 원본 미리보기·새 크롭은 제한됩니다. 동일 원본과 설정을 `viewer-open`으로 재등록하면 원본을 복구할 수 있습니다. Python 실행 환경과 외부 경로로 참조한 데이터는 별도 준비가 필요합니다.
+
+소스 체크아웃에서는 `node scripts/workspace-cli.mjs pack ...` / `open ... --no-open`으로도 사용할 수 있습니다. [스크린샷과 공유 가이드](https://longseabear.github.io/ISPBlockMaker/#sharing)는 `docs/`에서 관리합니다.
