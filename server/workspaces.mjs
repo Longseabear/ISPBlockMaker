@@ -85,6 +85,15 @@ export function openWorkspace(folder, root) {
     if (!fs.existsSync(loopGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/experiment-loop.md"), loopGuide);
     if (!fs.readFileSync(skill, "utf8").includes("experiment-loop.md"))
       fs.appendFileSync(skill, "\n\n## Repeatable experiment loop\nFor iteration or remaining JOB requests, read `experiment-loop.md` beside this skill. Do not start an indefinite scheduler.\n");
+    const temporaryGuide = path.join(path.dirname(skill), "temporary-files.md");
+    if (!fs.existsSync(temporaryGuide)) fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/temporary-files.md"),temporaryGuide);
+    const graphGuide = path.join(path.dirname(skill), "graph-overview.md");
+    if (!fs.existsSync(graphGuide)) fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/graph-overview.md"),graphGuide);
+    let skillText=fs.readFileSync(skill,"utf8");
+    if(!skillText.includes("graph-overview.md"))skillText+="\n\n## Whole-graph context\nRead `graph-overview.md` and `isp graph-info` before pipeline work. Keep the graph purpose, entry points, constraints and freeform agent notes synchronized with implementation.\n";
+    skillText=skillText.replace("Store the temporary JSON in ignored `.isp/` so it does not dirty implementation history.","Store the temporary JSON in `tmp/<task-or-job-id>/` so it does not dirty implementation history.");
+    if(!skillText.includes("temporary-files.md"))skillText+="\n\n## Intermediate work products\nCreate intermediate outputs in workspace-root `tmp/<task-or-job-id>/`. Read `temporary-files.md` for final-output promotion, sharing and cleanup rules. Keep final implementations and registered results outside `tmp/`.\n";
+    if(fs.readFileSync(skill,"utf8")!==skillText)fs.writeFileSync(skill,skillText);
     const claudeSkill = path.join(
       workspace,
       ".claude/skills/isp-block-maker/SKILL.md",
@@ -110,7 +119,7 @@ export function openWorkspace(folder, root) {
     }
     const ignore = path.join(workspace, ".gitignore");
     const text = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-    const missing = [".isp/", "artifacts/generated/", "__pycache__/", "*.py[cod]"].filter(
+    const missing = [".isp/", "/tmp/", "artifacts/generated/", "__pycache__/", "*.py[cod]"].filter(
       (line) => !text.split(/\r?\n/).includes(line),
     );
     if (missing.length)

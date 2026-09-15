@@ -716,3 +716,9 @@
 .agent-help summary {cursor:pointer;color:#a5dcc5;}
 .agent-help ul {padding-left:18px;}
 .agent-help p,.agent-help small {color:#a6b3bf;}
+
+.rail.workspace-sidebar{width:min(var(--sidebar-width,200px),40vw);min-width:150px;}
+.sidebar-resizer{width:6px;flex:0 0 6px;cursor:col-resize;touch-action:none;background:#202b30;}
+.sidebar-resizer:hover,.sidebar-resizer:focus-visible{background:#7fb99b;}
+.visualization-expanded .sidebar-resizer{display:none;}
+.bundle-field{display:flex;flex-direction:column;gap:8px;margin:18px 0;font-size:13px;}.bundle-field input{width:100%;min-width:0;}.bundle-dialog .bundle-field input[type=file]{font-size:13px;}

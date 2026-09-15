@@ -1,3 +1,4 @@
+import {BundleOpen} from "./BundleOpen";
 import {BundleShare} from "./BundleShare";
 import { Viewer } from "./Viewer";
 import { terminalClipboardHandler } from "./terminal-clipboard";
@@ -247,6 +248,7 @@ function Inspector({
         {
           revision: baseRevision,
           patch: {
+            ...(global ? {overview: {description: draft.description, detail: draft.detail || "", entryPoint: draft.implementation, agentNotes: draft.principle}} : {}),
             name: draft.name,
             description: draft.description,
             detail: draft.detail || "",
@@ -279,7 +281,7 @@ function Inspector({
       setDirty(false);
       onDirty(false);
       undoStack.current=[];
-      notify("블록을 저장했습니다.");
+      notify(global ? "전체 그래프 정보를 저장했습니다." : "블록을 저장했습니다.");
       return true;
     } catch (error) {
       notify(String(error));
@@ -309,7 +311,7 @@ function Inspector({
     <section className="inspector">
       <div className="panel-title">
         <span>
-          <Box size={15} /> {global ? "GLOBAL REQUESTS" : "BLOCK INSPECTOR"}
+          <Box size={15} /> {global ? "GRAPH OVERVIEW" : "BLOCK INSPECTOR"}
         </span>
         <span className="subtle">{dirty ? "Unsaved" : "Saved"}</span>
       </div>
@@ -321,7 +323,7 @@ function Inspector({
           {block.status}
         </span>
       </div>
-      <div className="tabs" style={global ? { display: "none" } : undefined}>
+      <div className="tabs">
         <button
           className={tab === "requests" ? "active" : ""}
           onClick={() => setTab("requests")}
@@ -340,18 +342,21 @@ function Inspector({
           사용자 설명
         </button>
         <button
+          style={global ? {display: "none"} : undefined}
           className={tab === "ports" ? "active" : ""}
           onClick={() => setTab("ports")}
         >
           Shared I/O
         </button>
         <button
+          style={global ? {display: "none"} : undefined}
           className={tab === "agent" ? "active" : ""}
           onClick={() => setTab("agent")}
         >
           에이전트 설명
         </button>
         <button
+          style={global ? {display: "none"} : undefined}
           className={tab === "results" ? "active" : ""}
           onClick={() => setTab("results")}
         >
@@ -516,6 +521,14 @@ function Inspector({
               전부 구현해줘”라고 요청할 수 있습니다.
             </p>
           </div>
+        ) : global ? (
+          <>
+            <p className="hint">전체 파이프라인의 목적과 실행 방법을 기록합니다. 코드와 함께 Git으로 관리되며 에이전트 context에도 전달됩니다.</p>
+            <label>Graph Description · 목적 / 요약<textarea rows={3} maxLength={12000} value={draft.description} onChange={e=>edit("description",e.target.value)} placeholder="무엇을 입력받아 어떤 결과를 만드는 그래프인가요?" /></label>
+            <label>Graph Detail · 흐름 / 중요 사항<textarea rows={8} maxLength={30000} value={draft.detail || ""} onChange={e=>edit("detail",e.target.value)} placeholder="전체 처리 흐름, 주요 설계 결정, 제약과 주의사항" /></label>
+            <label>Entry point · 진입점 / 실행 방법<textarea rows={5} maxLength={12000} value={draft.implementation} onChange={e=>edit("implementation",e.target.value)} placeholder="workspace 상대 경로, 함수 또는 클래스, 실행 명령, 필요한 입력" /></label>
+            <label>Agent notes · 자유 메모<textarea rows={8} maxLength={30000} value={draft.principle} onChange={e=>edit("principle",e.target.value)} placeholder="에이전트가 알아야 할 맥락, 불변 조건, 미확인 사항. 형식과 언어는 자유롭게." /></label>
+          </>
         ) : tab === "spec" ? (
           <>
             <label>
@@ -953,6 +966,9 @@ function App() {
   const [deleteError,setDeleteError]=useState("");
   const [workspacePath, setWorkspacePath] = useState("");
   const [workspacePicker, setWorkspacePicker] = useState(false);
+  const [sidebarWidth,setSidebarWidth]=useState(()=>{try{const n=Number(localStorage.getItem('isp-sidebar-width'));return Number.isFinite(n)&&n>0?Math.max(150,Math.min(420,n)):200;}catch{return 200;}});
+  const sidebarDrag=useRef<{x:number;width:number}|null>(null);
+  useEffect(()=>{try{localStorage.setItem('isp-sidebar-width',String(sidebarWidth));}catch{}},[sidebarWidth]);
   const [globalOpen, setGlobalOpen] = useState(false);
   const [descriptionTarget,setDescriptionTarget]=useState<{id:string;nonce:number}|null>(null);
   const [requestTarget, setRequestTarget] = useState<{
@@ -1319,7 +1335,11 @@ function App() {
     ? {
         ...block,
         id: "global",
-        name: "전체 그래프 요청사항",
+        name: "전체 그래프 설명 · 요청사항",
+        description: project.overview?.description || "",
+        detail: project.overview?.detail || "",
+        implementation: project.overview?.entryPoint || "",
+        principle: project.overview?.agentNotes || "",
         ...project.globalWork,
         userRequests: project.globalWork?.userRequests || [],
         jobs: project.globalWork?.jobs || [],
@@ -1350,6 +1370,7 @@ function App() {
       ref={rootRef}
       style={
         {
+          "--sidebar-width": `${sidebarWidth}px`,
           "--inspector-width": `${panelSizes.inspector}px`,
           "--terminal-height": `${panelSizes.terminal}px`,
         } as React.CSSProperties
@@ -1383,6 +1404,7 @@ function App() {
           <ChevronDown size={13} />
         </button>
         <div className="top-actions">
+          <BundleOpen api={api} token={token} current={workspacePath} dirty={dirty || pending} />
           <BundleShare api={api} token={token} dirty={dirty || pending} />
           <VersionControl api={api} revision={project.revision} dirty={dirty} />
           <span className="saved">
@@ -1523,6 +1545,8 @@ function App() {
             </span>
           </div>
         </nav>
+        <div className="sidebar-resizer" role="separator" aria-label="왼쪽 사이드바 너비 조절" aria-orientation="vertical" aria-valuemin={150} aria-valuemax={420} aria-valuenow={sidebarWidth} tabIndex={0} onDoubleClick={()=>setSidebarWidth(200)} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setSidebarWidth(w=>Math.max(150,Math.min(420,w+(e.key==='ArrowRight'?20:-20))));}}} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();sidebarDrag.current={x:e.clientX,width:e.currentTarget.previousElementSibling!.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(sidebarDrag.current)setSidebarWidth(Math.max(150,Math.min(420,sidebarDrag.current.width+e.clientX-sidebarDrag.current.x)));}} onPointerUp={()=>{sidebarDrag.current=null;}} onPointerCancel={()=>{sidebarDrag.current=null;}} onLostPointerCapture={()=>{sidebarDrag.current=null;}}/>
+
         <main className="main-area">
           <div className="editor">
             <div className="editor-main">
@@ -1602,8 +1626,8 @@ function App() {
                       >
                         <button
                           className="nodrag nopan"
-                          title="전체 그래프 요청사항"
-                          aria-label="전체 그래프 요청사항"
+                          title="전체 그래프 설명 및 요청사항"
+                          aria-label="전체 그래프 설명 및 요청사항"
                           aria-pressed={globalOpen && layout.inspector}
                           onClick={() => {
                             if (dirty && !globalOpen)
@@ -1762,7 +1786,7 @@ function App() {
               global={globalOpen}
               requestFocus={
                 globalOpen
-                  ? 1
+                  ? undefined
                   : requestTarget?.id === block.id
                     ? requestTarget.nonce
                     : undefined

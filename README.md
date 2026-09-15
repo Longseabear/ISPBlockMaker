@@ -23,9 +23,9 @@ ISPBlockMaker/                  # 프레임워크 Git
 
 ## 실행
 
-### Windows 배포 v0.1.9
+### Windows 배포 v0.1.10
 
-[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.9)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
+[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.10)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
 
 설치 후 새 터미널에서 작업 폴더로 이동해 `isp-block-maker .`를 실행하면 해당 폴더를 초기화하고 서버와 브라우저를 엽니다. 시작 메뉴에서 실행하면 폴더를 선택할 수 있습니다. Git, Python, Claude Code/Codex 및 에이전트의 모델 연결은 별도 환경을 사용합니다. 폐쇄망에서는 사용할 에이전트와 모델 접속 환경을 별도로 준비해야 합니다.
 
@@ -225,3 +225,12 @@ isp-block-maker open project.bundle --into C:\Work\MyISP
 원본 제외 시 기존 크롭은 다운로드할 수 있지만 원본 미리보기·새 크롭은 제한됩니다. 동일 원본과 설정을 `viewer-open`으로 재등록하면 원본을 복구할 수 있습니다. Python 실행 환경과 외부 경로로 참조한 데이터는 별도 준비가 필요합니다.
 
 소스 체크아웃에서는 `node scripts/workspace-cli.mjs pack ...` / `open ... --no-open`으로도 사용할 수 있습니다. [스크린샷과 공유 가이드](https://longseabear.github.io/ISPBlockMaker/#sharing)는 `docs/`에서 관리합니다.
+
+
+### v0.1.10 편의 기능
+
+- 상단 **번들 열기**에서 `.bundle` 파일과 새 복원 폴더를 선택하면 복원 후 해당 프로젝트를 엽니다. 기존 폴더를 덮어쓰지 않습니다.
+- 왼쪽 사이드바 경계를 드래그하여 너비를 조절할 수 있습니다. 방향키로도 조절하며 더블클릭하면 초기 너비로 돌아갑니다.
+- 그래프 왼쪽 위 **전체 그래프 설명 및 요청사항 → 사용자 설명**에서 목적, 상세 흐름, 실행 진입점, 자유 형식 에이전트 메모를 기록합니다. `graph.json`의 `overview`에 저장하며 에이전트는 `isp graph-info`로 조회하고 `isp graph-info patch.json --revision N`으로 수정합니다.
+- 중간 산출물은 workspace의 `tmp/<task-or-job-id>/`에 작성하도록 프로젝트 스킬이 안내합니다. 루트 `tmp/`는 Git 및 번들에서 제외되므로 최종 구현/등록 결과물은 영구 경로로 옮기세요.
+- Viewer에서 Esc, 취소 아이콘 또는 드래그 없는 클릭으로 현재 크롭 선택을 해제할 수 있습니다. 저장된 크롭은 유지됩니다.

@@ -67,7 +67,14 @@ export const blockSchema = z.object({
   ),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
 });
+export const overviewSchema = z.object({
+  description: z.string().max(12000).default(""),
+  detail: z.string().max(30000).default(""),
+  entryPoint: z.string().max(12000).default(""),
+  agentNotes: z.string().max(30000).default(""),
+});
 export const graphSchema = z.object({
+  overview: overviewSchema.default(() => overviewSchema.parse({})),
   name: z.string().min(1).max(100),
   blocks: z.array(blockSchema).min(1).max(200),
   edges: z
@@ -142,6 +149,7 @@ export function contextFor(state, blockId) {
   const neighbors = new Set(connections.flatMap((e) => [e.source, e.target]));
   return {
     project: state.name,
+    overview: overviewSchema.parse(state.overview || {}),
     revision: state.revision,
     block,
     human: { summary: block.description, detail: block.detail || "", status: block.status },

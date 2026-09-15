@@ -1,3 +1,4 @@
+import {installBundleImport} from "./bundle-import.mjs";
 import os from "node:os";
 import {planBundle,packBundle} from "./bundles.mjs";
 import { installViewer } from "./viewer.mjs";
@@ -94,6 +95,7 @@ installViewer(app, {
     return delivered;
   }
 });
+installBundleImport(app,{root});
 const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false)});
 app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true'});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
 app.post('/api/bundle/export',async(req,res)=>{
@@ -289,8 +291,9 @@ function saveWork(req, state, revision) {
 app.patch("/api/global", (req, res) => {
   const current = store.get();
   const state = store.global(
-    { ...current.globalWork, userRequests: req.body.patch.userRequests },
+    { ...current.globalWork, userRequests: req.body.patch.userRequests ?? current.globalWork.userRequests },
     req.body.revision,
+    req.body.patch.overview === undefined ? undefined : {...current.overview, ...req.body.patch.overview},
   );
   broadcast();
   res.json(state);

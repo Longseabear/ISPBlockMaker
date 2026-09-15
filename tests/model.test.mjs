@@ -164,3 +164,25 @@ test("legacy blocks gain agent contracts without losing descriptions and contrac
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("graph overview persists independently of local JOBs, reaches context and survives legacy updates", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "isp-overview-"));
+  try {
+    const store = createStore(dir);
+    const initial = store.get();
+    const overview = {description:"Denoise", detail:"Preserve edges", entryPoint:"pipeline.py:run", agentNotes:"Input is linear; validate bounds."};
+    const next = store.global(initial.globalWork, initial.revision, overview);
+    assert.deepEqual(next.overview, overview);
+    assert.deepEqual(contextFor(next, next.blocks[0].id).overview, overview);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir,"graph.json"),"utf8")).overview, overview);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"project.json"),"utf8")).overview, undefined);
+    assert.throws(()=>store.global(next.globalWork, initial.revision, {description:"stale"}), /revision/);
+    const {overview: omitted, ...legacy} = next;
+    store.graph(legacy, next.revision);
+    assert.deepEqual(createStore(dir).get().overview, overview);
+    assert.deepEqual(store.get().globalWork, initial.globalWork);
+    assert.throws(()=>store.global(initial.globalWork,store.get().revision,{detail:"x".repeat(30001)}));
+    assert.deepEqual(store.get().overview, overview);
+  } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});

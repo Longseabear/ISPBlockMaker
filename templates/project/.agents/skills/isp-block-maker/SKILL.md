@@ -176,7 +176,7 @@ When asked to iterate, optimize, compare parameters, or process remaining JOBs, 
 
 ## Record a useful work summary
 
-After completing or stopping requested implementation/analysis, record one concise work summary with `node "<absolute workspace>/.isp/tools/isp.mjs" summary "<summary JSON path>"`. Store the temporary JSON in ignored `.isp/` so it does not dirty implementation history. Record this after the relevant validation and local commit, before the final presentation. For interrupted/blocked work, state unfinished items honestly; do not invent test results or reasons from a diff.
+After completing or stopping requested implementation/analysis, record one concise work summary with `node "<absolute workspace>/.isp/tools/isp.mjs" summary "<summary JSON path>"`. Store the temporary JSON in `tmp/<task-or-job-id>/` so it does not dirty implementation history. Record this after the relevant validation and local commit, before the final presentation. For interrupted/blocked work, state unfinished items honestly; do not invent test results or reasons from a diff.
 
 JSON fields: title (required short title), summary (required outcome), reason (why), changes (array of concrete before/after statements), validation (array of commands, measured results and limits), limitations (remaining issues), commit (optional verified hash), blockIds, jobIds, artifactIds (optional arrays of actual related IDs). Use the task's changed blocks and actual artifacts, not merely the terminal's pinned block. Do not auto-complete JOBs through this log; JOB lifecycle remains separate.
 
@@ -189,3 +189,11 @@ For Documentation / SDD requests, read `sdd.md` beside this skill. Generate self
 ## Image Viewer and user-selected crops
 
 For image display, zoom/pan/highlights, user-shared rendered views, image attachments, or user-selected crops, read `viewer.md` beside this skill. Use the bidirectional Viewer bridge; distinguish a display snapshot from a RAW crop.
+
+
+## Intermediate work products
+Create intermediate outputs in workspace-root `tmp/<task-or-job-id>/`. Read `temporary-files.md` for final-output promotion, sharing and cleanup rules. Keep final implementations and registered results outside `tmp/`.
+
+
+## Whole-graph context
+Read `graph-overview.md` for graph purpose, execution entry points, important constraints and freeform agent notes. Read `isp graph-info` before pipeline work and keep affected overview fields synchronized with implementation.

@@ -165,6 +165,16 @@ export async function main() {
     result = await request(
       `/context${!args.includes("--selection") && blockId ? `?blockId=${encodeURIComponent(blockId)}` : ""}`,
     );
+  else if (command === "graph-info") {
+    if (!args[0] || args[0].startsWith("--")) {
+      const state = await request("/project");
+      result = {name:state.name, revision:state.revision, overview:state.overview};
+    } else {
+      if (!option("revision")) throw new Error("Usage: isp graph-info patch.json --revision N");
+      const overview = JSON.parse(fs.readFileSync(args[0], "utf8"));
+      result = await request("/global", {method:"PATCH", body:JSON.stringify({revision:Number(option("revision")), patch:{overview}})});
+    }
+  }
   else if (command === "project") result = await request("/project");
   else if (command === "requests") {
     const query = new URLSearchParams({
@@ -389,6 +399,8 @@ isp complete-job ID --block BLOCK_ID --revision N --note "Implementation and val
 isp reopen-job ID --block BLOCK_ID --revision N --note "Remaining work"
 isp consume-request ID --block BLOCK_ID --revision N --note "Implemented and validated"
 isp context --block ID           Read a specific block
+isp graph-info                  Read whole-graph purpose, entry point and agent notes
+isp graph-info patch.json --revision N  Update supplied overview fields
 isp project                     Read the whole project
 isp add-block block.json --revision N
 isp delete-block ID --revision N [--with-edges]

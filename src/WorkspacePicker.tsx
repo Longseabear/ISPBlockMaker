@@ -9,10 +9,12 @@ export function WorkspacePicker({
   api,
   current,
   onClose,
+  onPick,
 }: {
   api: Api;
   current: string;
   onClose: () => void;
+  onPick?: (path:string) => void;
 }) {
   const [path, setPath] = useState(current),
     [listing, setListing] = useState<Listing | null>(null),
@@ -44,6 +46,7 @@ export function WorkspacePicker({
   }, []);
   async function open() {
     if (!listing) return;
+    if(onPick){onPick(listing.path);return;}
     setOpening(true);
     setError("");
     try {
@@ -60,10 +63,10 @@ export function WorkspacePicker({
         className="workspace-picker"
         role="dialog"
         aria-modal="true"
-        aria-label="작업 폴더 선택"
+        aria-label={onPick?"복원 위치 선택":"작업 폴더 선택"}
       >
         <header>
-          <h2>작업 폴더 선택</h2>
+          <h2>{onPick?"복원할 부모 폴더 선택":"작업 폴더 선택"}</h2>
           <button
             onClick={onClose}
             disabled={opening}
@@ -118,11 +121,7 @@ export function WorkspacePicker({
             )
           )}
         </div>
-        <p className="hint">
-          이 서버에 연결된 터미널을 종료하고 작업 폴더를 전환합니다. 새 폴더에는
-          graph.json, 로컬 기록(.isp), 에이전트 지침과 Git 제외 설정을
-          준비합니다. 기존 지침 내용은 보존합니다.
-        </p>
+        <p className="hint">{onPick?"선택한 폴더 아래에 새 프로젝트 폴더를 만듭니다.":"작업 폴더를 전환하면 연결된 터미널이 종료됩니다. 기존 프로젝트 지침은 보존합니다."}</p>
         <footer>
           <button onClick={onClose} disabled={opening}>
             취소
@@ -132,7 +131,7 @@ export function WorkspacePicker({
             disabled={!listing || busy || opening}
             onClick={open}
           >
-            {opening ? "전환 중…" : "이 폴더에서 작업"}
+            {onPick?"이 위치 선택":opening ? "전환 중…" : "이 폴더에서 작업"}
           </button>
         </footer>
       </section>

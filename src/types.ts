@@ -66,6 +66,7 @@ export type Artifact = {
   metadata?: Record<string, unknown>;
 };
 export type Project = {
+  overview?: {description: string; detail: string; entryPoint: string; agentNotes: string};
   globalWork?: {
     userRequests: NonNullable<Block["userRequests"]>;
     jobs: NonNullable<Block["jobs"]>;

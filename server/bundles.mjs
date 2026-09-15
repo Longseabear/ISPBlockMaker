@@ -11,7 +11,7 @@ const metaName='isp-bundle.json',historyName='.isp/history.gitbundle';
 const deniedDirs=new Set(['.git','node_modules','.venv','venv','env','__pycache__','.cache','.pytest_cache','.mypy_cache','.tox','.ssh','.aws','.azure','.codex','.npm']);
 export function excluded(name,{includeImages=true}={}){
  const parts=name.toLowerCase().split('/'),base=parts.at(-1);
- if(parts.some(s=>deniedDirs.has(s)))return true;
+ if(parts[0]==='tmp'||parts.some(s=>deniedDirs.has(s)))return true;
  if(base.endsWith('.bundle')||base.endsWith('.tmp')||/\.py[co]$/.test(base)||/^\.env(?:\.|$)/.test(base)||/^id_(rsa|ed25519|dsa)/.test(base)||/\.(pem|key|pfx|p12)$/.test(base)||['credentials.json','credentials','auth.json','.npmrc','.pypirc'].includes(base))return true;
  if(['.claude','.agents'].includes(parts[0])&&parts[1]!=='skills')return true;
  if(parts[0]==='.isp'){

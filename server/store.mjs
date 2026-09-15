@@ -13,6 +13,7 @@ export function graphSpec(input) {
   const graph = validateGraph(input);
   return {
     name: graph.name,
+    overview: graph.overview,
     blocks: graph.blocks.map(({ userRequests, jobs, ...block }) => block),
     edges: graph.edges,
   };
@@ -124,7 +125,7 @@ export function createStore(
   refresh();
   return {
     get: refresh,
-    global(input, revision) {
+    global(input, revision, overview) {
       refresh();
       if (revision !== state.revision) {
         const error = new Error(
@@ -144,6 +145,7 @@ export function createStore(
           throw new Error("요청/JOB ID 중복");
       return persist({
         ...state,
+        overview: overview === undefined ? state.overview : validateGraph({...state, overview}).overview,
         globalWork: work,
         revision: state.revision + 1,
       });
@@ -157,7 +159,7 @@ export function createStore(
         error.status = 409;
         throw error;
       }
-      const graph = validateGraph(input);
+      const graph = validateGraph({...input, overview: input.overview ?? state.overview});
       return persist({
         ...state,
         ...graph,
