@@ -1,5 +1,7 @@
 # ISP Block Maker
 
+[설치·사용·공유 가이드 (GitHub Pages)](https://longseabear.github.io/ISPBlockMaker/) · [프로젝트 공유 방법](https://longseabear.github.io/ISPBlockMaker/#sharing)
+
 로컬 CLI 에이전트와 함께 ISP 블록을 설계·구현·시각화하는 웹 작업 공간입니다. MCP 없이 HTTP API와 WebSocket으로 동작합니다.
 
 프레임워크와 작업 프로젝트는 독립 Git 저장소입니다. 예제 구현·프로젝트 그래프·로컬 결과는 이 저장소에 포함하지 않습니다.
@@ -202,3 +204,11 @@ Ctrl+S (macOS Cmd+S)는 현재 블록/전역 요청 편집을 저장합니다. C
 GPU 확장의 선택적 `reference`는 `{ "shaderSha256": "<fragment 문자열의 SHA256>", "sources": [{"path":"blocks/filter.py", "sha256":"<소스 파일 바이트의 SHA256>"}] }` 형식입니다. 셰이더는 UTF-8 문자열, 소스는 원본 파일 바이트 기준으로 해시를 계산합니다. 프로젝트 안의 2MB 이하 파일을 최대 30개 지정할 수 있습니다. 관련 소스·공통 helper를 빠짐없이 지정하세요.
 
 GPU 탭은 열려 있는 동안 15초 간격 및 ‘확장 새로고침’으로 기준과 현재 파일을 비교합니다. 상태만 갱신될 때 슬라이더 값은 보존합니다. 미등록, 기준 일치, 변경 감지, 파일 확인 불가를 구분하며 결과 메타데이터에도 조회된 상태를 남깁니다. 기준 일치는 기록한 파일이 그대로라는 의미이며 CPU/GPU 동등성 검증을 보증하지 않습니다. 경고를 없애려고 자동으로 기준을 갱신하지 말고, 변경을 검토한 뒤 관련 소스와 셰이더 기준을 함께 갱신하세요.
+
+## 작업 프로젝트 공유
+
+그래프와 구현을 함께 개발하려면 프레임워크가 아닌 프로젝트의 독립 Git 저장소를 공유하세요. 받는 사람은 clone한 폴더에서 `isp-block-maker .`로 시작합니다.
+
+요청/JOB·시각화·Viewer 이미지와 크롭까지 전달하려면 서버의 쓰기 작업을 종료한 뒤 프로젝트 사본에 `graph.json`, 구현 및 의존성 파일, `.isp/project.json`, `.isp/artifacts/`, `.isp/viewer/`, 필요한 `.isp/activity.json`을 함께 담으세요. `.isp/connection.json`과 `.isp/tools/`는 제외합니다. 새 PC에서 실행할 때 접속 정보와 로컬 CLI가 재생성됩니다. API 키와 개인 에이전트 설정은 공유하지 마세요.
+
+자세한 포함 파일과 새 PC의 확인 절차는 [프로젝트 공유 가이드](https://longseabear.github.io/ISPBlockMaker/#sharing)를 참고하세요. 안내 사이트는 `docs/`에서 관리합니다.
