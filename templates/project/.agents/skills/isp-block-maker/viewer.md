@@ -1,5 +1,11 @@
 # Image Viewer and user-selected crops
 
+## Open an image first
+
+For “show this RAW in Image Viewer”, use `node .isp/tools/isp.mjs viewer-open "input.raw" --spec "input-spec.json"` (or `.isp/tools/isp.cmd viewer-open ...` on Windows without Node on PATH). This imports/reuses the exact content+spec, opens Viewer, fits the image, and waits up to 15 seconds for UI acknowledgement. It creates no crop request. Inspect `displayed` and `command.status`; never claim success on import alone. With no connected screen it returns immediately with instructions; pending can mean unsaved UI edits or timeout. Re-present with `viewer-command-show COMMAND_ID` after resolving that condition. `--wait 0` skips acknowledgement waiting. BMP needs no spec. RAW requires known width/height, bitDepth, pattern/group and storage layout; use metadata from the generating code or ask for missing facts. Do not guess from file size alone. RAW spec example: `{"format":"raw","width":4000,"height":3000,"bitDepth":12,"pattern":"GRBG","group":1,"alignment":"lsb"}`. The supported RAW container is 16bit little-endian, not packed RAW10/12.
+
+`viewer-import` only registers; `viewer-show` takes a crop request ID, not an image ID. Prefer `viewer-open` for opening files and reserve `viewer-control` for explicit display adjustments.
+
 ## Bidirectional display control and shared views
 
 Read `viewer-view` for the current `live` display metadata. While Image Viewer is visible, the browser refreshes its displayed PNG and metadata about every 1.5 seconds. Check `active`, `updatedAt`, and `sessionId`: only the last reporting screen is represented. There is no manual send button or new saved-view list. One `current-view.png` is replaced, not accumulated as items. Crops still require explicit user addition and remain separate.

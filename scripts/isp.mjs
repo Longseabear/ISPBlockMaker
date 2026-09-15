@@ -113,6 +113,18 @@ export async function main() {
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
   if (command === "viewer-list") result=await request("/viewer");
+  else if(command === "viewer-open") {
+    if(!args[0]||args[0].startsWith('--'))throw new Error('Usage: isp viewer-open image.raw --spec image.json [--wait 15]');
+    const file=path.resolve(args[0]);
+    if(!option('spec')&&path.extname(file).toLowerCase()!=='.bmp')throw new Error('RAW에는 --spec JSON이 필요합니다: format, width, height, bitDepth, pattern, group, alignment. 크기나 Bayer 배열을 추측하지 마세요.');
+    const seconds=Number(option('wait')??15);if(!Number.isFinite(seconds)||seconds<0||seconds>120)throw new Error('--wait must be between 0 and 120 seconds');
+    const spec=option('spec')?JSON.parse(fs.readFileSync(option('spec'),'utf8')):{format:'bmp'};
+    const image=await request('/viewer/images/import',{method:'POST',body:JSON.stringify({path:file,spec,reuse:true})});
+    const command=await request('/viewer/commands',{method:'POST',body:JSON.stringify({imageId:image.id,fit:true,message:`Open ${image.name}`})});
+    let status=command;const until=Date.now()+seconds*1000;
+    while(command.delivered>0&&status.status==='pending'&&Date.now()<until){await new Promise(r=>setTimeout(r,Math.min(500,until-Date.now())));status=await request(`/viewer/commands/${command.id}`);}
+    result={image,command:status,delivered:command.delivered,displayed:status.status==='applied',next:status.status==='applied'?null:status.status==='failed'?status.error:`Viewer를 열거나 저장 중인 편집을 마친 뒤 isp viewer-command-show ${command.id}로 다시 표시하세요.`};
+  }
   else if (command === "viewer-crops") result=await request('/viewer/crop-selection');
   else if (command === "viewer-control") {
     if(!args[0])throw new Error('Usage: isp viewer-control command.json');
@@ -388,6 +400,7 @@ isp present --artifact ARTIFACT_ID --message "Comparison ready"
 isp present --graph
 isp update patch.json --block ID --revision N
 isp viewer-list                 List images and crop requests
+isp viewer-open image.raw --spec image.json [--wait 15]  Import/reuse, open and verify display
 isp viewer-crops                Read the user's latest explicitly sent crop selection
 isp viewer-control command.json  Present image, zoom, center, render and highlights
 isp viewer-command COMMAND_ID    Check applied/failed acknowledgement

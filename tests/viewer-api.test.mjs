@@ -30,6 +30,9 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post("/viewer/images/import",{path:external,spec:{format:"bmp"}})).status,400);
   const imported=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-import","input.raw","--spec","spec.json"],{cwd:temp,windowsHide:true,encoding:"utf8"}));
   const upload=await fetch(base+"/api/viewer/images",{method:"POST",headers:{Authorization:`Bearer ${boot.token}`,"Content-Type":"application/octet-stream","X-Image-Metadata":encodeURIComponent(JSON.stringify({name:"uploaded.raw",spec}))},body:data});assert.equal(upload.status,201);assert.equal((await upload.json()).sha256,imported.sha256);
+  const opened=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-open','input.raw','--spec','spec.json'],{cwd:temp,windowsHide:true,encoding:'utf8'}));
+  assert.equal(opened.image.reused,true);assert.equal(opened.displayed,false);assert.equal(opened.delivered,0);assert.equal(opened.command.imageId,opened.image.id);
+  const reopened=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-open','input.raw','--spec','spec.json','--wait','0'],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(reopened.image.id,opened.image.id);
   socket=new WebSocket(`ws://127.0.0.1:${port}/ws?token=${boot.token}`);await once(socket,"open");
   const presented=new Promise(resolve=>socket.on("message",d=>{const m=JSON.parse(d);if(m.type==="present")resolve(m.presentation);}));
   const request=await(await post("/viewer/requests",{imageId:imported.id,prompt:"Select flat area",blockId:"input"})).json();assert.equal(request.status,"pending");assert.equal((await presented).requestId,request.id);

@@ -16,8 +16,10 @@ export function installViewer(app,{current,present}) {
   installViewerSession(app,{current,present,read,write,findImage,folder});
   const register=(bytes,input)=>{
     if(!bytes.length||bytes.length>256*1024*1024)throw new Error("이미지는 최대 256MB입니다.");
-    const images=read("images");if(images.length>=200)throw new Error("Viewer 이미지 한도(200개)에 도달했습니다.");
+    const images=read("images");
     const decoded=openImage(bytes,input.spec);
+    if(input.reuse){const sha=crypto.createHash("sha256").update(bytes).digest("hex");const existing=images.find(i=>i.sha256===sha&&JSON.stringify(i.spec)===JSON.stringify(decoded.spec));if(existing)return {...existing,reused:true};}
+    if(images.length>=200)throw new Error("Viewer 이미지 한도(200개)에 도달했습니다.");
     const image={id:crypto.randomUUID(),name:z.string().min(1).max(200).parse(input.name),spec:decoded.spec,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),createdAt:new Date().toISOString()};
     fs.mkdirSync(folder(),{recursive:true});fs.writeFileSync(path.join(folder(),image.id+".bin"),bytes);
     write("images",[...images,image]);return image;
@@ -34,7 +36,7 @@ export function installViewer(app,{current,present}) {
     const file=fs.realpathSync(path.resolve(workspace,z.string().min(1).parse(req.body.path)));
     // External image paths are read-only inputs; register stores a workspace-local copy.
     if(!fs.statSync(file).isFile()||fs.statSync(file).size>256*1024*1024)throw new Error("파일 크기/형식을 확인하세요.");
-    res.status(201).json(register(fs.readFileSync(file),{name:req.body.name||path.basename(file),spec:req.body.spec}));
+    res.status(201).json(register(fs.readFileSync(file),{name:req.body.name||path.basename(file),spec:req.body.spec,reuse:req.body.reuse===true}));
   });
   app.get("/api/viewer/images/:id/preview",(req,res)=>{
     const image=findImage(req.params.id);

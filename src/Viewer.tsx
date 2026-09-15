@@ -63,7 +63,9 @@ export function Viewer({api,token,requestId,commandId,onExpand}:{api:Api;token:s
    const wheel=(event:WheelEvent)=>{
      if(!event.deltaY)return;
      event.preventDefault();
-     if(start.current||pan.current)return;
+     if(event.buttons)return;
+     // Pointer release can be missed when a preview is replaced during a drag.
+     start.current=null;pan.current=null;
      const bounds=c.getBoundingClientRect(),frame=v.getBoundingClientRect();
      const oldZoom=bounds.width/preview.width;if(!oldZoom)return;
      const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?v.clientHeight:1);
@@ -77,8 +79,10 @@ export function Viewer({api,token,requestId,commandId,onExpand}:{api:Api;token:s
      v.scrollTop=y*nextZoom-pointerY;
    };
    // React wheel handlers are passive; prevent page scrolling with a native listener.
-   v.addEventListener('wheel',wheel,{passive:false});
-   return()=>v.removeEventListener('wheel',wheel);
+   v.addEventListener('wheel',wheel,{passive:false,capture:true});
+   const reset=()=>{start.current=null;pan.current=null;};
+   window.addEventListener('blur',reset);
+   return()=>{v.removeEventListener('wheel',wheel,true);window.removeEventListener('blur',reset);reset();};
  },[preview]);
  async function refresh(){const next=await api<State>("/viewer");setState(next);}
  useEffect(()=>{let alive=true;const load=()=>api<State>("/viewer").then(s=>{if(alive)setState(s);}).catch(e=>{if(alive)setError(String(e));});void load();const timer=setInterval(load,2500);return()=>{alive=false;clearInterval(timer);};},[api]);
