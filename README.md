@@ -21,9 +21,9 @@ ISPBlockMaker/                  # 프레임워크 Git
 
 ## 실행
 
-### Windows 배포 v0.1.6
+### Windows 배포 v0.1.7
 
-[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.6)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
+[GitHub Releases](https://github.com/Longseabear/ISPBlockMaker/releases/tag/v0.1.7)에서 `ISPBlockMaker-Setup.exe`를 내려받아 설치하세요. Windows x64용이며 Node와 서버 의존성이 포함되어 별도 npm 설치가 필요하지 않습니다. 예제와 사용자 워크스페이스는 포함하지 않습니다.
 
 설치 후 새 터미널에서 작업 폴더로 이동해 `isp-block-maker .`를 실행하면 해당 폴더를 초기화하고 서버와 브라우저를 엽니다. 시작 메뉴에서 실행하면 폴더를 선택할 수 있습니다. Git, Python, Claude Code/Codex 및 에이전트의 모델 연결은 별도 환경을 사용합니다. 폐쇄망에서는 사용할 에이전트와 모델 접속 환경을 별도로 준비해야 합니다.
 
