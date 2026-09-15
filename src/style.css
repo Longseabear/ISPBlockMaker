@@ -1126,3 +1126,9 @@ h1 {
 .viewer-crop-heading button {flex:1;}
 .viewer-crop-heading input {width:16px;height:16px;accent-color:#8fdbb5;}
 .viewer-crop-batch {display:flex;flex-direction:column;gap:8px;padding:8px 0 12px;}
+
+.viewer-open-settings {margin:8px 0;}
+.viewer-open-settings summary {cursor:pointer;color:#b7d9c9;}
+.viewer-open-settings dl {font-size:11px;line-height:1.6;}
+.viewer-open-settings dt {color:#8e9eab;margin-top:6px;}
+.viewer-open-settings dd {margin:0;overflow-wrap:anywhere;}
