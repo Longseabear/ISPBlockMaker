@@ -12,6 +12,7 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
   const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';
+  app.post('/api/viewer/view/hidden',(req,res)=>{const sessionId=z.string().uuid().parse(req.body.sessionId);if(live?.sessionId===sessionId&&liveWorkspace===current().workspace)live=null;res.json({ok:true});});
   const resolveSelection=selection=>{
     const requests=read('requests'),crops=[],missing=[];
     for(const item of selection.items){const request=requests.find(r=>r.id===item.requestId&&r.imageId===selection.imageId);const crop=(request?.crops||(request?.result?[{...request.result,id:request.id}]:[])).find(c=>c.id===item.cropId);if(crop)crops.push({...item,...crop});else missing.push(item);}

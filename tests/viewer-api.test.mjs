@@ -62,6 +62,10 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await(await fetch(base+`/api/viewer/commands/${command.id}`,{headers})).json()).status,'applied');
   assert.equal((await post('/viewer/view',{...view,sessionId})).status,200);
   assert.deepEqual((await(await fetch(base+'/api/viewer/view',{headers})).json()).live.visible,view.visible);
+  await post('/viewer/view/hidden',{sessionId:crypto.randomUUID()});
+  assert.ok((await(await fetch(base+'/api/viewer/view',{headers})).json()).live);
+  await post('/viewer/view/hidden',{sessionId});
+  assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,409);
   const screen=await(await post('/viewer/views',{view,note:'Check this rendered view, not a crop',png:preview.url})).json();assert.ok(screen.id);
   assert.deepEqual(fs.readFileSync(screen.paths.image),Buffer.from(preview.url.split(',')[1],'base64'));
   const withoutVision=await(await fetch(base+`/api/viewer/views/${screen.id}/attachment`,{headers})).json();assert.equal(withoutVision.imageSupported,false);assert.equal(withoutVision.content,undefined);
