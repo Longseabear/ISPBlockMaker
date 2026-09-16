@@ -50,8 +50,8 @@ export function WorkspacePicker({
     setOpening(true);
     setError("");
     try {
-      await api("/workspace", { path: listing.path, stopTerminals: true });
-      location.reload();
+      const result=await api<{url:string}>("/workspace/open", { path: listing.path });
+      location.assign(result.url);
     } catch (e) {
       setError(String(e));
       setOpening(false);
@@ -121,7 +121,7 @@ export function WorkspacePicker({
             )
           )}
         </div>
-        <p className="hint">{onPick?"선택한 폴더 아래에 새 프로젝트 폴더를 만듭니다.":"작업 폴더를 전환하면 연결된 터미널이 종료됩니다. 기존 프로젝트 지침은 보존합니다."}</p>
+        <p className="hint">{onPick?"선택한 폴더 아래에 새 프로젝트 폴더를 만듭니다.":"선택한 폴더의 서버에 연결합니다. 실행 중이 아니면 자동으로 시작하며 기존 서버·터미널과 프로젝트 지침은 유지합니다."}</p>
         <footer>
           <button onClick={onClose} disabled={opening}>
             취소

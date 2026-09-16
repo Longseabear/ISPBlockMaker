@@ -1194,3 +1194,5 @@ h1 {
 .viewer.work-board details.viewer-settings {padding:0;border:0;height:32px;border-radius:0;} .viewer.work-board details.viewer-info-float {padding:0;} .viewer.work-board .viewer-toolbar-compact {height:32px;}
 
 .crop-region-coordinates {display:flex;flex-direction:column;gap:4px;max-height:180px;overflow:auto;}
+
+.version-columns nav .version-tabs{display:flex;gap:4px;margin-bottom:16px}.version-columns nav .version-tabs button{width:auto;flex:1;text-align:center;padding:8px 4px}.version-tabs button[aria-selected="true"]{background:#294339;border-color:#9bd4bc;color:#c9f1df}

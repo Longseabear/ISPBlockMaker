@@ -22,6 +22,23 @@ test("folder servers keep separate context and refuse in-place workspace switchi
   }
   const [a,b]=running;
   assert.equal((await fetch(a.url+"/api/workspace",{method:"POST",headers:a.headers,body:JSON.stringify({path:b.workspace,stopTerminals:true})})).status,409);
+  assert.equal((await fetch(a.url+'/api/workspace/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:b.workspace})})).status,401);
+  const connect=folder=>fetch(a.url+'/api/workspace/open',{method:'POST',headers:a.headers,body:JSON.stringify({path:folder})}).then(async r=>{assert.equal(r.status,200);return r.json();});
+  assert.equal((await connect(b.workspace)).url,b.url);
+  assert.equal((await connect(a.workspace)).url,a.url);
+  const existing=path.join(temp,'기존 프로젝트');fs.mkdirSync(existing);
+  fs.copyFileSync(path.join(b.workspace,'graph.json'),path.join(existing,'graph.json'));
+  fs.writeFileSync(path.join(existing,'AGENTS.md'),'Preserve this project guide.');
+  const opened=await Promise.all([connect(existing),connect(existing)]);
+  assert.equal(opened[0].url,opened[1].url);
+  const target=opened[0].url,health=await fetch(target+'/health').then(r=>r.json()),boot=await fetch(target+'/api/bootstrap').then(r=>r.json());
+  try{
+   assert.equal(health.workspace,fs.realpathSync(existing));
+   assert.ok(fs.readFileSync(path.join(existing,'AGENTS.md'),'utf8').startsWith('Preserve this project guide.'));
+   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(existing,'graph.json'),'utf8')),JSON.parse(fs.readFileSync(path.join(b.workspace,'graph.json'),'utf8')));
+   assert.equal((await connect(existing)).url,target);
+   assert.equal((await fetch(a.url+'/health').then(r=>r.json())).workspace,a.workspace);
+  }finally{await fetch(target+'/api/shutdown',{method:'POST',headers:{Authorization:'Bearer '+boot.token,'Content-Type':'application/json'},body:JSON.stringify({instance:health.instance})});await new Promise(r=>setTimeout(r,700));}
   await fetch(a.url+"/api/documents/request",{method:"POST",headers:a.headers,body:"{}"});
   const project=await(await fetch(b.url+"/api/project",{headers:b.headers})).json();assert.equal(project.globalWork.userRequests.length,0);
   for(const item of running){await fetch(item.url+"/api/shutdown",{method:"POST",headers:item.headers,body:JSON.stringify({instance:item.instance})});await item.exited;assert.equal(fs.existsSync(path.join(item.workspace,".isp/connection.json")),false);}

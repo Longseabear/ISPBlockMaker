@@ -1,6 +1,7 @@
+import {openWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
 import os from "node:os";
-import {planBundle,packBundle} from "./bundles.mjs";
+import {planBundle,packBundle,bundleFilename} from "./bundles.mjs";
 import { installViewer } from "./viewer.mjs";
 import { deleteArtifacts } from "./artifact-delete.mjs";
 import { serverPaths } from "./paths.mjs";
@@ -97,11 +98,11 @@ installViewer(app, {
 });
 installBundleImport(app,{root});
 const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false)});
-app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true'});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true'});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
 app.post('/api/bundle/export',async(req,res)=>{
  const options=bundleOptions.parse(req.body);if(req.body.revision!==undefined&&req.body.revision!==store.get().revision)return res.status(409).json({error:'프로젝트가 변경됐습니다. 목록을 새로 확인하세요.'});
- versionChanging=true;let temp;
- try{temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-share-'));const result=await packBundle(workspace,path.join(temp,'workspace.bundle'),options);versionChanging=false;const cleanup=()=>fs.rm(temp,{recursive:true,force:true},()=>{});res.download(result.path,'workspace.bundle',cleanup);}
+ versionChanging=true;let temp;const downloadName=bundleFilename(store.get().name);
+ try{temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-share-'));const result=await packBundle(workspace,path.join(temp,'workspace.bundle'),options);versionChanging=false;const cleanup=()=>fs.rm(temp,{recursive:true,force:true},()=>{});res.download(result.path,downloadName,cleanup);}
  catch(e){versionChanging=false;if(temp)fs.rmSync(temp,{recursive:true,force:true});throw e;}
 });
 app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
@@ -149,7 +150,7 @@ app.post("/api/versions/switch", async (req, res) => {
   const input = z
     .object({
       target: z.object({
-        kind: z.enum(["branch", "commit"]),
+        kind: z.enum(["branch", "commit", "tag"]),
         ref: z.string().min(1).max(250),
       }),
       hash: z.string().regex(/^[0-9a-f]{40,64}$/),
@@ -202,6 +203,12 @@ app.get("/api/folders", (req, res) => {
     .map((e) => ({ name: e.name, path: path.join(folder, e.name) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   res.json({ path: folder, parent: path.dirname(folder), directories });
+});
+app.post('/api/workspace/open',async(req,res)=>{
+ const input=z.object({path:z.string().min(1)}).parse(req.body);
+ const target=fs.realpathSync(input.path);
+ if(target===workspace)return res.json({workspace,url:origin});
+ res.json(await openWorkspaceServer(root,target));
 });
 app.post("/api/workspace", (req, res) => {
   const input = z

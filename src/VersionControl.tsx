@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GitBranch, RotateCcw, X } from "lucide-react";
+import { GitBranch, Tag, RotateCcw, X } from "lucide-react";
 import type { Api } from "./types";
 type Commit = {
   hash: string;
@@ -8,7 +8,7 @@ type Commit = {
   body: string;
   date: string;
 };
-type Target = { kind: "branch" | "commit"; ref: string };
+type Target = { kind: "branch" | "commit" | "tag"; ref: string };
 type GitStatus = {
   available: boolean;
   reason?: string;
@@ -21,6 +21,8 @@ type GitStatus = {
   changes?: { status: string; path: string }[];
   branches?: { name: string; hash: string }[];
   commits?: Commit[];
+  tags?: {name:string;hash:string;subject:string;date:string}[];
+  headTags?: string[];
 };
 type Preview = {
   target: Target;
@@ -58,6 +60,7 @@ export function VersionControl({
     [refInput, setRefInput] = useState("");
   const [loading, setLoading] = useState(false),
     [switching, setSwitching] = useState(false);
+  const [category,setCategory]=useState<Target["kind"]>("tag");
   const requestId = useRef(0),
     statusId = useRef(0);
   const refresh = useCallback(
@@ -134,7 +137,7 @@ export function VersionControl({
       ? "Git 없음"
       : !status.head
         ? `${status.branch || "Git"} · 커밋 없음`
-        : `${status.branch || "Detached"} · ${status.head.shortHash}${status.dirty ? " *" : ""}`;
+        : `${status.headTags?.length ? status.headTags.join(", ") : status.branch || "Detached"} · ${status.head.shortHash}${status.dirty ? " *" : ""}`;
   const commit = preview?.commit || status?.head;
   return (
     <>
@@ -147,10 +150,11 @@ export function VersionControl({
           setPreview(null);
           setTarget(null);
           setLoading(false);
+          setCategory("tag");
           setOpen(true);
         }}
       >
-        <GitBranch size={15} />
+        {status?.headTags?.length ? <Tag size={15}/> : <GitBranch size={15} />}
         <span>{label}</span>
       </button>
       {open && (
@@ -209,7 +213,16 @@ export function VersionControl({
             ) : (
               <div className="version-columns">
                 <nav aria-label="Git 버전 목록">
-                  <h3>로컬 브랜치</h3>
+                  <div className="version-tabs" role="tablist" aria-label="버전 분류">
+                    {([['tag','태그'],['branch','브랜치'],['commit','커밋']] as const).map(([kind,label])=><button key={kind} role="tab" aria-selected={category===kind} disabled={switching} onClick={()=>{requestId.current++;setCategory(kind);setTarget(null);setPreview(null);setLoading(false);setError('');}}>{label}</button>)}
+                  </div>
+                  {category==='tag'&&<>
+                    <h3>태그 · 완성된 결과물</h3>
+                    <p className="hint">완성본으로 이름 붙인 버전을 선택하세요.</p>
+                    {!status?.tags?.length&&<p className="version-empty">아직 태그가 없습니다. 완성된 커밋에 Git 태그를 붙이면 여기에 표시됩니다. 중간 작업은 커밋 탭에서 확인하세요.</p>}
+                    {status?.tags?.map(t=><button key={t.name} disabled={switching} className={target?.kind==='tag'&&target.ref===t.name?'active':''} onClick={()=>choose({kind:'tag',ref:t.name})}><strong><Tag size={13}/> {t.name}{status.headTags?.includes(t.name)?' · 현재 커밋':''}</strong><small>{t.subject}</small><small>{t.hash.slice(0,8)} · {new Date(t.date).toLocaleDateString()}</small></button>)}
+                  </>}
+                  {category==='branch'&&<><h3>로컬 브랜치 · 작업 흐름</h3>
                   {status?.branches?.map((b) => (
                     <button
                       disabled={switching}
@@ -225,6 +238,8 @@ export function VersionControl({
                       <small>{b.hash.slice(0, 8)}</small>
                     </button>
                   ))}
+                  </>}
+                  {category==='commit'&&<>
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -232,7 +247,7 @@ export function VersionControl({
                     }}
                   >
                     <label>
-                      커밋 hash / 태그
+                      커밋 hash
                       <input
                         value={refInput}
                         onChange={(e) => setRefInput(e.target.value)}
@@ -243,7 +258,7 @@ export function VersionControl({
                       미리보기
                     </button>
                   </form>
-                  <h3>최근 커밋 · 최대 50개</h3>
+                  <h3>커밋 · 중간 결과물 (최근 50개)</h3>
                   {status?.commits?.map((c) => (
                     <button
                       disabled={switching}
@@ -261,13 +276,14 @@ export function VersionControl({
                       </small>
                     </button>
                   ))}
+                  </>}
                 </nav>
                 <article>
                   {loading ? (
                     <p>변경 내용 확인 중…</p>
                   ) : (
                     <>
-                      <h3>{preview ? "선택한 버전 미리보기" : "현재 커밋"}</h3>
+                      <h3>{preview ? `선택한 ${preview.target.kind==='tag'?'태그':'버전'} · ${preview.target.ref}` : "현재 구현"}</h3>
                       {commit && (
                         <>
                           <h2>{commit.subject}</h2>
@@ -325,14 +341,14 @@ export function VersionControl({
                           )}
                           <p className="hint">
                             {preview.detached
-                              ? "커밋을 선택하면 Detached HEAD로 전환됩니다. 이후 개발을 계속하려면 해당 지점에서 브랜치를 만드세요."
+                              ? "태그·커밋을 선택하면 해당 시점의 구현을 엽니다(Detached HEAD). 개발을 이어가려면 이 지점에서 작업 브랜치를 만드세요."
                               : "선택한 로컬 브랜치로 전환합니다."}{" "}
                             적용 전까지 현재 구현은 바뀌지 않습니다.
                           </p>
                         </>
                       ) : (
                         <p className="hint">
-                          왼쪽에서 브랜치나 커밋을 선택하면 변경 요약을 볼 수
+                          왼쪽에서 태그·브랜치·커밋을 선택하면 변경 요약을 볼 수
                           있습니다.
                         </p>
                       )}

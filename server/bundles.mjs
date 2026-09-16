@@ -9,6 +9,12 @@ import {writeZip,openZip,sha256,safeName,MAX_FILE,MAX_TOTAL,MAX_FILES} from './b
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const metaName='isp-bundle.json',historyName='.isp/history.gitbundle';
 const deniedDirs=new Set(['.git','node_modules','.venv','venv','env','__pycache__','.cache','.pytest_cache','.mypy_cache','.tox','.ssh','.aws','.azure','.codex','.npm']);
+export function bundleFilename(projectName){
+ let name=String(projectName||'').normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g,'_').trim().replace(/\.bundle$/i,'').replace(/[. ]+$/g,'');
+ name=Array.from(name).slice(0,100).join('').replace(/[. ]+$/g,'')||'workspace';
+ if(/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(name))name='_'+name;
+ return name+'.bundle';
+}
 export function excluded(name,{includeImages=true}={}){
  const parts=name.toLowerCase().split('/'),base=parts.at(-1);
  if(parts[0]==='tmp'||parts.some(s=>deniedDirs.has(s)))return true;

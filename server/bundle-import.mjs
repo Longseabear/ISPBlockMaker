@@ -12,7 +12,7 @@ import {MAX_TOTAL} from './bundle-zip.mjs';
 export async function startBundleWorkspace(root,workspace){
  const probe=net.createServer();await new Promise((resolve,reject)=>{probe.once('error',reject);probe.listen(0,'127.0.0.1',resolve);});const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
  const url=`http://127.0.0.1:${port}`,child=spawn(process.execPath,[path.join(root,'server/index.mjs')],{cwd:root,env:{...process.env,ISP_WORKSPACE:workspace,PORT:String(port)},detached:true,stdio:'ignore',windowsHide:true});
- try{await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});for(let i=0;i<100;i++){if(child.exitCode!==null)throw new Error('복원된 프로젝트 서버가 종료되었습니다.');try{const h=await fetch(url+'/health',{signal:AbortSignal.timeout(500)}).then(r=>r.json());if(h.pid===child.pid&&path.resolve(h.workspace)===workspace){child.unref();return url;}}catch{}await new Promise(r=>setTimeout(r,100));}throw new Error('서버 시작 시간이 초과되었습니다. 복원된 폴더에서 isp-block-maker . 로 다시 실행하세요.');}catch(e){child.kill();throw e;}
+ try{await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});for(let i=0;i<100;i++){if(child.exitCode!==null)throw new Error('프로젝트 서버가 종료되었습니다.');try{const h=await fetch(url+'/health',{signal:AbortSignal.timeout(500)}).then(r=>r.json());if(h.pid===child.pid&&path.resolve(h.workspace)===workspace){child.unref();return url;}}catch{}await new Promise(r=>setTimeout(r,100));}throw new Error('서버 시작 시간이 초과되었습니다. 선택한 폴더에서 isp-block-maker . 로 다시 실행하세요.');}catch(e){child.kill();throw e;}
 }
 export function installBundleImport(app,{root,start=startBundleWorkspace}){
  const restored=new Map();

@@ -105,6 +105,8 @@ export async function versionStatus(workspace, history = false) {
       const [name, commit] = line.trimEnd().split("\0");
       return { name, hash: commit };
     });
+  const tags=(await git(repo,['for-each-ref','--sort=-creatordate','--format=%(refname:strip=2)%00%(objecttype)%00%(objectname)%00%(*objectname)%00%(subject)%00%(creatordate:iso-strict)%00%(*objecttype)','refs/tags/']))
+    .trim().split('\n').filter(Boolean).map(line=>{const [name,type,object,peeled,subject,date,peeledType]=line.trimEnd().split('\0');return {name,hash:peeled||object,subject,date,type,peeledType};}).filter(t=>t.type==='commit'||t.peeledType==='commit');
   let commits = [];
   if (head && history) {
     commits = (
@@ -130,11 +132,13 @@ export async function versionStatus(workspace, history = false) {
     detached: !!head && !branch,
     head,
     branches,
+    tags,
+    headTags: tags.filter(t=>t.hash===head?.hash).map(t=>t.name),
     commits,
     dirty: changes.length > 0,
     changeCount: changes.length,
     changes: changes.slice(0, 100),
-    snapshot: hash(JSON.stringify({ repo, branch, head: head?.hash, status })),
+    snapshot: hash(JSON.stringify({ repo, branch, head: head?.hash, status, tags })),
   };
 }
 const relativePath = (repo, file) =>
@@ -144,18 +148,18 @@ function localOnly(file) {
 }
 export async function previewVersion(workspace, target) {
   if (
-    !["branch", "commit"].includes(target.kind) ||
+    !["branch", "commit", "tag"].includes(target.kind) ||
     typeof target.ref !== "string" ||
     !target.ref ||
     target.ref.length > 250 ||
     target.ref.startsWith("-")
   )
-    throw new Error("올바른 브랜치 또는 커밋을 선택하세요.");
+    throw new Error("올바른 태그, 브랜치 또는 커밋을 선택하세요.");
   const current = await versionStatus(workspace);
   if (!current.available || !current.head)
     throw new Error("첫 커밋을 만든 후 버전을 선택할 수 있습니다.");
   const ref =
-    target.kind === "branch" ? `refs/heads/${target.ref}` : target.ref;
+    target.kind === "branch" ? `refs/heads/${target.ref}` : target.kind === "tag" ? `refs/tags/${target.ref}` : target.ref;
   const resolved = (
     await git(workspace, [
       "rev-parse",
@@ -259,14 +263,14 @@ export async function previewVersion(workspace, target) {
     fileCount: paths.length,
     stats: stats.slice(0, 18000),
     blockedReason,
-    detached: target.kind === "commit",
+    detached: target.kind !== "branch",
   };
 }
 export async function switchVersion(workspace, input, beforeSwitch = () => {}) {
   const preview = await previewVersion(workspace, input.target);
   if (preview.snapshot !== input.snapshot || preview.commit.hash !== input.hash)
     throw new Error(
-      "Git 상태나 선택한 브랜치가 바뀌었습니다. 미리보기를 새로고침하세요.",
+      "Git 상태나 선택한 버전이 바뀌었습니다. 미리보기를 새로고침하세요.",
     );
   if (preview.blockedReason) throw new Error(preview.blockedReason);
   await beforeSwitch();
@@ -277,7 +281,7 @@ export async function switchVersion(workspace, input, beforeSwitch = () => {}) {
       "전환 직전에 작업 내용이 변경되었습니다. 상태를 다시 확인하세요.",
     );
   const args = ["switch", "--no-guess", "--no-overwrite-ignore"];
-  if (input.target.kind === "commit")
+  if (input.target.kind !== "branch")
     args.push("--detach", preview.commit.hash);
   else {
     const now = (
