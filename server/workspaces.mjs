@@ -97,6 +97,14 @@ export function openWorkspace(folder, root) {
     if(!skillText.includes("graph-overview.md"))skillText+="\n\n## Whole-graph context\nRead `graph-overview.md` and `isp graph-info` before pipeline work. Keep the graph purpose, entry points, constraints and freeform agent notes synchronized with implementation.\n";
     skillText=skillText.replace("Store the temporary JSON in ignored `.isp/` so it does not dirty implementation history.","Store the temporary JSON in `tmp/<task-or-job-id>/` so it does not dirty implementation history.");
     if(!skillText.includes("temporary-files.md"))skillText+="\n\n## Intermediate work products\nCreate intermediate outputs in workspace-root `tmp/<task-or-job-id>/`. Read `temporary-files.md` for final-output promotion, sharing and cleanup rules. Keep final implementations and registered results outside `tmp/`.\n";
+    if(!skillText.includes('## Explicit JOB registration')){
+      const template=fs.readFileSync(path.join(root,'templates/project/.agents/skills/isp-block-maker/SKILL.md'),'utf8');
+      skillText+='\n\n## Explicit JOB registration'+template.split('## Explicit JOB registration')[1];
+    }
+    if(!skillText.includes('## Split and merge existing JOBs')){
+      const template=fs.readFileSync(path.join(root,'templates/project/.agents/skills/isp-block-maker/SKILL.md'),'utf8');
+      skillText+='\n\n## Split and merge existing JOBs'+template.split('## Split and merge existing JOBs')[1];
+    }
     if(fs.readFileSync(skill,"utf8")!==skillText)fs.writeFileSync(skill,skillText);
     const claudeSkill = path.join(
       workspace,

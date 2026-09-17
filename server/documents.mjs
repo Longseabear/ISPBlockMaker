@@ -6,7 +6,7 @@ export function requestDocument(store) {
   const state = store.get();
   const work = state.globalWork || { userRequests: [], jobs: [] };
   const existing = work.userRequests.find(r => r.text === sddInstructions &&
-    (r.status === "pending" || work.jobs.some(j => j.sourceRequestId === r.id && j.status !== "done")));
+    (r.status === "pending" || work.jobs.some(j => (j.sourceRequestId === r.id || j.sourceRequestIds?.includes(r.id)) && j.status !== "done")));
   if (existing) return state;
   return store.global({ ...work, userRequests: [...work.userRequests, {
     id: crypto.randomUUID(), text: sddInstructions, status: "pending",

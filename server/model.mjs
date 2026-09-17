@@ -12,7 +12,9 @@ export const userRequestSchema = z.object({
 });
 export const jobSchema = z.object({
   id,
-  sourceRequestId: id,
+  sourceRequestId: id.optional(),
+  sourceRequestIds: z.array(id).max(1000).optional(),
+  sourceJobs: z.array(z.object({id,title:z.string().max(200),description:z.string().max(12000),createdAt:z.iso.datetime(),resolution:z.string().max(12000),sourceRequestIds:z.array(id).max(1000)})).max(1000).optional(),
   title: z.string().trim().min(1).max(200),
   description: z.string().max(12000).default(""),
   status: z.enum(["pending", "in_progress", "done"]).default("pending"),

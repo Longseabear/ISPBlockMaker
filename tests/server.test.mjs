@@ -282,6 +282,32 @@ test(
       });
       assert.equal(response.status, 200);
       graph = await response.json();
+      const registrationRevision=graph.revision;
+      graph=await cli('create-job','--global','--revision',String(graph.revision),'--title','Queued comparison','--description','Register only; preserve requests');
+      let directJob=graph.globalWork.jobs.find(j=>j.title==='Queued comparison');
+      assert.equal(directJob.status,'pending');assert.equal(directJob.sourceRequestId,undefined);
+      assert.equal(graph.globalWork.userRequests[0].status,'pending');
+      await assert.rejects(()=>cli('create-job','--global','--revision',String(registrationRevision),'--title','Stale registration'),/revision/);
+      await assert.rejects(()=>cli('create-job','--revision',String(graph.revision),'--title','Missing scope'));
+      const directFile=path.join(testRoot,'direct-job.json');fs.writeFileSync(directFile,JSON.stringify({title:'Queued block work',description:'Validate thresholds'}));
+      graph=await cli('create-job','--block','denoise','--revision',String(graph.revision),'--file',directFile);
+      const blockJob=graph.blocks.find(b=>b.id==='denoise').jobs.find(j=>j.title==='Queued block work');
+      assert.equal(blockJob.status,'pending');assert.equal(blockJob.sourceRequestId,undefined);
+      graph=await cli('start-job',blockJob.id,'--block','denoise','--revision',String(graph.revision));
+      assert.equal(graph.blocks.find(b=>b.id==='denoise').jobs.find(j=>j.id===blockJob.id).status,'in_progress');
+      const splitFile=path.join(testRoot,'split-jobs.json');fs.writeFileSync(splitFile,JSON.stringify([{title:'Measure noise'},{title:'Compare edges'}]));
+      await assert.rejects(()=>cli('split-job',blockJob.id,'--block','denoise','--revision',String(graph.revision),'--file',splitFile),/pending/);
+      const beforeSplit=graph.revision,oldJobId=directJob.id;
+      graph=await cli('split-job',oldJobId,'--global','--revision',String(beforeSplit),'--file',splitFile);
+      const children=graph.globalWork.jobs.filter(j=>j.sourceJobs?.some(source=>source.id===oldJobId));assert.equal(children.length,2);
+      assert.ok(children.every(j=>j.status==='pending'));assert.ok(!graph.globalWork.jobs.some(j=>j.id===oldJobId));
+      const mergeFile=path.join(testRoot,'merged-job.json');fs.writeFileSync(mergeFile,JSON.stringify({title:'Unified comparison',description:'Measure noise and compare edges'}));
+      await assert.rejects(()=>cli('merge-jobs',children.map(j=>j.id).join(','),'--global','--revision',String(beforeSplit),'--file',mergeFile),/revision/);
+      graph=await cli('merge-jobs',children.map(j=>j.id).join(','),'--global','--revision',String(graph.revision),'--file',mergeFile);
+      directJob=graph.globalWork.jobs.find(j=>j.title==='Unified comparison');assert.equal(directJob.sourceJobs.length,3);
+      for(const [url,id] of [['global',directJob.id],['blocks/denoise',blockJob.id]]){
+        const deleted=await fetch(`${base}/api/${url}/jobs/${id}`,{method:'DELETE',headers,body:JSON.stringify({revision:graph.revision})});assert.equal(deleted.status,200);graph=await deleted.json();
+      }
       const globalRequests = await cli("requests", "--global");
       assert.equal(globalRequests.requests[0].scope, "global");
       assert.equal(globalRequests.requests[0].blockId, null);

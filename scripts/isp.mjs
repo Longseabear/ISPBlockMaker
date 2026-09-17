@@ -191,6 +191,19 @@ export async function main() {
     if (option("block")) query.set("blockId", option("block"));
     if (args.includes("--global")) query.set("scope", "global");
     result = await request(`/jobs?${query}`);
+  } else if(['split-job','merge-jobs'].includes(command)) {
+    const revision=Number(option('revision')),block=option('block'),global=args.includes('--global');
+    if(!!block===global||!Number.isSafeInteger(revision)||revision<1||!option('file')||!args[0]||args[0].startsWith('--'))throw new Error(`${command} ID[,ID] --block ID / --global --revision N --file tmp/jobs.json`);
+    const payload=JSON.parse(fs.readFileSync(option('file'),'utf8'));
+    const jobs=command==='split-job'?payload:[payload];
+    result=await request(`${global?'/global':`/blocks/${encodeURIComponent(block)}`}/jobs/${command==='split-job'?'split':'merge'}`,{method:'POST',body:JSON.stringify({revision,jobIds:args[0].split(','),jobs})});
+  } else if(command==='create-job') {
+    const revision=Number(option('revision')),block=option('block'),global=args.includes('--global');
+    if(!!block===global||!Number.isSafeInteger(revision)||revision<1)throw new Error('create-job requires exactly one of --block ID / --global, and --revision N');
+    if(!!option('title')===!!option('file'))throw new Error('Use --title "Title" [--description "Details"] or --file tmp/job.json');
+    if(option('file')&&option('description'))throw new Error('With --file, put the description in the JSON object.');
+    const job=option('file')?JSON.parse(fs.readFileSync(option('file'),'utf8')):{title:option('title'),description:option('description')||''};
+    result=await request(`${global?'/global':`/blocks/${encodeURIComponent(block)}`}/jobs`,{method:'POST',body:JSON.stringify({title:job.title,description:job.description,revision})});
   } else if (
     ["split-request", "start-job", "complete-job", "reopen-job"].includes(
       command,
@@ -388,6 +401,10 @@ isp context --selection         Read the block currently selected in the UI
 isp requests                     List pending user requests across ALL blocks
 isp requests --all --block ID     Include consumed requests for a block
 isp split-request ID --block BLOCK_ID --revision N --file jobs.json
+isp split-job JOB_ID --global --revision N --file tmp/jobs.json
+isp merge-jobs ID,ID --block BLOCK_ID --revision N --file tmp/merged-job.json
+isp create-job --global --revision N --title "Work to queue" [--description "Details"]
+isp create-job --block ID --revision N --file tmp/job.json
 isp jobs                         List unfinished JOBs across blocks and global scope
 isp requests --global            List graph-wide requests
 isp jobs --global                List graph-wide JOBs

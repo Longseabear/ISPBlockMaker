@@ -1,3 +1,4 @@
+import {restructureJobs,restructureSchema} from './job-restructure.mjs';
 import {openWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
 import os from "node:os";
@@ -438,6 +439,22 @@ app.post(
     res.json(state);
   },
 );
+// Direct registration does not consume a memo or start implementation.
+app.post(['/api/blocks/:id/jobs','/api/global/jobs'],(req,res)=>{
+ const input=z.object({revision:z.number().int().positive(),title:z.string().trim().min(1).max(200),description:z.string().max(12000).default('')}).parse(req.body);
+ const current=workState(store.get(),req),block=current.blocks.find(b=>b.id===req.params.id);
+ if(!block)return res.status(404).json({error:'Block not found'});
+ const job={id:crypto.randomUUID(),title:input.title,description:input.description,status:'pending',createdAt:new Date().toISOString(),resolution:''};
+ const state=saveWork(req,{...current,blocks:current.blocks.map(b=>b.id===block.id?{...b,jobs:[...b.jobs,job]}:b)},input.revision);
+ broadcast();res.status(201).json(state);
+});
+for(const mode of ['split','merge'])app.post([`/api/blocks/:id/jobs/${mode}`,`/api/global/jobs/${mode}`],(req,res)=>{
+ const input=restructureSchema.parse(req.body),current=workState(store.get(),req),block=current.blocks.find(b=>b.id===req.params.id);
+ if(!block)return res.status(404).json({error:'Block not found'});
+ const replacement=restructureJobs(block,input,mode);
+ const state=saveWork(req,{...current,blocks:current.blocks.map(b=>b.id===block.id?replacement:b)},input.revision);
+ broadcast();res.json(state);
+});
 app.get("/api/jobs", (req, res) => {
   const status = z
     .enum(["open", "pending", "in_progress", "done", "all"])

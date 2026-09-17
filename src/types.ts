@@ -16,7 +16,9 @@ export type Block = {
   }[];
   jobs?: {
     id: string;
-    sourceRequestId: string;
+    sourceRequestId?: string;
+    sourceRequestIds?: string[];
+    sourceJobs?: {id:string;title:string;description:string;createdAt:string;resolution:string;sourceRequestIds:string[]}[];
     title: string;
     description: string;
     status: "pending" | "in_progress" | "done";

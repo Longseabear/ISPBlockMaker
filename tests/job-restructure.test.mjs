@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {restructureJobs} from '../server/job-restructure.mjs';
+import {jobSchema} from '../server/model.mjs';
+const job=(id,source)=>({id,sourceRequestId:source,title:id,description:'Constraints for '+id,status:'pending',createdAt:new Date().toISOString(),resolution:'Preserved note'});
+test('Split/merge preserves provenance, rewires requests and never mutates originals',()=>{
+ const block={jobs:[job('a','r1'),job('b','r2'),job('other')],userRequests:[{id:'r1',jobIds:['a']},{id:'r2',jobIds:['b']}]};
+ const merged=restructureJobs(block,{jobIds:['a','b'],jobs:[{title:'Combined',description:'Both constraints'}]},'merge');
+ const result=merged.jobs[0];jobSchema.parse(result);
+ assert.deepEqual(result.sourceRequestIds,['r1','r2']);assert.equal(result.sourceRequestId,undefined);
+ assert.equal(result.sourceJobs[0].description,'Constraints for a');assert.equal(result.sourceJobs[0].resolution,'Preserved note');
+ assert.ok(merged.userRequests.every(r=>r.jobIds[0]===result.id));assert.equal(block.jobs.length,3);
+ const split=restructureJobs(merged,{jobIds:[result.id],jobs:[{title:'First',description:'One'},{title:'Second',description:'Two'}]},'split');
+ assert.equal(split.jobs.length,3);assert.equal(split.jobs[2].id,'other');
+ assert.ok(split.userRequests.every(r=>r.jobIds.length===2));
+ assert.equal(split.jobs[0].sourceJobs.length,3);jobSchema.parse(split.jobs[0]);
+ for(const status of ['in_progress','done'])assert.throws(()=>restructureJobs({...block,jobs:[{...block.jobs[0],status}]},{jobIds:['a'],jobs:[{title:'x'},{title:'y'}]},'split'),/pending/);
+ assert.throws(()=>restructureJobs(block,{jobIds:['a','a'],jobs:[{title:'x'}]},'merge'),/Duplicate/);
+ assert.throws(()=>restructureJobs(block,{jobIds:['a','missing'],jobs:[{title:'x'}]},'merge'),/not found/);
+ assert.throws(()=>restructureJobs(block,{jobIds:['a'],jobs:[{title:'x'}]},'split'),/at least two/);
+});

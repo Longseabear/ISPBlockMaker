@@ -197,3 +197,20 @@ Create intermediate outputs in workspace-root `tmp/<task-or-job-id>/`. Read `tem
 
 ## Whole-graph context
 Read `graph-overview.md` for graph purpose, execution entry points, important constraints and freeform agent notes. Read `isp graph-info` before pipeline work and keep affected overview fields synchronized with implementation.
+
+
+## Explicit JOB registration
+When the user says “JOB 등록해”, “작업으로 남겨줘”, or “queue this”, register work without implementing it unless the same request explicitly asks for execution. Read `project` and `jobs` first; confirm scope from the user's intent, not merely the terminal's pinned block. Use `--block ID` for an identified block and `--global` for project-wide work. If the intended block cannot be determined, ask rather than silently attaching it elsewhere.
+
+Use `create-job --global --revision N --title "Compare noise across test images" --description "Acceptance: report edge preservation and noise metrics."`, or `create-job --block BLOCK_ID --revision N --file tmp/job-registration/job.json`. The file contains one object: `{"title":"Task title","description":"User intent, constraints and acceptance criteria"}`. Run these through the workspace-local `isp` CLI, like the other commands in this skill. Direct registration creates a pending JOB with no source request; do not fabricate or consume a memo. Existing UI request text should instead use `split-request` to preserve provenance.
+
+For multiple tasks create one checkable JOB at a time using the returned revision. Preserve unrelated work. On a stale revision or uncertain response, re-read `jobs` and reconcile before retrying; do not blindly duplicate a registration. Verify the new JOB ID and pending state, then tell the user its scope, title and ID and that it is available in JOB Queue. Registration alone does not authorize `start-job`, implementation, commits or completion. If execution was requested too, use the normal start/validate/complete workflow after registration.
+
+
+## Split and merge existing JOBs
+Use these operations when asked to split or combine queued work; restructuring is not execution. Read `jobs` and the current revision first. They work within one explicit `--block ID` or `--global` scope, never across scopes. Only pending JOBs can be replaced. Do not silently reopen in-progress/completed work: stop/reconcile the active worker first, and get a clear user decision before reopening completed work.
+
+- `split-job JOB_ID --block BLOCK_ID --revision N --file tmp/job-plan/split.json`: the file is an array of at least two `{ "title": "...", "description": "..." }` objects.
+- `merge-jobs JOB_ID,JOB_ID --global --revision N --file tmp/job-plan/merged.json`: the file is one `{ "title": "...", "description": "..." }` object. Supply at least two distinct JOB IDs.
+
+Preserve every constraint and acceptance criterion when distributing or combining descriptions. Record dependencies in descriptions; do not invent new scope. The server atomically replaces original pending cards with new pending cards, rewires source requests to the new IDs, and preserves original titles, descriptions, notes and IDs in `sourceJobs`; `sourceRequestIds` contains all source requests (including merged sources). Read every source, not just the legacy `sourceRequestId`. The UI exposes history in each resulting JOB card. Superseded IDs are no longer executable. Re-read the returned list and report old → new IDs with the new scope/titles. On stale revision or uncertain response, inspect current JOBs and their history instead of blindly repeating the operation. Deleted work must not be recreated. These operations do not complete JOBs, start work or commit code.

@@ -425,13 +425,14 @@ function Inspector({
                   </div>
                 )}
                 <details>
-                  <summary>요청 원문</summary>
+                  <summary>{job.sourceRequestId || job.sourceRequestIds?.length ? "요청 원문" : "직접 등록된 JOB"}</summary>
                   <p>
-                    {block.userRequests?.find(
-                      (r) => r.id === job.sourceRequestId,
-                    )?.text || "원문이 삭제되었습니다."}
+                    {block.userRequests?.filter(
+                      (r) => r.id === job.sourceRequestId || job.sourceRequestIds?.includes(r.id),
+                    ).map(r=>r.text).join("\n\n") || (job.sourceRequestId || job.sourceRequestIds?.length ? "원문이 삭제되었습니다." : "메모 변환 없이 직접 등록된 작업입니다.")}
                   </p>
                 </details>
+                {!!job.sourceJobs?.length&&<details><summary>분할·병합 이력 ({job.sourceJobs.length})</summary>{job.sourceJobs.map(source=><div key={source.id}><strong>{source.title}</strong><small> · {source.id}</small><p style={{whiteSpace:'pre-wrap'}}>{source.description}</p>{source.resolution&&<p>{source.resolution}</p>}</div>)}</details>}
               </article>
             ))}
             <h3 className="jobs-heading">저장된 요청</h3>
