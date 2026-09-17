@@ -90,7 +90,21 @@ isp artifact artifacts/generated/result.html --block denoise --revision 1 --titl
 
 작업 완료 후 `isp present --blocks ID,ID`로 변경 블록을 강조하고 화면에 맞추거나, `isp present --artifact ARTIFACT_ID`로 등록된 시각화를 바로 표시할 수 있습니다. `--message`는 완료 알림을 지정하며 `--graph`는 전체 그래프를 표시합니다. 현재 연결된 탭에만 전달하고 그래프 revision은 변경하지 않습니다. 미저장 편집이 있으면 사이드바의 ‘결과 보기’로 적용을 보류합니다. 터미널 세션과 표시 상태는 유지합니다. 스킬에는 작업 종류별 최종 화면 선택과 중간 단계의 불필요한 전환을 피하는 지침이 포함되어 있습니다.
 
-`templates/project/.agents/skills/isp-block-maker/SKILL.md`가 공통 스킬이며, Claude Code는 `templates/project/.claude/skills/isp-block-maker/SKILL.md`에서 같은 문서를 참조합니다. 전역 스킬 폴더와 사용자 설정은 변경하지 않습니다. workspace 및 그 아래에서 시작한 에이전트가 사용할 수 있고, `workspace/<프로젝트>/AGENTS.md`와 `CLAUDE.md`에도 적용 경로가 연결되어 있습니다. 에이전트는 선택한 프로젝트 루트에서 시작합니다. templates의 스킬은 각 프로젝트의 .agents/.claude 폴더로 복사됩니다.
+`isp-block-maker`는 공통 연결 규칙과 작업별 스킬을 안내하는 짧은 진입점입니다. 에이전트는 필요한 스킬과 참고 문서만 읽으며, 여러 작업을 요청하면 해당 스킬들을 조합합니다.
+
+| 스킬 | 사용하는 상황 | 주요 내용 |
+| --- | --- | --- |
+| `isp-block-maker` | ISP 작업 시작, 어떤 도구를 쓸지 불명확할 때 | 로컬 연결, 컨텍스트, 작업별 안내 |
+| `isp-block-development` | 블록 구현·수정, 그래프 연결, 알고리즘 개선 | 그래프 범위, 입출력 계약, description/detail/에이전트 설명 동기화 |
+| `isp-job-management` | JOB 등록·분할·병합, 메모 구현, 작업 상태 관리 | 등록과 실행 구분, 요청 출처 보존, 완료·취소 처리 |
+| `isp-visualizations` | “리포트 발행해”, “시각화해”, 결과 비교 | HTML·이미지 생성, Visualizations 등록과 표시 |
+| `isp-image-viewer` | “뷰어에 띄워”, RAW 검사, 현재 화면·크롭 분석 | RAW/CFA 설정, 확대·이동·강조, 양방향 화면·크롭 전달 |
+| `isp-documentation` | 명시적인 SDD·Documentation 요청 | Overview → Flow → 블록 상세 HTML 문서 |
+| `isp-version-sharing` | 구현 버전 저장·선택, 태그, 프로젝트 공유 | 독립 Git 저장소, 로컬 커밋, 번들 저장·복원 |
+
+템플릿은 프로젝트를 열 때 `.agents/skills/`와 `.claude/skills/`에 공급됩니다. Claude용 스킬은 같은 이름의 공통 문서를 참조합니다. 프로젝트 및 하위 디렉터리에 적용되며, 전역 스킬 폴더나 사용자 설정은 변경하지 않습니다. 프로젝트의 `AGENTS.md`와 `CLAUDE.md`도 기존 진입점을 안내합니다.
+
+기본 공급본과 확인 가능한 구형 기본본은 자동 갱신합니다. 사용자가 수정한 파일은 보존하고, 병합이 필요한 새 지침은 `.isp/skill-updates/`에 원래 경로대로 남깁니다. 공급 이력은 `.isp/skill-manifest.json`에 기록합니다. 프로젝트의 실제 목적·진입점·제약은 스킬에 복제하지 않고 그래프 Overview와 블록 설명에 기록하세요.
 
 Codex에서는 `$isp-block-maker`, Claude Code에서는 `/isp-block-maker`로 호출합니다. 이미 실행 중인 에이전트에서 목록에 보이지 않으면 다시 시작하거나 스킬 파일을 직접 읽도록 요청하세요. 스킬 발견 방식은 [Codex 공식 문서](https://developers.openai.com/codex/skills)와 [Claude Code 공식 문서](https://code.claude.com/docs/en/skills)를 참고하세요.
 
@@ -102,7 +116,7 @@ Codex에서는 `$isp-block-maker`, Claude Code에서는 `/isp-block-maker`로 �
 
 상단 프로젝트 이름을 클릭하면 **작업 폴더 선택** 창이 열립니다. 경로 입력 후 찾아보기 또는 하위 폴더 탐색으로 이동한 뒤 “이 폴더에서 작업”을 누르세요. 전환은 서버 전체에 적용되며 연결된 터미널은 종료됩니다. 새 터미널은 선택한 폴더에서 시작합니다. 다른 탭은 작성 내용을 보관한 뒤 새로고침해야 합니다.
 
-외부 작업 폴더는 `graph.json`과 `.isp/`에 각각 그래프와 로컬 기록을 저장합니다. 처음 여는 폴더에는 빈 Input 블록, 프로젝트 스킬, CLI(`.isp/tools/isp.mjs`), AGENTS/CLAUDE 안내와 Git 제외 규칙을 준비합니다. 기존 지침은 보존하며 기존 스킬은 덮어쓰지 않습니다. Git 저장소를 자동 생성하거나 커밋하지는 않습니다. 모든 프로젝트는 자신의 `.isp/`를 사용하며, 프레임워크 `.isp/`는 활성 경로와 연결 정보만 관리합니다. 마지막 선택 경로는 서버 재시작 후에도 사용합니다. 폴더를 옮겼거나 삭제해 서버를 시작할 수 없다면 앱의 `.isp/active-workspace.json`을 수정하거나 제거하여 기본 경로로 돌아올 수 있습니다.
+외부 작업 폴더는 `graph.json`과 `.isp/`에 각각 그래프와 로컬 기록을 저장합니다. 처음 여는 폴더에는 빈 Input 블록, 프로젝트 스킬, CLI(`.isp/tools/isp.mjs`), AGENTS/CLAUDE 안내와 Git 제외 규칙을 준비합니다. 기존 사용자 지침과 직접 수정한 스킬은 보존하며, 수정하지 않은 기본 스킬은 갱신합니다. Git 저장소를 자동 생성하거나 커밋하지는 않습니다. 모든 프로젝트는 자신의 `.isp/`를 사용하며, 프레임워크 `.isp/`는 활성 경로와 연결 정보만 관리합니다. 마지막 선택 경로는 서버 재시작 후에도 사용합니다. 폴더를 옮겼거나 삭제해 서버를 시작할 수 없다면 앱의 `.isp/active-workspace.json`을 수정하거나 제거하여 기본 경로로 돌아올 수 있습니다.
 
 ```text
 Browser ── HTTP ──────────── Local Node server ── workspace/<프로젝트>/graph.json (Git)

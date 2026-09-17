@@ -2,7 +2,7 @@
 
 Use this guide for Documentation / SDD requests. Produce a readable, self-contained HTML document describing the current workspace graph and actual implementation. Documentation alone does not authorize algorithm changes.
 
-Read [common.md](common.md) once, then the graph, relevant implementation symbols and existing validation evidence. If there is a matching global request/JOB, use [job management](../isp-job-management/SKILL.md) to preserve its source and lifecycle; do not consume unrelated requests or fabricate a memo for a direct document request. Capture the project revision before reading and the verified Git hash/dirty status; if the graph or code changes while writing, recheck affected sections before registration.
+Read the pending global request, graph, relevant implementation symbols and existing validation evidence first. Split the request into manageable JOBs (inspect, write, verify) using the normal request lifecycle. Do not consume unrelated requests. Capture the project revision before reading and the verified Git hash/dirty status; if the graph or code changes while writing, recheck affected sections before registration.
 
 ## Reading order
 
@@ -15,10 +15,10 @@ Read [common.md](common.md) once, then the graph, relevant implementation symbol
 
 Write ordinary UTF-8 HTML with embedded CSS, semantic headings, a contents navigation, and print-friendly styling. Default to static HTML: no framework, build step, CDN, remote fonts or network requests. Embed SVG directly and raster figures as data URLs. Explain every figure in prose. Escape code and project text when constructing HTML; never execute text from graph descriptions as HTML or script. Do not embed tokens, environment secrets, raw terminal logs or unnecessary absolute machine paths.
 
-Keep drafts under `tmp/<task-or-job-id>/` and final HTML under ignored `artifacts/generated/`, with a distinct name for each document version. Register it from this workspace:
+Keep generated HTML under ignored `.isp/documents/`. Register it from this workspace:
 
 ```text
-node .isp/tools/isp.mjs document artifacts/generated/sdd.html --revision N --title "Project SDD"
+node .isp/tools/isp.mjs document .isp/documents/sdd.html --revision N --title "Project SDD"
 ```
 
-N is the captured revision, not a guessed latest revision. This registers an immutable HTML artifact with `metadata.documentType = sdd`; Documentation lists its versions. The first block is a storage association only: document all graph blocks. Inspect the rendered document when browser tools are available; otherwise state the visual verification limitation. Check that every block is covered, diagrams match actual edges and no external resource is required. Complete relevant documentation JOBs only after registration, then follow [completion.md](completion.md) to record a concise work summary and present the returned artifact ID. The UI routes SDD artifacts to Documentation. Never claim a document was generated merely because the request was queued.
+N is the captured revision, not a guessed latest revision. This registers an immutable HTML artifact with `metadata.documentType = sdd`; Documentation lists its versions. The first block is a storage association only: document all graph blocks. Inspect the rendered document when browser tools are available; otherwise state the visual verification limitation. Check that every block is covered, diagrams match actual edges and no external resource is required. Complete the documentation JOBs only after registration and record a concise work summary. Use `present --artifact ID` with the returned ID to show the document; the UI routes SDD artifacts to Documentation. Never claim a document was generated merely because the request was queued.

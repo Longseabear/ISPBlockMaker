@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createStore } from "./store.mjs";
+import { installWorkspaceSkills } from "./skills.mjs";
 
 export function openWorkspace(folder, root) {
   const workspace = fs.realpathSync(folder);
@@ -42,6 +43,9 @@ export function openWorkspace(folder, root) {
       { flag: "wx" },
     );
   }
+  const skills = installWorkspaceSkills(workspace, root);
+  if (skills.pending.length)
+    console.warn("Local skill edits preserved; updated templates are in .isp/skill-updates/: " + skills.pending.join(", "));
   const store = createStore(dataDir, graphFile);
   const artifactDir = path.join(dataDir, "artifacts");
   fs.mkdirSync(artifactDir, { recursive: true });
@@ -56,67 +60,6 @@ export function openWorkspace(folder, root) {
       path.join(dataDir, "tools", "isp.cmd"),
       `@echo off\r\n"${process.execPath}" "%~dp0isp.mjs" %*\r\n`,
     );
-    const skill = path.join(
-      workspace,
-      ".agents/skills/isp-block-maker/SKILL.md",
-    );
-    if (!fs.existsSync(skill)) {
-      fs.mkdirSync(path.dirname(skill), { recursive: true });
-      const template = fs.readFileSync(
-        path.join(root, "templates/project/.agents/skills/isp-block-maker/SKILL.md"),
-        "utf8",
-      );
-      fs.writeFileSync(
-        skill,
-        template
-          .replace("../../../isp.mjs", "../../../.isp/tools/isp.mjs")
-          .replaceAll('"<absolute workspace>/isp.mjs"', '"<absolute workspace>/.isp/tools/isp.mjs"')
-          .replaceAll("workspace/graph.json", "graph.json"),
-      );
-    }
-    const viewerGuide=path.join(path.dirname(skill),"viewer.md");
-    if(!fs.existsSync(viewerGuide))fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),viewerGuide);
-    if(!fs.readFileSync(viewerGuide,"utf8").includes("## Crop batch description")){const guide=fs.readFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),"utf8");fs.appendFileSync(viewerGuide,"\n\n## Crop batch description"+guide.split("## Crop batch description")[1]);}
-    if(!fs.readFileSync(viewerGuide,"utf8").includes("## Multi-region crop items")){const guide=fs.readFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/viewer.md"),"utf8");fs.appendFileSync(viewerGuide,"\n\n## Multi-region crop items"+guide.split("## Multi-region crop items")[1]);}
-    const viewerGuideText=fs.readFileSync(viewerGuide,"utf8");
-    if(viewerGuideText.includes("Shift-drag to pan"))fs.writeFileSync(viewerGuide,viewerGuideText.replaceAll("Shift-drag to pan","right/middle-drag to pan"));
-    if(!fs.readFileSync(skill,"utf8").includes("viewer.md"))fs.appendFileSync(skill,"\n\n## Image Viewer and user-selected crops\nWhen image analysis needs a user-selected region, read `viewer.md` beside this skill. Request and present an ROI, then read the submitted crop and metadata.\n");
-    const sddGuide = path.join(path.dirname(skill), "sdd.md");
-    if (!fs.existsSync(sddGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/sdd.md"), sddGuide);
-    if (!fs.readFileSync(skill, "utf8").includes("sdd.md"))
-      fs.appendFileSync(skill, "\n\n## SDD documentation\nFor Documentation / SDD requests, read `sdd.md` beside this skill. Generate self-contained HTML in Overview → Flow → block details order and register with `isp document`.\n");
-    const loopGuide = path.join(path.dirname(skill), "experiment-loop.md");
-    if (!fs.existsSync(loopGuide)) fs.copyFileSync(path.join(root, "templates/project/.agents/skills/isp-block-maker/experiment-loop.md"), loopGuide);
-    if (!fs.readFileSync(skill, "utf8").includes("experiment-loop.md"))
-      fs.appendFileSync(skill, "\n\n## Repeatable experiment loop\nFor iteration or remaining JOB requests, read `experiment-loop.md` beside this skill. Do not start an indefinite scheduler.\n");
-    const temporaryGuide = path.join(path.dirname(skill), "temporary-files.md");
-    if (!fs.existsSync(temporaryGuide)) fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/temporary-files.md"),temporaryGuide);
-    const graphGuide = path.join(path.dirname(skill), "graph-overview.md");
-    if (!fs.existsSync(graphGuide)) fs.copyFileSync(path.join(root,"templates/project/.agents/skills/isp-block-maker/graph-overview.md"),graphGuide);
-    let skillText=fs.readFileSync(skill,"utf8");
-    if(!skillText.includes("graph-overview.md"))skillText+="\n\n## Whole-graph context\nRead `graph-overview.md` and `isp graph-info` before pipeline work. Keep the graph purpose, entry points, constraints and freeform agent notes synchronized with implementation.\n";
-    skillText=skillText.replace("Store the temporary JSON in ignored `.isp/` so it does not dirty implementation history.","Store the temporary JSON in `tmp/<task-or-job-id>/` so it does not dirty implementation history.");
-    if(!skillText.includes("temporary-files.md"))skillText+="\n\n## Intermediate work products\nCreate intermediate outputs in workspace-root `tmp/<task-or-job-id>/`. Read `temporary-files.md` for final-output promotion, sharing and cleanup rules. Keep final implementations and registered results outside `tmp/`.\n";
-    if(!skillText.includes('## Explicit JOB registration')){
-      const template=fs.readFileSync(path.join(root,'templates/project/.agents/skills/isp-block-maker/SKILL.md'),'utf8');
-      skillText+='\n\n## Explicit JOB registration'+template.split('## Explicit JOB registration')[1];
-    }
-    if(!skillText.includes('## Split and merge existing JOBs')){
-      const template=fs.readFileSync(path.join(root,'templates/project/.agents/skills/isp-block-maker/SKILL.md'),'utf8');
-      skillText+='\n\n## Split and merge existing JOBs'+template.split('## Split and merge existing JOBs')[1];
-    }
-    if(fs.readFileSync(skill,"utf8")!==skillText)fs.writeFileSync(skill,skillText);
-    const claudeSkill = path.join(
-      workspace,
-      ".claude/skills/isp-block-maker/SKILL.md",
-    );
-    if (!fs.existsSync(claudeSkill)) {
-      fs.mkdirSync(path.dirname(claudeSkill), { recursive: true });
-      fs.copyFileSync(
-        path.join(root, "templates/project/.claude/skills/isp-block-maker/SKILL.md"),
-        claudeSkill,
-      );
-    }
     const guidance =
       "\n<!-- ISP Block Maker workspace -->\nFor ISP graph and implementation work, read `.agents/skills/isp-block-maker/SKILL.md`. Use `node .isp/tools/isp.mjs` from this folder, or the absolute ISP_CLI path in terminals. graph.json is versioned with implementation code; .isp/ contains local state.\n";
     for (const name of ["AGENTS.md", "CLAUDE.md"]) {

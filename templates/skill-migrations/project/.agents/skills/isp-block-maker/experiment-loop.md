@@ -2,8 +2,6 @@
 
 Use this protocol when the user asks for repeated experiments or to implement remaining JOBs. Stay inside the selected project and graph. Preserve the user's explicit scope and resource limits.
 
-Read [common.md](common.md) once. Use [job management](../isp-job-management/SKILL.md) for actual requests/JOBs and [block development](../isp-block-development/SKILL.md) when changing algorithms. Keep intermediate experiment scripts/images in `tmp/<task-or-job-id>/`; retained run records and registered final results belong in durable local storage. This protocol is not an automatic scheduler.
-
 ## Establish the experiment
 
 1. Read `project`, `requests`, and `jobs` with the project CLI. The JOB Queue UI aggregates global and block work; do not restrict discovery to the terminal's pinned block. Keep a stable list of target IDs for this experiment.
@@ -19,7 +17,7 @@ Read [common.md](common.md) once. Use [job management](../isp-job-management/SKI
 - Separate current candidate from best accepted candidate. A lower input/output difference is not necessarily better denoising. Do not label GPU speed or quality as improved without an appropriate reference and measurement.
 - Save the run record under ignored `.isp/experiments/<run-id>/`: parameters, input identity, hashes, command, exit code, metric, acceptance decision, runtime and artifact IDs. Avoid including credentials or full session environment.
 - Register visual results with `artifact` (or `registerArtifact` from the framework CLI) and metadata. Include project commit/dirty state, source hash, run ID, input/seed and parameters. Keep local run records out of Git.
-- For accepted graph/code changes, follow the [local Git commit procedure](../isp-version-sharing/SKILL.md), then re-read project/JOB and call `complete-job` with evidence and commit hash. If a candidate is rejected, preserve its result and describe the disposition; do not reset/stash unrelated work or claim the current file tree is the best version without verifying it. An analysis-only completed JOB does not require an empty commit.
+- For accepted graph/code changes, follow the skill's local Git commit procedure, then re-read project/JOB and call `complete-job` with evidence and commit hash. If a candidate is rejected, preserve its result and describe the disposition; do not reset/stash unrelated work or claim the current file tree is the best version without verifying it. An analysis-only completed JOB does not require an empty commit.
 
 ## GPU simulator extensions
 
@@ -31,7 +29,7 @@ Sliders only change preview values. Apply to the graph explicitly after evaluati
 
 ## Finish and present
 
-Stop when the request/JOB scope is exhausted, the target is met, or a bound is reached. Report rounds attempted, accepted/best candidate, baseline delta, failed/unfinished JOBs and exact commit/artifact references. Follow [completion.md](completion.md): for visual experiments present the result artifact; for structural edits highlight modified blocks and edges. Do not consume unresolved JOBs to make the queue look empty.
+Stop when the request/JOB scope is exhausted, the target is met, or a bound is reached. Report rounds attempted, accepted/best candidate, baseline delta, failed/unfinished JOBs and exact commit/artifact references. For visual experiments, present the result artifact. For structural edits, highlight modified blocks and edges. Do not consume unresolved JOBs to make the queue look empty.
 
 ## Copyable user prompt
 

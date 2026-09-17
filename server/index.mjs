@@ -121,7 +121,8 @@ function broadcast() {
     if (client.readyState === WebSocket.OPEN) client.send(message);
 }
 app.get("/api/bootstrap", (req, res) => {
-  res.cookie("isp_session", token, {
+  // Cookies ignore ports; each workspace server needs its own cookie name.
+  res.cookie(`isp_${port}`, token, {
     httpOnly: true,
     sameSite: "strict",
     path: "/artifacts",
@@ -724,7 +725,7 @@ app.post("/api/demo", async (req, res, next) => {
 });
 app.get("/artifacts/:file", (req, res) => {
   const cookies = (req.headers.cookie || "").split(";").map((s) => s.trim());
-  if (!cookies.includes(`isp_session=${token}`) && !authorized(req))
+  if (!cookies.includes(`isp_${port}=${token}`) && !authorized(req))
     return res.sendStatus(401);
   const artifact = store
     .get()
