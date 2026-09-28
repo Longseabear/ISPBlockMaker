@@ -1,0 +1,3 @@
+.viewer-canvas .viewer-pixel-values {pointer-events:none;cursor:inherit;z-index:1;image-rendering:auto;}
+.viewer-pixel-status {position:absolute;top:8px;right:8px;z-index:2;pointer-events:none;padding:4px 7px;border:1px solid #56677580;border-radius:5px;background:#111a22de;color:#cedfe9;font-size:10px;line-height:1.3;}
+.viewer-pixel-status.is-error {color:#ffcfb6;}

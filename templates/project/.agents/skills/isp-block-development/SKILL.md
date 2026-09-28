@@ -5,7 +5,7 @@ description: Implement or edit ISP graph blocks, connections, code entry points,
 
 # Develop the graph
 
-Read [shared rules](../isp-block-maker/common.md) once. Read `graph-info`, the relevant block contexts, and their actual source before editing. For pipeline purpose, entry points or graph-wide notes, use [graph-overview.md](../isp-block-maker/graph-overview.md). Read [version rules](../isp-version-sharing/SKILL.md) before changing versioned files so existing user changes remain identifiable.
+Read [shared rules](../isp-block-maker/common.md) once. Read `workspace-info`, `graph-info`, the relevant block contexts, and their actual source before editing. For pipeline purpose, entry points or graph-wide notes, use [graph-overview.md](../isp-block-maker/graph-overview.md). Read [version rules](../isp-version-sharing/SKILL.md) before changing versioned files so existing user changes remain identifiable. For substantial algorithm/JOB work, follow [attempt tracking](../isp-version-sharing/work-tracking.md) to retain the starting implementation, execution conditions and resulting checkpoint; a spelling fix needs no artificial experiment.
 
 ## Implementation boundary
 
@@ -42,11 +42,13 @@ mermaid
 
 `add-block` takes a block object with stable `id` and `name`; omitted text/ports are empty, status defaults to `draft`, position to `(300,300)`. A port is `{"id":"image","name":"Image","type":"image"}`; types are `image`, `mask`, `signal`. `update` accepts a partial block object; read an existing block for the current schema. Preserve requests/JOBs and unrelated metadata.
 
-Set workspace-relative `implementation` and actual `implementationSymbol` (for example `flat_detection` or `Denoiser.process`). The code viewer jumps to this function/class, especially for shared files. Rename/move references with the code; an absent/ambiguous symbol leaves the viewer at the top. The fallback converts block-ID hyphens to underscores, but explicit accurate metadata is preferable.
+Set `implementation` relative to the discovered `sourceRoot` and actual `implementationSymbol` (for example `flat_detection` or `Denoiser.process`). The code viewer jumps to this function/class, especially for shared files. Rename/move references with the code; an absent/ambiguous symbol leaves the viewer at the top. The fallback converts block-ID hyphens to underscores, but explicit accurate metadata is preferable.
 
 Connected-node deletion requires `--with-edges` and removes incident edges atomically; use it only when disconnecting is part of the request. Source files and historical artifacts remain. The final node cannot be deleted. Cycles, incompatible port types and multiple drivers for one input are rejected. `mermaid` exports the graph; JSON remains the specification.
 
 ## Keep code, explanations and evidence aligned
+
+For optional input/output collection or C-model porting evidence, read [reference I/O](../isp-block-maker/reference-io.md). Preserve chosen block/region boundaries without imposing a one-to-one implementation mapping.
 
 Code changes alone are not completion, even without a JOB:
 
@@ -57,4 +59,4 @@ Code changes alone are not completion, even without a JOB:
 - A before/after comparison requires both versions run on the same input and stated parameters; otherwise label current-output validation. Preserve historical registered files/version identity and register a new current result. Record input/seed/hash, parameters, source version plus dirty state, graph revision, and verification limits as appropriate.
 - Re-read saved context, check code composition against ports/edges/contracts, and inspect the result. Required unfinished checks/metadata updates keep the relevant JOB open. If useful visual evidence cannot be produced, state the concrete limitation and actual validation. Spelling/layout edits or behavior-preserving refactors need appropriate checks, not an artificial experiment.
 
-Save coherent graph/source/generator changes through the [local commit workflow](../isp-version-sharing/SKILL.md), then follow [completion.md](../isp-block-maker/completion.md). Prefer a new useful comparison for final presentation; otherwise highlight changed blocks and surviving edges. If work originated in requests/JOBs, finish its lifecycle through [job management](../isp-job-management/SKILL.md). For requested optimization/iteration, additionally read [experiment-loop.md](../isp-block-maker/experiment-loop.md).
+Save a coherent graph/source/generator [checkpoint](../isp-version-sharing/SKILL.md), link the tested result to its attempt, then follow [completion.md](../isp-block-maker/completion.md). A normal branch commit may be requested separately; a checkpoint already preserves the implementation without changing the branch or user staging. Prefer a new useful comparison for final presentation; otherwise highlight changed blocks and surviving edges. If work originated in requests/JOBs, finish its lifecycle through [job management](../isp-job-management/SKILL.md). For requested optimization/iteration, additionally read [experiment-loop.md](../isp-block-maker/experiment-loop.md).

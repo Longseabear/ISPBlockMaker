@@ -1,5 +1,5 @@
 import {restructureJobs,restructureSchema} from './job-restructure.mjs';
-import {openWorkspaceServer} from './workspace-open.mjs';
+import {openWorkspaceServer, findWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
 import os from "node:os";
 import {planBundle,packBundle,bundleFilename} from "./bundles.mjs";
@@ -24,10 +24,16 @@ import { recordActivity, readActivity, summarySchema } from "./activity.mjs";
 import { gpuExtensions } from "./gpu.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion, commitChanges } from "./versions.mjs";
+import { sourceRoot } from "./project-layout.mjs";
+import {installProjectSkills,listProjectSkills} from './project-skills.mjs';
+import {installReferenceSets} from './reference-sets.mjs';
+import { listTracking, createAttempt, updateAttempt, acceptAttempt, createCheckpoint, previewRestore, restoreCheckpoint, compareCheckpoints } from "./tracking.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const {runtime, workspaceConfig, initialFolder} = serverPaths(root);
 fs.mkdirSync(initialFolder, { recursive: true });
+const existingServer = await findWorkspaceServer(initialFolder);
+if (existingServer) throw new Error(`Workspace server is already running at ${existingServer}. Open it, or stop it before restarting. No workspace files were moved.`);
 const opened = openWorkspace(initialFolder, root);
 let { workspace, dataDir, artifactDir, store } = opened;
 let cliPath = opened.cli;
@@ -42,6 +48,28 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const sessions = new Map();
 let vite;
 let versionChanging = false;
+let workspaceReplacing = false;
+let workspaceRecoveryError = '';
+function workspaceInfo() {
+  const source = sourceRoot(workspace);
+  return {workspace, sourceRoot: source, graphFile: path.join(source, "graph.json"), dataDir, tmpDir: path.join(workspace, "tmp"), layoutVersion: source === workspace ? 0 : 1};
+}
+function stopTerminals() {
+  for (const session of sessions.values()) {
+    clearTimeout(session.timer);
+    try { session.pty.kill(); } catch {}
+  }
+  sessions.clear();
+}
+function sourceChanged(bundleRestore) {
+  store.get();
+  token = crypto.randomBytes(32).toString("hex");
+  if (!process.env.ISP_NO_DISCOVERY) publishConnection();
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({type: "workspace-changed", ...(bundleRestore ? {bundleRestore} : {})}));
+    client.close(1000, "Version changed");
+  }
+}
 const authorized = (req) => req.headers.authorization === `Bearer ${token}`;
 const hostOkay = (req) =>
   req.headers.host === `127.0.0.1:${port}` ||
@@ -63,6 +91,8 @@ app.use((req, res, next) => {
 app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
+  if (workspaceRecoveryError) return res.status(503).json({error:workspaceRecoveryError});
+  if (workspaceReplacing) return res.status(409).json({error:"번들에서 작업 폴더를 복원 중입니다. 잠시 후 다시 시도하세요."});
   if (req.path === "/bootstrap" && req.method === "GET") return next();
   if (!authorized(req))
     return res
@@ -77,17 +107,18 @@ app.use("/api", (req, res, next) => {
 app.use("/api", express.json({ limit: "16mb" }));
 app.use("/api", (req,res,next)=>{
  const folder=dataDir,endpoint=req.path,method=req.method;
- if (method!=="GET" && !["/selection","/present","/activity/summaries"].includes(endpoint)) {
+ if (method!=="GET" && !["/selection","/present","/activity/summaries","/shutdown","/viewer/view","/viewer/view/hidden","/bundle/import/preview","/bundle/import/destination"].includes(endpoint) && !endpoint.startsWith("/bundle/import/preview/")) {
   let result;const json=res.json.bind(res);res.json=(body)=>{result=body;return json(body);};
   res.on("finish",()=>{try {
    const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
-   const title=endpoint.includes("jobs")?"JOB 변경":endpoint.includes("requests")?"요청 변경":endpoint==="/artifacts"?"시각화 등록":endpoint==="/versions/switch"?"구현 버전 전환":endpoint==="/workspace"?"작업 폴더 전환":endpoint==="/project"?"그래프 저장":endpoint.startsWith("/blocks")||endpoint==="/global"?"블록 / 요청 저장":"작업 실행";
-   recordActivity(folder,{title,detail:res.statusCode>=400?String(result?.error||`HTTP ${res.statusCode}`).slice(0,1000):`${method} ${endpoint}`,blockId,artifactId:endpoint==="/artifacts"?result?.id:undefined,failed:res.statusCode>=400});
+   const trackingTitle=endpoint==="/attempts"?`작업 시도 · ${result?.title||req.body.title||"등록"}`:endpoint.startsWith("/attempts/")?`${endpoint.endsWith("/accept")?"결과 채택":"시도 기록"} · ${result?.attempt?.title||result?.title||"작업 시도"}`:endpoint.startsWith("/checkpoints")?`${endpoint.endsWith("/restore")?"구현 복원":"체크포인트"} · ${result?.checkpoint?.title||result?.title||req.body.title||"구현"}`:null;
+   const title=trackingTitle||(endpoint.includes("jobs")?"JOB 변경":endpoint.includes("requests")?"요청 변경":endpoint==="/artifacts"?"시각화 등록":endpoint==="/versions/switch"?"구현 버전 전환":endpoint==="/workspace"?"작업 폴더 전환":endpoint==="/project"?"그래프 저장":endpoint.startsWith("/blocks")||endpoint==="/global"?"블록 / 요청 저장":"작업 실행");
+   recordActivity(folder,{title,detail:res.statusCode>=400?String(result?.error||`HTTP ${res.statusCode}`).slice(0,1000):trackingTitle?(result?.summary||result?.approach||result?.attempt?.summary||result?.checkpoint?.hash||result?.hash||""):`${method} ${endpoint}`,blockId,artifactId:endpoint==="/artifacts"?result?.id:undefined,failed:res.statusCode>=400});
   }catch(e){console.error("Activity log:",e.message);}});
  }
  next();
 });
-installViewer(app, {
+const viewer = installViewer(app, {
   current: () => ({workspace,state:store.get()}),
   present: (requestId,message,commandId) => {
     let delivered=0;
@@ -97,9 +128,48 @@ installViewer(app, {
     return delivered;
   }
 });
-installBundleImport(app,{root});
-const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false)});
-app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true'});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+installBundleImport(app,{
+  root,
+  current:()=>workspace,
+  beforeReplace:async destination=>{
+    const active=process.platform==='win32'?path.resolve(destination).toLowerCase()===path.resolve(workspace).toLowerCase():path.resolve(destination)===path.resolve(workspace);
+    if(!active)return {active:false};
+    if(demoRunning||versionChanging||workspaceReplacing)throw new Error("현재 실행 또는 저장 작업이 끝난 뒤 다시 복원하세요.");
+    workspaceReplacing=true;versionChanging=true;
+    try {
+      for(const session of sessions.values()) {
+        if(process.platform==='win32')await promisify(execFile)('taskkill.exe',['/PID',String(session.pty.pid),'/T','/F'],{windowsHide:true,timeout:5000}).catch(()=>{});
+      }
+      stopTerminals();
+      return {active:true};
+    }catch(error){workspaceReplacing=false;versionChanging=false;throw error;}
+  },
+  afterReplace:async(result,context)=>{
+    if(!context?.active)return;
+    const replacement=openWorkspace(workspace,root);
+    ({workspace,dataDir,artifactDir,store}=replacement);cliPath=replacement.cli;
+    viewer.resetSession();
+    workspaceReplacing=false;versionChanging=false;
+    sourceChanged({workspace,backupPath:result.backupPath,name:store.get().name,time:Date.now()});
+  },
+  replaceFailed:async (context,error)=>{
+    if(!context?.active)return;
+    try {
+      if(error?.backupPath){
+        workspaceRecoveryError=`작업 폴더 복구를 완료하지 못했습니다. 원본 백업은 ${error.backupPath} 에 보존되어 있습니다. 백업에서 복구한 뒤 서버를 다시 시작하세요.`;
+        throw new Error(workspaceRecoveryError);
+      }
+      const restored=openWorkspace(workspace,root);
+      ({workspace,dataDir,artifactDir,store}=restored);cliPath=restored.cli;
+      viewer.resetSession();
+      sourceChanged();
+    } finally {workspaceReplacing=false;versionChanging=false;}
+  },
+});
+installReferenceSets(app,{current:()=>({workspace})});
+installProjectSkills(app,{current:()=>({workspace}),root});
+const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
+app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
 app.post('/api/bundle/export',async(req,res)=>{
  const options=bundleOptions.parse(req.body);if(req.body.revision!==undefined&&req.body.revision!==store.get().revision)return res.status(409).json({error:'프로젝트가 변경됐습니다. 목록을 새로 확인하세요.'});
  versionChanging=true;let temp;const downloadName=bundleFilename(store.get().name);
@@ -136,6 +206,28 @@ app.post("/api/shutdown", (req,res) => {
   setTimeout(() => shutdown().then(() => process.exit(0)), 100);
 });
 app.get("/api/project", (req, res) => res.json(store.get()));
+app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
+app.get("/api/tracking", async (req, res) => res.json(await listTracking(workspace, store.get())));
+app.get("/api/checkpoints/compare", async (req, res) => res.json(await compareCheckpoints(workspace, req.query.from, req.query.to)));
+app.get("/api/checkpoints/:id/preview", async (req, res) => res.json(await previewRestore(workspace, req.params.id)));
+async function trackingMutation(res, action, status = 200) {
+  if (demoRunning) return res.status(409).json({error: "실행 중인 예제가 끝난 뒤 작업 기록을 저장하세요."});
+  versionChanging = true;
+  try { res.status(status).json(await action()); }
+  finally { versionChanging = false; }
+}
+app.post("/api/attempts", (req, res) => trackingMutation(res, () => createAttempt(workspace, store.get(), req.body), 201));
+app.patch("/api/attempts/:id", (req, res) => trackingMutation(res, () => updateAttempt(workspace, store.get(), req.params.id, req.body)));
+app.post("/api/attempts/:id/accept", (req, res) => trackingMutation(res, () => acceptAttempt(workspace, req.params.id)));
+app.post("/api/checkpoints", (req, res) => trackingMutation(res, () => createCheckpoint(workspace, req.body), 201));
+app.post("/api/checkpoints/:id/restore", (req, res) => {
+  const input = z.object({snapshot:z.string().min(1), stopTerminals:z.literal(true)}).parse(req.body);
+  return trackingMutation(res, async () => {
+    const result = await restoreCheckpoint(workspace, {checkpointId:req.params.id, snapshot:input.snapshot}, stopTerminals);
+    sourceChanged();
+    return result;
+  });
+});
 app.get("/api/gpu/extensions", async (req, res) => res.json(await gpuExtensions(workspace)));
 app.get("/api/versions", async (req, res) =>
   res.json(await versionStatus(workspace, req.query.history === "1")),
@@ -167,23 +259,8 @@ app.post("/api/versions/switch", async (req, res) => {
   const selectedWorkspace = workspace;
   versionChanging = true;
   try {
-    const result = await switchVersion(selectedWorkspace, input, () => {
-      for (const session of sessions.values()) {
-        clearTimeout(session.timer);
-        try {
-          session.pty.kill();
-        } catch {}
-      }
-      sessions.clear();
-    });
-    store.get();
-    token = crypto.randomBytes(32).toString("hex");
-    if (!process.env.ISP_NO_DISCOVERY) publishConnection();
-    for (const client of wss.clients) {
-      if (client.readyState === WebSocket.OPEN)
-        client.send(JSON.stringify({ type: "workspace-changed" }));
-      client.close(1000, "Version changed");
-    }
+    const result = await switchVersion(selectedWorkspace, input, stopTerminals);
+    sourceChanged();
     res.json(result);
   } finally {
     versionChanging = false;
@@ -630,7 +707,7 @@ app.post("/api/selection", (req, res) => {
 });
 app.get("/api/context", (req, res) =>
   res.json(
-    contextFor(store.get(), req.query.blockId || store.get().selectedBlockId),
+    {...contextFor(store.get(), req.query.blockId || store.get().selectedBlockId), paths: workspaceInfo(), projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
   ),
 );
 app.get("/api/mermaid", (req, res) =>
@@ -700,7 +777,7 @@ app.post("/api/artifacts", (req, res) => {
 });
 let demoRunning = false;
 app.post("/api/demo", async (req, res, next) => {
-  if (!fs.existsSync(path.join(workspace, "examples", "denoise.mjs")))
+  if (!fs.existsSync(path.join(sourceRoot(workspace), "examples", "denoise.mjs")))
     return res.status(400).json({ error: "이 저장소에는 예제가 포함되지 않습니다. 작업 폴더의 구현을 터미널에서 실행하세요." });
   if (demoRunning)
     return res.status(409).json({ error: "예제가 이미 실행 중입니다." });
@@ -724,6 +801,7 @@ app.post("/api/demo", async (req, res, next) => {
   }
 });
 app.get("/artifacts/:file", (req, res) => {
+  if (workspaceReplacing || workspaceRecoveryError) return res.sendStatus(503);
   const cookies = (req.headers.cookie || "").split(";").map((s) => s.trim());
   if (!cookies.includes(`isp_${port}=${token}`) && !authorized(req))
     return res.sendStatus(401);
@@ -764,6 +842,8 @@ function startTerminal(socket, message) {
       ISP_API_TOKEN: token,
       ISP_BLOCK_ID: blockId,
       ISP_CLI: cliPath,
+      ISP_WORKSPACE: workspace,
+      ISP_SOURCE_ROOT: sourceRoot(workspace),
       PATH: `${path.dirname(cliPath)}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
       TERM: "xterm-256color",
     };
@@ -827,6 +907,11 @@ function startTerminal(socket, message) {
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url, origin);
   if (url.pathname !== "/ws") return; // Vite HMR handles its own path.
+  if (workspaceReplacing || workspaceRecoveryError) {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+    socket.destroy();
+    return;
+  }
   if (
     !hostOkay(req) ||
     !originOkay(req) ||
@@ -842,6 +927,7 @@ wss.on("connection", (socket) => {
   send(socket, { type: "state", state: store.get() });
   socket.on("message", (bytes) => {
     try {
+      if (workspaceRecoveryError) throw new Error(workspaceRecoveryError);
       if (versionChanging)
         throw new Error("버전 전환 중에는 터미널을 사용할 수 없습니다.");
       const message = JSON.parse(bytes.toString());

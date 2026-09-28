@@ -1,6 +1,8 @@
 # Finish with useful evidence
 
-After relevant validation and any required local commit, write one work-summary JSON in `tmp/<task-or-job-id>/` and call `summary FILE`. Include `title` and `summary`; useful optional fields are `reason`, `changes`, `validation`, `limitations`, verified `commit`, and actual `blockIds`, `jobIds`, `artifactIds` arrays. Explain outcome and evidence, not raw diffs. Stopped work should state what remains. This activity record does not complete JOBs; their lifecycle is separate.
+After relevant validation, finish an existing relevant [attempt](../isp-version-sharing/work-tracking.md) with accurate conditions, evidence links and the checkpoint whose source was tested. A simple crop calculation or read-only inspection does not require inventing an attempt or source checkpoint. Reconcile source changes after execution before attributing outputs to a checkpoint. Record failure/cancellation honestly; do not adopt a result or create a tag on the user's behalf. For code changes outside a substantial attempt, save a coherent checkpoint through [version rules](../isp-version-sharing/SKILL.md).
+
+Write one work-summary JSON under the discovered `tmpDir` and call `summary FILE`. Include `title` and `summary`; useful optional fields are `reason`, `changes`, `validation`, `limitations`, verified `commit`, and actual `blockIds`, `jobIds`, `artifactIds` arrays. Mention attempt/checkpoint IDs in the summary when applicable; do not put a checkpoint ID into the Git `commit` field. Explain outcome and evidence, not raw diffs. Stopped work should state what remains. This activity record does not complete JOBs; their lifecycle is separate.
 
 Leave the user looking at the most useful result, unless they asked to keep their current view. Use actual saved IDs and choose one final view:
 
@@ -17,4 +19,6 @@ Add a short accurate `--message`. Edge highlighting includes both endpoint nodes
 
 `present` preserves terminal visibility/session and the terminal's pinned target. Unsaved inspector edits defer it behind “결과 보기”; never discard edits to force a view change. Inspect the response: `delivered: 0` means no connected screen received it, not that it was shown. Report the saved result and pending display accurately instead of repeatedly resending or launching a browser solely to force attention. Delivery does not mean the user saw it.
 
-Finish with what changed, what was validated, and which result/block to inspect. Do not claim validation from metadata alone or dump project JSON into the response.
+Finish with what changed, what was validated, and which result/block to inspect. Distinguish the currently applied source, displayed historical result and accepted attempt when they differ. Do not claim validation from metadata alone or dump project JSON into the response.
+
+Before finishing substantive work, assess whether verified reusable knowledge should update an existing project skill or become a new one; see [project-skills.md](project-skills.md). Mention actual skill changes in the work summary. Do not create a skill merely to satisfy a checklist.

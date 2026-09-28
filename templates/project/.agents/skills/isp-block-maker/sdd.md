@@ -18,7 +18,7 @@ Write ordinary UTF-8 HTML with embedded CSS, semantic headings, a contents navig
 Keep drafts under `tmp/<task-or-job-id>/` and final HTML under ignored `artifacts/generated/`, with a distinct name for each document version. Register it from this workspace:
 
 ```text
-node .isp/tools/isp.mjs document artifacts/generated/sdd.html --revision N --title "Project SDD"
+node "<workspace>/.isp/tools/isp.mjs" document "<workspace>/artifacts/generated/sdd.html" --revision N --title "Project SDD"
 ```
 
 N is the captured revision, not a guessed latest revision. This registers an immutable HTML artifact with `metadata.documentType = sdd`; Documentation lists its versions. The first block is a storage association only: document all graph blocks. Inspect the rendered document when browser tools are available; otherwise state the visual verification limitation. Check that every block is covered, diagrams match actual edges and no external resource is required. Complete relevant documentation JOBs only after registration, then follow [completion.md](completion.md) to record a concise work summary and present the returned artifact ID. The UI routes SDD artifacts to Documentation. Never claim a document was generated merely because the request was queued.

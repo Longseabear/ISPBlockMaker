@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {startBundleWorkspace} from './bundle-import.mjs';
+import {normalizeWorkspaceFolder} from './project-layout.mjs';
 const opening=new Map();
-async function runningWorkspace(workspace){
+export async function findWorkspaceServer(folder){
+ const workspace=normalizeWorkspaceFolder(folder);
  try{
   const record=JSON.parse(fs.readFileSync(path.join(workspace,'.isp/connection.json'),'utf8'));
   const url=new URL(record.url);
@@ -14,11 +16,11 @@ async function runningWorkspace(workspace){
  return null;
 }
 export async function openWorkspaceServer(root,folder){
- const workspace=fs.realpathSync(folder);
+ const workspace=normalizeWorkspaceFolder(folder);
  if(!fs.statSync(workspace).isDirectory())throw new Error('작업 폴더를 선택하세요.');
  const key=process.platform==='win32'?workspace.toLowerCase():workspace;
  if(opening.has(key))return opening.get(key);
- const pending=(async()=>({workspace,url:await runningWorkspace(workspace)||await startBundleWorkspace(root,workspace)}))();
+ const pending=(async()=>({workspace,url:await findWorkspaceServer(workspace)||await startBundleWorkspace(root,workspace)}))();
  opening.set(key,pending);
  try{return await pending;}finally{opening.delete(key);}
 }

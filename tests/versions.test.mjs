@@ -11,6 +11,7 @@ import {
 } from "../server/versions.mjs";
 import { initialProject } from "../server/model.mjs";
 import { graphSpec, createStore } from "../server/store.mjs";
+import { ensureProjectLayout } from "../server/project-layout.mjs";
 
 const git = (cwd, ...args) =>
   execFileSync("git", args, {
@@ -240,3 +241,67 @@ test(
     }
   },
 );
+
+test("version selection follows relocated source while workspace records stay outside Git", { timeout: 30000 }, async t => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "isp-versions-layout-"));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(workspace)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(workspace).startsWith("isp-versions-layout-"));
+    fs.rmSync(workspace, { recursive: true, force: true });
+  });
+  git(workspace, "init", "-b", "main");
+  git(workspace, "config", "user.name", "ISP test");
+  git(workspace, "config", "user.email", "isp-test@example.invalid");
+  const graph = graphSpec(initialProject);
+  fs.writeFileSync(path.join(workspace, "graph.json"), JSON.stringify(graph));
+  fs.writeFileSync(path.join(workspace, ".gitignore"), ".isp/\n");
+  git(workspace, "add", ".");
+  git(workspace, "commit", "-m", "Initial checkpoint");
+  const first = git(workspace, "rev-parse", "HEAD");
+  git(workspace, "tag", "accepted-v1");
+  graph.blocks[1].description = "Updated algorithm";
+  fs.writeFileSync(path.join(workspace, "graph.json"), JSON.stringify(graph));
+  git(workspace, "add", "graph.json");
+  git(workspace, "commit", "-m", "Second checkpoint");
+  fs.mkdirSync(path.join(workspace, ".isp"));
+  fs.writeFileSync(path.join(workspace, ".isp/activity.json"), '[{"title":"Keep activity"}]');
+  const source = ensureProjectLayout(workspace);
+  const status = await versionStatus(workspace, true);
+  assert.equal(status.workspace, workspace);
+  assert.equal(status.sourceRoot, source);
+  assert.equal(status.dirty, false);
+  assert.equal(status.commits.length, 2);
+  const preview = await previewVersion(workspace, { kind: "tag", ref: "accepted-v1" });
+  assert.equal(preview.blockedReason, null);
+  assert.ok(preview.files.includes("graph.json"));
+  const switched = await switchVersion(workspace, { target: preview.target, hash: preview.commit.hash, snapshot: preview.snapshot });
+  assert.equal(switched.head.hash, first);
+  assert.equal(fs.readFileSync(path.join(workspace, ".isp/activity.json"), "utf8"), '[{"title":"Keep activity"}]');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(source, "graph.json"))).blocks[1].description, initialProject.blocks[1].description);
+});
+
+test("ordinary commit history omits only checkpoint index hashes recorded by tracking", { timeout: 30000 }, async t => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "isp-versions-internal-"));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(workspace)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(workspace).startsWith("isp-versions-internal-"));
+    fs.rmSync(workspace, { recursive: true, force: true });
+  });
+  git(workspace, "init", "-b", "main");
+  git(workspace, "config", "user.name", "ISP test");
+  git(workspace, "config", "user.email", "isp-test@example.invalid");
+  fs.writeFileSync(path.join(workspace, "graph.json"), JSON.stringify(graphSpec(initialProject)));
+  fs.writeFileSync(path.join(workspace, ".gitignore"), ".isp/\n");
+  git(workspace, "add", ".");
+  git(workspace, "commit", "-m", "Baseline");
+  git(workspace, "commit", "--allow-empty", "-m", "Checkpoint index: internal metadata");
+  const internal = git(workspace, "rev-parse", "HEAD");
+  git(workspace, "commit", "--allow-empty", "-m", "Checkpoint index: user-authored title");
+  const visible = git(workspace, "rev-parse", "HEAD");
+  ensureProjectLayout(workspace);
+  fs.writeFileSync(path.join(workspace, ".isp/tracking.json"), JSON.stringify({ checkpoints: [{ indexCommitHash: internal }] }));
+  const status = await versionStatus(workspace, true);
+  assert.equal(status.commits.length, 2);
+  assert.equal(status.commits.some(commit => commit.hash === internal), false);
+  assert.equal(status.commits.some(commit => commit.hash === visible), true);
+});

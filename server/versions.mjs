@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { validateGraph } from "./model.mjs";
+import { sourceRoot, normalizeWorkspaceFolder } from "./project-layout.mjs";
 
 const execute = promisify(execFile);
 async function git(cwd, args) {
@@ -51,11 +52,12 @@ async function commitInfo(workspace, ref) {
   );
 }
 export async function versionStatus(workspace, history = false) {
-  if (!fs.existsSync(path.join(workspace, ".git")))
+  const source = sourceRoot(workspace);
+  if (!fs.existsSync(path.join(source, ".git")))
     return { available: false, reason: "프로젝트 버전 관리 미설정: 이 폴더의 독립 Git 저장소가 필요합니다." };
   let repo;
   try {
-    repo = (await git(workspace, ["rev-parse", "--show-toplevel"])).trim();
+    repo = (await git(source, ["rev-parse", "--show-toplevel"])).trim();
   } catch (error) {
     if (/not a git repository/i.test(error.message))
       return {
@@ -64,17 +66,17 @@ export async function versionStatus(workspace, history = false) {
       };
     throw error;
   }
-  if (fs.realpathSync(repo) !== fs.realpathSync(workspace))
+  if (fs.realpathSync(repo) !== fs.realpathSync(source))
     return { available: false, reason: "상위 저장소는 프로젝트 버전 관리에 사용할 수 없습니다." };
   let branch = null,
     head = null;
   try {
     branch = (
-      await git(workspace, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+      await git(source, ["symbolic-ref", "--quiet", "--short", "HEAD"])
     ).trim();
   } catch {}
   try {
-    head = await commitInfo(workspace, "HEAD");
+    head = await commitInfo(source, "HEAD");
   } catch (error) {
     if (!branch) throw error;
   }
@@ -109,12 +111,18 @@ export async function versionStatus(workspace, history = false) {
     .trim().split('\n').filter(Boolean).map(line=>{const [name,type,object,peeled,subject,date,peeledType]=line.trimEnd().split('\0');return {name,hash:peeled||object,subject,date,type,peeledType};}).filter(t=>t.type==='commit'||t.peeledType==='commit');
   let commits = [];
   if (head && history) {
+    let indexCommits = new Set();
+    try {
+      const tracking = JSON.parse(fs.readFileSync(path.join(normalizeWorkspaceFolder(workspace), ".isp/tracking.json"), "utf8"));
+      indexCommits = new Set((tracking.checkpoints || []).map(checkpoint => checkpoint.indexCommitHash)
+        .filter(value => typeof value === "string" && /^[a-f\d]{40,64}$/i.test(value)));
+    } catch { /* Version browsing remains available if tracking metadata needs repair. */ }
     commits = (
       await git(repo, [
         "log",
         "--all",
         "--date-order",
-        "-50",
+        "-100",
         "--format=%H%x00%s%x00%cI%x00%b%x1e",
         "HEAD",
       ])
@@ -122,12 +130,15 @@ export async function versionStatus(workspace, history = false) {
       .split("\x1e")
       .map((v) => v.trim())
       .filter(Boolean)
-      .map(metadata);
+      .map(metadata)
+      .filter(commit => !indexCommits.has(commit.hash))
+      .slice(0, 50);
   }
   return {
     available: true,
     repo,
     workspace,
+    sourceRoot: source,
     branch,
     detached: !!head && !branch,
     head,
@@ -161,17 +172,17 @@ export async function previewVersion(workspace, target) {
   const ref =
     target.kind === "branch" ? `refs/heads/${target.ref}` : target.kind === "tag" ? `refs/tags/${target.ref}` : target.ref;
   const resolved = (
-    await git(workspace, [
+    await git(current.repo, [
       "rev-parse",
       "--verify",
       "--end-of-options",
       `${ref}^{commit}`,
     ])
   ).trim();
-  const commit = await commitInfo(workspace, resolved);
+  const commit = await commitInfo(current.repo, resolved);
   const graphPath = relativePath(
     current.repo,
-    path.join(workspace, "graph.json"),
+    path.join(current.repo, "graph.json"),
   );
   let graph;
   try {
@@ -203,7 +214,7 @@ export async function previewVersion(workspace, target) {
   )
     .split("\0")
     .filter(Boolean);
-  const prefix = relativePath(current.repo, workspace);
+  const prefix = relativePath(current.repo, sourceRoot(workspace));
   const outside = paths.filter(
     (file) => prefix && !file.startsWith(prefix + "/"),
   );
@@ -285,7 +296,7 @@ export async function switchVersion(workspace, input, beforeSwitch = () => {}) {
     args.push("--detach", preview.commit.hash);
   else {
     const now = (
-      await git(workspace, [
+      await git(preview.repo, [
         "rev-parse",
         "--verify",
         `refs/heads/${input.target.ref}^{commit}`,
@@ -295,7 +306,7 @@ export async function switchVersion(workspace, input, beforeSwitch = () => {}) {
       throw new Error("브랜치가 변경되었습니다. 다시 선택하세요.");
     args.push(input.target.ref);
   }
-  await git(workspace, args);
+  await git(preview.repo, args);
   return versionStatus(workspace);
 }
 
@@ -303,13 +314,14 @@ export async function commitChanges(workspace, ref) {
   if (!/^[a-f0-9]{7,64}$/i.test(ref)) throw new Error('커밋 해시를 지정하세요.');
   const status=await versionStatus(workspace);
   if(!status.available)throw new Error('프로젝트 Git 저장소가 없습니다.');
-  const commit=await commitInfo(workspace,ref);
-  const parents=(await git(workspace,['rev-list','--parents','-n','1',commit.hash])).trim().split(' ').slice(1);
+  const repo=status.repo;
+  const commit=await commitInfo(repo,ref);
+  const parents=(await git(repo,['rev-list','--parents','-n','1',commit.hash])).trim().split(' ').slice(1);
   const parent=parents[0]||null;
   const args=parent?['diff',parent,commit.hash]:['show','--format=','--root',commit.hash];
-  const files=(await git(workspace,[...args,'--name-only','-z','--'])).split('\0').map(v=>v.trim()).filter(Boolean);
-  const patch=await git(workspace,[...args,'--no-ext-diff','--no-textconv','--no-color','--unified=3','--']);
-  const readGraph=async(ref)=>{try{return JSON.parse(await git(workspace,['show',`${ref}:graph.json`]));}catch{return null;}};
+  const files=(await git(repo,[...args,'--name-only','-z','--'])).split('\0').map(v=>v.trim()).filter(Boolean);
+  const patch=await git(repo,[...args,'--no-ext-diff','--no-textconv','--no-color','--unified=3','--']);
+  const readGraph=async(ref)=>{try{return JSON.parse(await git(repo,['show',`${ref}:graph.json`]));}catch{return null;}};
   const before=parent?await readGraph(parent):{blocks:[],edges:[]},after=await readGraph(commit.hash);
   const blocks=[];
   for(const id of new Set((before&&after?[...(before.blocks||[]),...(after.blocks||[])]:[]).map(b=>b.id))){

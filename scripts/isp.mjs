@@ -55,6 +55,21 @@ export function localConnection(value) {
     );
   return { ...value, url: parsed.origin };
 }
+function cropWaitSeconds(value){
+  if(value===undefined)return undefined;
+  const seconds=Number(value);
+  if(!Number.isFinite(seconds)||seconds<0||seconds>600)throw new Error('--wait must be 0–600 seconds; omit it to wait until delivery or cancellation.');
+  return seconds;
+}
+async function waitForCrop(id,seconds){
+  const until=seconds===undefined?Infinity:Date.now()+seconds*1000;
+  do {
+    const remaining=Math.max(0,Math.min(55,(until-Date.now())/1000));
+    const result=await request(`/viewer/requests/${encodeURIComponent(id)}/wait?seconds=${remaining}`,{signal:AbortSignal.timeout(Math.ceil((remaining+10)*1000))});
+    if(result.status!=='pending'||Date.now()>=until)return result;
+    console.error(`Still waiting for crop delivery: ${id}. Keep this command running; do not create another request.`);
+  } while(true);
+}
 export async function request(endpoint, options = {}) {
   const { url, token } = localConnection(connection());
   const response = await fetch(`${url}/api${endpoint}`, {
@@ -64,7 +79,7 @@ export async function request(endpoint, options = {}) {
       "Content-Type": "application/json",
       ...options.headers,
     },
-    signal: AbortSignal.timeout(15000),
+    signal: options.signal || AbortSignal.timeout(/^\/(?:attempts|checkpoints)/.test(endpoint) ? 120000 : 15000),
     redirect: "error",
   });
   if (!response.ok)
@@ -112,7 +127,55 @@ export async function main() {
   if (args.includes("--global") && option("block"))
     throw new Error("--global과 --block은 함께 사용할 수 없습니다.");
   let result;
-  if (command === "viewer-list") result=await request("/viewer");
+  const jsonFile = file => {
+    if (!file || file.startsWith('--')) throw new Error('JSON 파일 경로를 지정하세요.');
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  };
+  const requiredId = value => {
+    if (!value || value.startsWith('--')) throw new Error('ID를 지정하세요.');
+    return encodeURIComponent(value);
+  };
+  if (command === "workspace-info") result = await request('/workspace-info');
+  else if (command === "skills") result=await request('/skills');
+  else if (command === "skill-show") result=await request(`/skills/item/${requiredId(args[0])}`);
+  else if (command === "skill-save") result=await request('/skills/save',{method:'POST',body:JSON.stringify(jsonFile(args[0]))});
+  else if (command === "skill-export") {
+    const output=option('out');if(!args[0]||!output)throw new Error('Usage: isp skill-export NAME,NAME --out FILE.bundle');
+    const {url,token}=localConnection(connection());const response=await fetch(url+'/api/skills/export',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({names:args[0].split(',')}),redirect:'error',signal:AbortSignal.timeout(30000)});
+    if(!response.ok)throw new Error((await response.json()).error);
+    const bytes=Buffer.from(await response.arrayBuffer());fs.writeFileSync(path.resolve(output),bytes,{flag:'wx'});result={path:path.resolve(output),bytes:bytes.length};
+  }
+  else if (command === "skill-import-preview" || command === "skill-import") {
+    if(!args[0])throw new Error('Specify a skills bundle file');const file=path.resolve(args[0]);if(fs.statSync(file).size>11*1024*1024)throw new Error('Skills bundle exceeds 11 MiB');
+    const choices=command==='skill-import'?jsonFile(option('choices')):null;
+    result=await request(command==='skill-import'?'/skills/import':'/skills/import/preview',{method:'POST',headers:{'Content-Type':'application/octet-stream',...(choices?{'X-Skill-Choices':encodeURIComponent(JSON.stringify(choices))}:{})},body:fs.readFileSync(file)});
+  }
+  else if (command === "skill-delete") result=await request(`/skills/item/${requiredId(args[0])}`,{method:'DELETE',body:JSON.stringify({version:option('version')})});
+  else if (command === "reference-sets") result = await request('/reference-sets');
+  else if (command === "reference-show") result = await request(`/reference-sets/${requiredId(args[0])}`);
+  else if (command === "reference-create") result = await request('/reference-sets',{method:'POST',body:JSON.stringify(jsonFile(args[0]))});
+  else if (command === "reference-add") result = await request(`/reference-sets/${requiredId(args[0])}/files/import`,{method:'POST',body:JSON.stringify(jsonFile(args[1]))});
+  else if (command === "reference-update") result = await request(`/reference-sets/${requiredId(args[0])}`,{method:'PATCH',body:JSON.stringify(jsonFile(args[1]))});
+  else if (command === "reference-compare") result = await request(`/reference-sets/${requiredId(args[0])}/compare`,{method:'POST',body:JSON.stringify({expectedId:args[1],actualId:args[2]})});
+  else if (command === "attempts") result = await request('/tracking');
+  else if (command === "attempt-start") result = await request('/attempts', {method:'POST', body:JSON.stringify(jsonFile(args[0]))});
+  else if (command === "attempt-update") result = await request(`/attempts/${requiredId(args[0])}`, {method:'PATCH', body:JSON.stringify(jsonFile(args[1]))});
+  else if (command === "attempt-accept") result = await request(`/attempts/${requiredId(args[0])}/accept`, {method:'POST', body:'{}'});
+  else if (command === "checkpoints") {
+    const tracking = await request('/tracking');
+    result = {current:tracking.current, checkpoints:tracking.checkpoints};
+  }
+  else if (command === "checkpoint") {
+    if (!option('title')) throw new Error('Usage: isp checkpoint --title "검증 전 구현"');
+    result = await request('/checkpoints', {method:'POST', body:JSON.stringify({title:option('title')})});
+  }
+  else if (command === "checkpoint-compare") result = await request(`/checkpoints/compare?from=${requiredId(args[0])}&to=${requiredId(args[1])}`);
+  else if (command === "checkpoint-preview") result = await request(`/checkpoints/${requiredId(args[0])}/preview`);
+  else if (command === "checkpoint-restore") {
+    if (!option('snapshot')) throw new Error('먼저 isp checkpoint-preview ID를 실행한 뒤 --snapshot 값을 지정하세요. 복원하면 현재 터미널이 종료됩니다.');
+    result = await request(`/checkpoints/${requiredId(args[0])}/restore`, {method:'POST', body:JSON.stringify({snapshot:option('snapshot'), stopTerminals:true})});
+  }
+  else if (command === "viewer-list") result=await request("/viewer");
   else if(command === "viewer-open") {
     if(!args[0]||args[0].startsWith('--'))throw new Error('Usage: isp viewer-open image.raw --spec image.json [--wait 15]');
     const file=path.resolve(args[0]);
@@ -126,6 +189,31 @@ export async function main() {
     result={image,command:status,delivered:command.delivered,displayed:status.status==='applied',next:status.status==='applied'?null:status.status==='failed'?status.error:`Viewer를 열거나 저장 중인 편집을 마친 뒤 isp viewer-command-show ${command.id}로 다시 표시하세요.`};
   }
   else if (command === "viewer-crops") result=await request('/viewer/crop-selection');
+  else if (command === "viewer-crops-ack") {
+    if(!option('note')?.trim()) throw new Error('Usage: isp viewer-crops-ack DELIVERY_ID --note "Analysis completed; result / input paths"');
+    result=await request(`/viewer/crop-selection/${requiredId(args[0])}/ack`,{method:'POST',body:JSON.stringify({resolution:option('note')})});
+  }
+  else if (['viewer-pixels','viewer-stats','viewer-crop-stats'].includes(command)) {
+    const id=requiredId(args[0]),levels={};
+    for(const key of ['black','white']) {
+      if(args.includes(`--${key}`)) {
+        const value=option(key);
+        if(!value?.trim()||!Number.isFinite(Number(value)))throw new Error(`--${key} requires a finite number.`);
+        levels[key]=Number(value);
+      }
+    }
+    if(command==='viewer-crop-stats') {
+      result=await request(`/viewer/crop-selection/${id}/statistics`,{method:'POST',body:JSON.stringify(levels)});
+    } else {
+      const roi=option('roi')?.split(',');
+      if(!roi||roi.length!==4||roi.some(v=>!v.trim()||!Number.isSafeInteger(Number(v))))throw new Error('Provide --roi x,y,width,height in source pixels. Use viewer-crop-stats DELIVERY_ID for a sent crop batch.');
+      const [x,y,width,height]=roi.map(Number);
+      if(x<0||y<0||width<1||height<1)throw new Error('ROI requires nonnegative x/y and positive width/height.');
+      if(command==='viewer-pixels'&&width*height>256)throw new Error('CLI pixel output is limited to 256 source pixels. Choose a smaller ROI, or use viewer-stats / local file processing.');
+      const query=new URLSearchParams(Object.entries({x,y,width,height,...levels}).map(([key,value])=>[key,String(value)]));
+      result=await request(`/viewer/images/${id}/${command==='viewer-pixels'?'pixels':'statistics'}?${query}`);
+    }
+  }
   else if (command === "viewer-control") {
     if(!args[0])throw new Error('Usage: isp viewer-control command.json');
     result=await request('/viewer/commands',{method:'POST',body:fs.readFileSync(args[0],'utf8')});
@@ -135,23 +223,28 @@ export async function main() {
   else if (command === "viewer-view") result=await request(args[0]?`/viewer/views/${encodeURIComponent(args[0])}`:'/viewer/view');
   else if (command === "viewer-image") {
     const viewId=args.find(arg=>!arg.startsWith('--'));
-    result=await request(`${!viewId||viewId==='current'?'/viewer/current/attachment':`/viewer/views/${encodeURIComponent(viewId)}/attachment`}${args.includes('--vision')?'?vision=true':''}`);
+    // A terminal transports text, not native image blocks. Keep image bytes out
+    // of stdout even when the caller has image capability.
+    result=await request(!viewId||viewId==='current'?'/viewer/current/attachment':`/viewer/views/${encodeURIComponent(viewId)}/attachment`);
+    if(args.includes('--vision')) result={...result,nativeImage:{path:result.live?.paths?.image||result.snapshot?.paths?.image,mimeType:'image/png'},instruction:'Open nativeImage.path using your available image-reading tool. CLI output deliberately excludes base64; integrations can request the authenticated attachment API with vision=true and forward its image block natively.'};
   }
   else if (command === "viewer-import") {
     if(!args[0]||!option("spec"))throw new Error("Usage: isp viewer-import image.raw --spec image.json");
     result=await request("/viewer/images/import",{method:"POST",body:JSON.stringify({path:path.resolve(args[0]),spec:JSON.parse(fs.readFileSync(option("spec"),"utf8")),name:option("title")})});
+  } else if(command === "viewer-wait") {
+    result=await waitForCrop(requiredId(args[0]),cropWaitSeconds(option("wait")));
   } else if(command === "viewer-request") {
-    if(!args[0]||!option("message"))throw new Error('Usage: isp viewer-request IMAGE_ID --message "Select ROI" [--block ID]');
-    result=await request("/viewer/requests",{method:"POST",body:JSON.stringify({imageId:args[0],prompt:option("message"),blockId,show:!args.includes("--no-show")})});
+    if(!args[0]||!option("message"))throw new Error('Usage: isp viewer-request IMAGE_ID --message "Select ROI" [--block ID] [--purpose analysis|white_balance|input]');
+    if(args.includes('--wait')&&option('wait')===undefined)throw new Error('--wait needs a duration.');
+    if(args.includes('--no-wait')&&args.includes('--wait'))throw new Error('Use --no-wait or --wait, not both.');
+    const seconds=cropWaitSeconds(option('wait'));
+    const purpose=option('purpose')||'analysis';
+    if(!['analysis','white_balance','input'].includes(purpose))throw new Error('--purpose must be analysis, white_balance, or input.');
+    result=await request("/viewer/requests",{method:"POST",body:JSON.stringify({imageId:args[0],prompt:option("message"),origin:"agent",purpose,blockId,show:!args.includes("--no-show")})});
+    if(!args.includes('--no-wait')){console.error(`Crop request: ${result.id}. Waiting for explicit user delivery; keep this command running.`);result=await waitForCrop(result.id,seconds);}
   } else if(command === "viewer-result") {
-    const seconds=Number(option("wait")||0);
-    if(!Number.isFinite(seconds)||seconds<0||seconds>600)throw new Error("--wait는 0–600초입니다.");
-    const until=Date.now()+seconds*1000;
-    do {
-      result=await request(`/viewer/requests/${encodeURIComponent(args[0])}`);
-      if(result.status!=="pending"||Date.now()>=until)break;
-      await new Promise(resolve=>setTimeout(resolve,Math.min(1000,until-Date.now())));
-    } while(true);
+    const id=requiredId(args[0]);
+    result=args.includes('--wait')?await waitForCrop(id,cropWaitSeconds(option('wait'))):await request(`/viewer/requests/${encodeURIComponent(id)}`);
   }
   else if(command === "viewer-show") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/show`,{method:"POST",body:"{}"});
   else if(command === "viewer-cancel") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/cancel`,{method:"POST",body:"{}"});
@@ -391,12 +484,23 @@ export async function main() {
       runId: option("run"),
     });
   } else if (command === "demo") {
-    const { runDemo } = await import(pathToFileURL(path.join((await request("/bootstrap")).workspace, "examples/denoise.mjs")).href);
+    const { sourceRoot } = await request('/workspace-info');
+    const { runDemo } = await import(pathToFileURL(path.join(sourceRoot, "examples/denoise.mjs")).href);
     result = await runDemo();
   } else if (command === "help")
     result = `ISP Block Maker bridge — HTTP, no MCP required
 
 isp context                     Read the terminal's pinned block and neighbors
+isp workspace-info              Read workspace/sourceRoot/graphFile/dataDir/tmpDir paths
+isp attempts                    Read work attempts, accepted result and current source
+isp attempt-start tmp/attempt.json
+isp attempt-update ATTEMPT_ID tmp/result.json
+isp attempt-accept ATTEMPT_ID    Mark a completed result as accepted (does not restore code)
+isp checkpoints                 List saved graph/code snapshots
+isp checkpoint --title "Validated implementation"  Save source without altering Git staging
+isp checkpoint-compare FROM_ID TO_ID
+isp checkpoint-preview CHECKPOINT_ID
+isp checkpoint-restore CHECKPOINT_ID --snapshot VALUE  Preserve current source, then restore and stop terminals
 isp context --selection         Read the block currently selected in the UI
 isp requests                     List pending user requests across ALL blocks
 isp requests --all --block ID     Include consumed requests for a block
@@ -431,13 +535,31 @@ isp update patch.json --block ID --revision N
 isp viewer-list                 List images and crop requests
 isp viewer-open image.raw --spec image.json [--wait 15]  Import/reuse, open and verify display
 isp viewer-crops                Read the user's latest explicitly sent crop selection
+isp viewer-crops-ack DELIVERY_ID --note "Result / input paths"  Mark a handled crop delivery consumed
+isp viewer-crop-stats DELIVERY_ID [--black N] [--white N]  Compact per-region/channel crop statistics
+isp viewer-stats IMAGE_ID --roi x,y,w,h [--black N] [--white N]  RAW/RGB source statistics
+isp viewer-pixels IMAGE_ID --roi x,y,w,h  Exact pixel values, at most 256 source pixels
 isp viewer-control command.json  Present image, zoom, center, render and highlights
 isp viewer-command COMMAND_ID    Check applied/failed acknowledgement
 isp viewer-command-show COMMAND_ID  Present a stored command again
 isp viewer-view [VIEW_ID]        Read live display metadata / explicitly shared screens
-isp viewer-image [current|VIEW_ID] [--vision]  Read current display; optional native image content
+isp viewer-image [current|VIEW_ID] [--vision]  Display metadata / PNG path, never image bytes on stdout
+isp skills                       List project and read-only framework skills
+isp skill-show NAME              Read files and current version
+isp skill-save FILE.json         Create/update {name, files, version:null|HASH}
+isp skill-delete NAME --version HASH   Archive a project skill
+isp skill-export NAME,NAME --out FILE.bundle
+isp skill-import-preview FILE.bundle
+isp skill-import FILE.bundle --choices FILE.json   [{name,version}] from inspected preview
+isp reference-sets                       List optional reference I/O sets
+isp reference-show SET_ID                Read metadata and local binary paths
+isp reference-create FILE.json           Register files or a crop delivery as a set
+isp reference-add SET_ID FILE.json       Copy another workspace file into a set
+isp reference-update SET_ID FILE.json    Edit notes/links with current updatedAt
+isp reference-compare SET_ID EXPECTED_FILE_ID ACTUAL_FILE_ID  Exact byte comparison
 isp viewer-import image.raw --spec image.json
-isp viewer-request IMAGE_ID --message "Select a flat patch" --block BLOCK_ID
+isp viewer-wait REQUEST_ID [--wait SECONDS]  # default: keep long polling until Send/cancel
+isp viewer-request IMAGE_ID --message "Select a neutral patch" [--no-wait | --wait SECONDS] [--block ID] [--purpose analysis|white_balance|input]
 isp viewer-result REQUEST_ID [--wait 120]   Read status/results, optionally wait for user selection
 isp viewer-show REQUEST_ID       Present the crop request in connected browsers
 isp viewer-cancel REQUEST_ID     Cancel a pending request

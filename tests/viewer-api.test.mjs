@@ -11,6 +11,7 @@ import {once} from "node:events";
 import {WebSocket} from "ws";
 import {openZip} from "../server/bundle-zip.mjs";
 import {packBundle,unpackBundle} from "../server/bundles.mjs";
+import {encodePng} from "../server/viewer-image.mjs";
 
 test("Viewer authenticates imports, presents requests, persists exact user crops and rejects resubmission",{timeout:60000},async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),"isp-viewer-"));const probe=net.createServer().listen(0,"127.0.0.1");await once(probe,"listening");const port=probe.address().port;await new Promise(r=>probe.close(r));
@@ -31,6 +32,10 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post("/viewer/images/import",{path:os.tmpdir(),spec})).status,400);
   assert.equal((await post("/viewer/images/import",{path:external,spec:{format:"bmp"}})).status,400);
   const imported=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-import","input.raw","--spec","spec.json"],{cwd:temp,windowsHide:true,encoding:"utf8"}));
+  assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=0&y=0&width=2&height=2`)).status,401);
+  const pixels=await(await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=2&y=1&width=2&height=2`,{headers})).json();assert.deepEqual(pixels.values,[70,77,126,133]);assert.equal(pixels.channels,1);assert.deepEqual(pixels.area,{x:2,y:1,width:2,height:2});
+  assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=7&y=0&width=2&height=2`,{headers})).status,400);
+  const stats=await(await fetch(base+`/api/viewer/images/${imported.id}/statistics?x=0&y=0&width=8&height=8`,{headers})).json();assert.equal(stats.sampleCount,64);assert.equal(stats.channels.Gr.count,16);assert.equal(stats.channels.Gr.blackCount,1);assert.equal(stats.valueDomain.includes('before display'),true);
   const upload=await fetch(base+"/api/viewer/images",{method:"POST",headers:{Authorization:`Bearer ${boot.token}`,"Content-Type":"application/octet-stream","X-Image-Metadata":encodeURIComponent(JSON.stringify({name:"uploaded.raw",spec}))},body:data});assert.equal(upload.status,201);assert.equal((await upload.json()).sha256,imported.sha256);
   const opened=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-open','input.raw','--spec','spec.json'],{cwd:temp,windowsHide:true,encoding:'utf8'}));
   assert.equal(opened.image.reused,true);assert.equal(opened.displayed,false);assert.equal(opened.delivered,0);assert.equal(opened.command.imageId,opened.image.id);
@@ -44,13 +49,15 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:1,y:2,width:3,height:2})).status,400);
   const waiting=promisify(execFile)(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-result",request.id,"--wait","5"],{cwd:temp,windowsHide:true});
   const result=await(await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:8,height:8})).json();assert.equal(result.status,"submitted");assert.deepEqual(result.result.output.cfaOrigin,{x:0,y:0});
-  assert.equal(JSON.parse((await waiting).stdout).status,"submitted");
+  await post('/viewer/crop-selection',{imageId:imported.id,items:[{requestId:request.id,cropId:request.id}]});
+  assert.equal(JSON.parse((await waiting).stdout).status,"fulfilled");
   const crop=fs.readFileSync(path.join(temp,result.result.paths.crop));assert.equal(crop.readUInt16LE(),0);assert.equal(crop.length,128);
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
   const downloaded=await fetch(base+`/api/viewer/requests/${request.id}/files/crop`,{headers});assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),crop);
   const preview=await(await fetch(base+`/api/viewer/images/${imported.id}/preview`,{headers})).json();assert.match(preview.url,/^data:image\/png;base64,/);
   const view={imageId:imported.id,render:{mode:'simple',gamma:2.2,black:0,white:1023},zoom:2,area:{x:0,y:0,width:8,height:8},visible:{x:1,y:1,width:3,height:3},highlights:[{x:1,y:1,width:2,height:2,label:'edge'}]};
   const command=await(await post('/viewer/commands',{imageId:imported.id,zoom:2,center:{x:3,y:3},render:view.render,highlights:view.highlights,show:false})).json();assert.equal(command.status,'pending');assert.equal(command.delivered,0);
+  assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:512,show:false})).status,201);assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:513,show:false})).status,400);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,center:{x:8,y:0}})).status,400);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,highlights:[{x:7,y:0,width:2,height:1}]})).status,400);
   const sessionId=crypto.randomUUID();assert.equal((await post(`/viewer/commands/${command.id}/ack`,{status:'applied',sessionId})).status,200);
@@ -74,6 +81,13 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.deepEqual(fs.readFileSync(screen.paths.image),Buffer.from(preview.url.split(',')[1],'base64'));
   const withoutVision=await(await fetch(base+`/api/viewer/views/${screen.id}/attachment`,{headers})).json();assert.equal(withoutVision.imageSupported,false);assert.equal(withoutVision.content,undefined);
   const withVision=await(await fetch(base+`/api/viewer/views/${screen.id}/attachment?vision=true`,{headers})).json();assert.equal(withVision.content[1].type,'image');assert.equal(withVision.content[1].data,preview.url.split(',')[1]);
+  const largePng=encodePng(512,512,crypto.randomBytes(512*512*4));assert.ok(largePng.length>1024*1024);
+  const largeView={...view,zoom:512,pixelValues:true},largeUrl='data:image/png;base64,'+largePng.toString('base64');
+  assert.equal((await post('/viewer/view',{...largeView,sessionId,png:largeUrl})).status,200);
+  const boundedCurrent=await(await fetch(base+'/api/viewer/current/attachment?vision=true',{headers})).json();assert.equal(boundedCurrent.live.pixelValues,true);assert.equal(boundedCurrent.content,undefined);assert.equal(boundedCurrent.inlineLimitBytes,1024*1024);
+  const largeScreen=await(await post('/viewer/views',{view:largeView,png:largeUrl})).json();
+  const boundedSnapshot=await(await fetch(base+`/api/viewer/views/${largeScreen.id}/attachment?vision=true`,{headers})).json();assert.equal(boundedSnapshot.content,undefined);assert.equal(boundedSnapshot.imageSupported,false);assert.ok(boundedSnapshot.snapshot.paths.image);
+  assert.equal((await fetch(base+`/api/viewer/views/${largeScreen.id}`,{method:'DELETE',headers,body:'{}'})).status,200);
   assert.equal((await post('/viewer/views',{view:{...view,visible:{x:7,y:0,width:2,height:1}},png:preview.url})).status,400);
   assert.equal((await post('/viewer/views',{view,png:'data:image/png;base64,Zm9v'})).status,400);
   const cliScreen=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-image',screen.id],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(cliScreen.snapshot.id,screen.id);
@@ -89,7 +103,9 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   const regionBytes=roi=>Buffer.concat(Array.from({length:roi.height},(_,y)=>data.subarray(((roi.y+y)*8+roi.x)*2,((roi.y+y)*8+roi.x+roi.width)*2)));
   for(const region of group.regions)assert.deepEqual(fs.readFileSync(path.join(temp,region.paths.crop)),regionBytes(region.roi));
   const zip=await openZip(path.join(temp,group.paths.crop));try{assert.equal(zip.entries.length,6);assert.deepEqual(await zip.read(zip.entries.find(e=>e.path==='region-2-crop.raw')),regionBytes(rois[1]));}finally{await zip.close();}
-  await post('/viewer/crop-selection',{imageId:groupImage.id,items:[{requestId:groupRequest.id,cropId:groupedId}]});
+  const groupDelivery=await(await post('/viewer/crop-selection',{imageId:groupImage.id,purpose:'white_balance',items:[{requestId:groupRequest.id,cropId:groupedId}]})).json();assert.equal(groupDelivery.purpose,'white_balance');
+  fs.unlinkSync(path.join(temp,'.isp/viewer',groupImage.id+'.bin'));
+  const cropOnlyStats=await(await post(`/viewer/crop-selection/${groupDelivery.id}/statistics`,{})).json();assert.equal(cropOnlyStats.results.length,2);assert.equal(cropOnlyStats.results[0].analysisSource,'saved-crop');assert.equal(cropOnlyStats.aggregate.sampleCount,32);
   const groupContext=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-crops'],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(groupContext.crops.length,1);assert.equal(groupContext.crops[0].regions.length,2);
   const patchedGroup=await fetch(base+`/api/viewer/requests/${groupRequest.id}/crops/${groupedId}`,{method:'PATCH',headers,body:JSON.stringify({description:'one description for both',previousDescription:'compare both regions'})});assert.equal(patchedGroup.status,200);
   assert.equal(JSON.parse(fs.readFileSync(path.join(temp,group.paths.metadata),'utf8')).description,'one description for both');
@@ -104,6 +120,11 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   const second=await(await post(`/viewer/requests/${multi.id}/crops`,{id:secondId,roi,description:"두 번째"})).json();assert.equal(second.crops.length,2);assert.notEqual(second.crops[0].paths.crop,second.crops[1].paths.crop);
   const selection={description:"두 영역의 경계와 노이즈를 비교해줘",imageId:imported.id,items:[{requestId:multi.id,cropId:firstId},{requestId:multi.id,cropId:secondId}]};
   const sent=await(await post('/viewer/crop-selection',selection)).json();assert.equal(sent.crops.length,2);assert.deepEqual(sent.missing,[]);assert.equal(sent.description,selection.description);assert.equal(sent.crops[1].description,"두 번째");
+  assert.equal(sent.status,'pending');assert.equal(sent.purpose,'analysis');assert.equal(sent.inputs.length,2);assert.equal(sent.inputs[0].path,path.resolve(temp,first.crops[0].paths.crop));assert.equal(sent.content,undefined);
+  const selectionStats=await(await post(`/viewer/crop-selection/${sent.id}/statistics`,{black:10})).json();assert.equal(selectionStats.results.length,2);assert.equal(selectionStats.aggregate.sampleCount,128);assert.equal(selectionStats.selectionId,sent.id);
+  assert.equal((await post(`/viewer/crop-selection/${crypto.randomUUID()}/ack`,{resolution:'old receipt'})).status,409);
+  const acknowledged=await(await post(`/viewer/crop-selection/${sent.id}/ack`,{resolution:'WB checked, crops registered'})).json();assert.equal(acknowledged.status,'consumed');assert.equal(acknowledged.resolution,'WB checked, crops registered');
+  const repeatedAck=await(await post(`/viewer/crop-selection/${sent.id}/ack`,{resolution:'repeat'})).json();assert.equal(repeatedAck.consumedAt,acknowledged.consumedAt);assert.equal(repeatedAck.resolution,acknowledged.resolution);
   assert.equal((await post("/viewer/crop-selection",{...selection,description:"x".repeat(12001)})).status,400);
   assert.equal(JSON.parse(fs.readFileSync(path.join(temp,".isp/viewer/crop-selection.json"),"utf8"))[0].description,selection.description);
   assert.equal((await post('/viewer/crop-selection',{...selection,items:[selection.items[0],selection.items[0]]})).status,400);

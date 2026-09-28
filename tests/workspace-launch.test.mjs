@@ -17,6 +17,10 @@ test("folder servers keep separate context and refuse in-place workspace switchi
    const exited=once(child,"exit");const item={child,exited,workspace,url:`http://127.0.0.1:${port}`};running.push(item);
    await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error("Startup timeout")),15000);child.stdout.on("data",bytes=>{if(String(bytes).includes("ISP Block Maker")){clearTimeout(timeout);resolve();}});child.once("exit",()=>{clearTimeout(timeout);reject(new Error("Startup failed"));});});
    const health=await(await fetch(item.url+"/health")).json();assert.equal(health.workspace,fs.realpathSync(workspace));
+   assert.ok(fs.existsSync(path.join(workspace,'project/graph.json')));
+   assert.ok(fs.existsSync(path.join(workspace,'project/.git')));
+   assert.equal(fs.existsSync(path.join(workspace,'graph.json')),false);
+   assert.equal(fs.existsSync(path.join(workspace,'.git')),false);
    const boot=await(await fetch(item.url+"/api/bootstrap")).json();item.headers={Authorization:`Bearer ${boot.token}`,"Content-Type":"application/json"};item.instance=health.instance;
    assert.equal(JSON.parse(fs.readFileSync(path.join(workspace,".isp/connection.json"),"utf8")).url,item.url);
   }
@@ -27,7 +31,8 @@ test("folder servers keep separate context and refuse in-place workspace switchi
   assert.equal((await connect(b.workspace)).url,b.url);
   assert.equal((await connect(a.workspace)).url,a.url);
   const existing=path.join(temp,'기존 프로젝트');fs.mkdirSync(existing);
-  fs.copyFileSync(path.join(b.workspace,'graph.json'),path.join(existing,'graph.json'));
+  // Keep the destination in the old root layout to exercise migration on open.
+  fs.copyFileSync(path.join(b.workspace,'project/graph.json'),path.join(existing,'graph.json'));
   fs.writeFileSync(path.join(existing,'AGENTS.md'),'Preserve this project guide.');
   const opened=await Promise.all([connect(existing),connect(existing)]);
   assert.equal(opened[0].url,opened[1].url);
@@ -35,7 +40,9 @@ test("folder servers keep separate context and refuse in-place workspace switchi
   try{
    assert.equal(health.workspace,fs.realpathSync(existing));
    assert.ok(fs.readFileSync(path.join(existing,'AGENTS.md'),'utf8').startsWith('Preserve this project guide.'));
-   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(existing,'graph.json'),'utf8')),JSON.parse(fs.readFileSync(path.join(b.workspace,'graph.json'),'utf8')));
+   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(existing,'project/graph.json'),'utf8')),JSON.parse(fs.readFileSync(path.join(b.workspace,'project/graph.json'),'utf8')));
+   assert.equal(fs.existsSync(path.join(existing,'graph.json')),false);
+   assert.ok(fs.existsSync(path.join(existing,'project/.git')));
    assert.equal((await connect(existing)).url,target);
    assert.equal((await fetch(a.url+'/health').then(r=>r.json())).workspace,a.workspace);
   }finally{await fetch(target+'/api/shutdown',{method:'POST',headers:{Authorization:'Bearer '+boot.token,'Content-Type':'application/json'},body:JSON.stringify({instance:health.instance})});await new Promise(r=>setTimeout(r,700));}

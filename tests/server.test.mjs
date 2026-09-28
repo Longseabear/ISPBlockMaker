@@ -16,7 +16,9 @@ test(
   async () => {
     const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "isp-api-test-"));
     const dir = path.join(testRoot, ".isp");
+    // A legacy root graph must migrate while its local requests and artifacts stay put.
     createStore(dir, path.join(testRoot, "graph.json"));
+    const graphFile = path.join(testRoot, "project", "graph.json");
     const probe = net.createServer();
     probe.listen(0, "127.0.0.1");
     await once(probe, "listening");
@@ -80,6 +82,9 @@ test(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       };
+      assert.ok(fs.existsSync(graphFile));
+      assert.ok(fs.existsSync(path.join(testRoot, "project", ".git")));
+      assert.equal(fs.existsSync(path.join(testRoot, "graph.json")), false);
       const write = async (body) =>
         fetch(`${base}/api/project`, {
           method: "PUT",
@@ -261,7 +266,7 @@ test(
       );
       const htmlFile = path.join(testRoot, "cli-result.html");
       const globalSpecBefore = fs.readFileSync(
-        path.join(testRoot, "graph.json"),
+        graphFile,
         "utf8",
       );
       response = await fetch(`${base}/api/global`, {
@@ -382,7 +387,7 @@ test(
         /not found/,
       );
       assert.equal(
-        fs.readFileSync(path.join(testRoot, "graph.json"), "utf8"),
+        fs.readFileSync(graphFile, "utf8"),
         globalSpecBefore,
       );
       assert.equal(
@@ -797,7 +802,7 @@ test(
         /^Existing instructions/,
       );
       assert.match(
-        fs.readFileSync(path.join(folderA, ".gitignore"), "utf8"),
+        fs.readFileSync(path.join(folderA, "project", ".gitignore"), "utf8"),
         /\.isp\//,
       );
       const changed = { ...bootA.state, name: "Saved A" };

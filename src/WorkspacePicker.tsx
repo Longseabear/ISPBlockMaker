@@ -10,11 +10,15 @@ export function WorkspacePicker({
   current,
   onClose,
   onPick,
+  title,
+  hint,
 }: {
   api: Api;
   current: string;
   onClose: () => void;
   onPick?: (path:string) => void;
+  title?: string;
+  hint?: string;
 }) {
   const [path, setPath] = useState(current),
     [listing, setListing] = useState<Listing | null>(null),
@@ -63,10 +67,10 @@ export function WorkspacePicker({
         className="workspace-picker"
         role="dialog"
         aria-modal="true"
-        aria-label={onPick?"복원 위치 선택":"작업 폴더 선택"}
+        aria-label={title || (onPick?"복원 위치 선택":"작업 폴더 선택")}
       >
         <header>
-          <h2>{onPick?"복원할 부모 폴더 선택":"작업 폴더 선택"}</h2>
+          <h2>{title || (onPick?"복원할 부모 폴더 선택":"작업 폴더 선택")}</h2>
           <button
             onClick={onClose}
             disabled={opening}
@@ -121,7 +125,7 @@ export function WorkspacePicker({
             )
           )}
         </div>
-        <p className="hint">{onPick?"선택한 폴더 아래에 새 프로젝트 폴더를 만듭니다.":"선택한 폴더의 서버에 연결합니다. 실행 중이 아니면 자동으로 시작하며 기존 서버·터미널과 프로젝트 지침은 유지합니다."}</p>
+        <p className="hint">{hint || (onPick?"선택한 폴더 아래에 새 프로젝트 폴더를 만듭니다.":"선택한 폴더의 서버에 연결합니다. 실행 중이 아니면 자동으로 시작하며 기존 서버·터미널과 프로젝트 지침은 유지합니다.")}</p>
         <footer>
           <button onClick={onClose} disabled={opening}>
             취소

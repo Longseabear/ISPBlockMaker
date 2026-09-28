@@ -1,0 +1,14 @@
+.reference-sets {overflow:auto;min-height:0;height:100%;box-sizing:border-box;}
+.reference-sets fieldset {border:1px solid #35434d;border-radius:8px;margin:12px 0;padding:12px;}
+.reference-sets label {display:flex;flex-direction:column;gap:5px;margin:10px 0;font-size:12px;}
+.reference-sets input:not([type=checkbox]),.reference-sets textarea,.reference-sets select {box-sizing:border-box;width:100%;padding:8px;background:#151c22;color:#dce5ed;border:1px solid #394751;border-radius:5px;}
+.reference-sets textarea {min-height:64px;resize:vertical;}
+.reference-sets pre {overflow:auto;max-height:240px;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;}
+.reference-sets .reference-blocks {display:flex;flex-wrap:wrap;gap:14px;}
+.reference-sets .reference-blocks label {flex-direction:row;align-items:center;}
+.reference-sets details {padding:10px 0;border-top:1px solid #35434d;}
+.reference-sets summary {cursor:pointer;}
+.reference-sets .work-controls {display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.reference-sets .work-controls button {display:flex;gap:5px;align-items:center;}
+.reference-sets [role=alert] {color:#ffc5ad;}
+.reference-sets small {overflow-wrap:anywhere;color:#aabbc7;}

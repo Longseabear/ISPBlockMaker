@@ -1,7 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { sourceRoot, normalizeWorkspaceFolder } from "./project-layout.mjs";
 import Prism from "prismjs";
 import "prismjs/components/prism-python.js";
+
+// Older graphs may store an absolute path under the former workspace Git root.
+// Resolve that same source-relative location after relocation without rewriting history.
+export function resolveSourceFile(workspace, implementation) {
+  const source = sourceRoot(workspace);
+  if (source !== normalizeWorkspaceFolder(workspace) && path.isAbsolute(implementation)) {
+    const inSource = path.relative(source, implementation);
+    const inWorkspace = path.relative(path.dirname(source), implementation);
+    if ((inSource === '..' || inSource.startsWith('..' + path.sep)) &&
+        inWorkspace !== '..' && !inWorkspace.startsWith('..' + path.sep) && !path.isAbsolute(inWorkspace))
+      return path.resolve(source, inWorkspace);
+  }
+  return path.resolve(source, implementation);
+}
 
 export function locateEntry(content, language, symbol = "", blockId = "") {
   const requested = symbol.trim() || blockId.replaceAll("-", "_");
@@ -63,8 +78,8 @@ export async function readImplementation(
 ) {
   if (!implementation?.trim())
     throw new Error("구현 파일이 지정되지 않았습니다.");
-  const root = await fs.realpath(workspace);
-  const file = await fs.realpath(path.resolve(root, implementation));
+  const root = await fs.realpath(sourceRoot(workspace));
+  const file = await fs.realpath(resolveSourceFile(workspace, implementation));
   const relative = path.relative(root, file);
   if (
     relative.startsWith(`..${path.sep}`) ||

@@ -62,3 +62,21 @@ test("source reader returns current Python text and rejects missing, binary and 
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test("relocated implementations resolve source-relative and historical absolute paths inside project only", async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'isp-source-layout-'));
+  try {
+    const source = path.join(workspace,'project');
+    await fs.mkdir(source); await fs.mkdir(path.join(workspace,'.isp'));
+    await fs.writeFile(path.join(workspace,'.isp/workspace.json'), JSON.stringify({version:1,sourceRoot:'project'}));
+    await fs.writeFile(path.join(source,'block.py'),'def process(x): return x');
+    for (const impl of ['block.py',path.join(workspace,'block.py'),path.join(source,'block.py')])
+      assert.equal((await readImplementation(workspace,impl)).path, 'block.py');
+    await fs.writeFile(path.join(workspace,'private.py'),'private = True');
+    await assert.rejects(readImplementation(workspace,'../private.py'), /workspace/);
+    await assert.rejects(readImplementation(workspace,path.join(workspace,'private.py')));
+  } finally {
+    assert.ok(path.resolve(workspace).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    await fs.rm(workspace,{recursive:true,force:true});
+  }
+});

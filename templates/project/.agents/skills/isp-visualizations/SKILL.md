@@ -18,7 +18,7 @@ artifact artifacts/generated/result.html --block BLOCK_ID --revision N --title "
 present --artifact ARTIFACT_ID --message "Comparison ready"
 ```
 
-`--run` is optional. Use a relevant existing block; a graph-wide report can be associated with its output/entry block without inventing a processing node. N is the revision captured when producing the result, not a newer value guessed after a conflict. Reconcile any intervening change and regenerate affected results as needed. Use the saved artifact ID from registration and verify returned state.
+`--run` is optional; when producing evidence for an active attempt, use its ID and link the returned artifact IDs in that attempt. Record the source checkpoint actually executed, not merely the latest source at registration time. Use a relevant existing block; a graph-wide report can be associated with its output/entry block without inventing a processing node. N is the revision captured when producing the result, not a newer value guessed after a conflict. Reconcile any intervening change and regenerate affected results as needed. Use the saved artifact ID from registration and verify returned state.
 
 HTML must be self-contained: inline CSS/JS, embedded SVG/data images, no CDN or remote assets. It runs sandboxed without network or parent-app access. Supported image artifacts are PNG/JPEG/WebP; maximum file size is 10 MB. Inspect rendered output when tools permit and state any verification limitation. `demo` runs only the supplied synthetic grayscale example; it is not a generic graph executor or RAW/RTL validator and may not exist in a user's project.
 

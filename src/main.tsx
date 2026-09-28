@@ -1,6 +1,8 @@
+import {ProjectSkills} from './ProjectSkills';
 import {BundleOpen} from "./BundleOpen";
 import {BundleShare} from "./BundleShare";
 import { Viewer } from "./Viewer";
+import {ReferenceSets} from './ReferenceSets';
 import { terminalClipboardHandler } from "./terminal-clipboard";
 import { Documents } from "./Documents";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +31,7 @@ import {
   ArrowRight,
   Box,
   Braces,
+  BookOpen,
   Check,
   ChevronDown,
   Circle,
@@ -842,6 +845,9 @@ function TerminalPane({
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (message.type === "workspace-changed") {
+          if (message.bundleRestore?.backupPath) {
+            sessionStorage.setItem("isp-last-bundle-backup", JSON.stringify(message.bundleRestore));
+          }
           disposed = true;
           setOnline(false);
           setRunning(false);
@@ -1071,6 +1077,10 @@ function App() {
     [artifactId, setArtifactId] = useState(""),
     [demoBusy, setDemoBusy] = useState(false);
   const compactPreview = view === "artifacts" || view === "viewer";
+  const [skillsVisited,setSkillsVisited]=useState(false);
+  useEffect(()=>{if(view==="skills")setSkillsVisited(true);},[view]);
+  const [viewerVisited, setViewerVisited] = useState(false);
+  useEffect(() => { if (view === "viewer") setViewerVisited(true); }, [view]);
   const [sidebarPinned, setSidebarPinned] = useState(() => {
     try { return localStorage.getItem("isp-sidebar-pinned") === "true"; } catch { return false; }
   });
@@ -1142,7 +1152,7 @@ function App() {
   function switchView(next: string) {
     setView(next);
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "references"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   function mode(next: string) {
@@ -1615,6 +1625,8 @@ function App() {
           </button>
           <button className={view === "viewer" ? "active" : ""} title="Image Viewer" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
           <button className={view === "gpu" ? "active" : ""} title="GPU simulator" aria-label="GPU simulator" aria-current={view === "gpu" ? "page" : undefined} onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
+          <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
+          <button className={view === "references" ? "active" : ""} title="Reference I/O" aria-label="Reference I/O" aria-current={view === "references" ? "page" : undefined} onClick={() => switchView("references")}><Braces size={18}/><span>Reference I/O</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} title="JOB Queue" aria-label="JOB Queue" aria-current={view === "jobs" ? "page" : undefined} onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <button className={view === "documents" ? "active" : ""} title="Documentation" aria-label="Documentation" aria-current={view === "documents" ? "page" : undefined} onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="graph-toolbar">
@@ -1705,9 +1717,11 @@ function App() {
         <main className="main-area">
           <div className="editor">
             <div className="editor-main">
-              {view === "viewer" ? (
-                <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} onExpand={()=>setFocus("editor")}/>
-              ) : view === "documents" ? (
+              {(viewerVisited || view === "viewer") && <div style={{display:view === "viewer" ? "contents" : "none"}}>
+                <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} visible={view==="viewer"} expanded={focus==="editor"} onExpand={()=>setFocus(current=>current==="editor"?"":"editor")}/>
+              </div>}
+              {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
+              {view === "viewer" || view === "skills" ? null : view === "references" ? <ReferenceSets api={api} token={token} project={project}/> : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {

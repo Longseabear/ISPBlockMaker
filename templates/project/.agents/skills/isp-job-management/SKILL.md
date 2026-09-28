@@ -47,11 +47,11 @@ The server atomically replaces originals with pending cards, rewires source-requ
 
 ```text
 start-job JOB_ID --block BLOCK_ID --revision N
-complete-job JOB_ID --block BLOCK_ID --revision N --note "Changes; validation; commit HASH when applicable"
+complete-job JOB_ID --block BLOCK_ID --revision N --note "Changes; validation; attempt/checkpoint IDs when applicable"
 reopen-job JOB_ID --block BLOCK_ID --revision N --note "Remaining work"
 ```
 
-Use `--global` for global JOBs. They may coordinate multiple blocks, but remain within graph implementation scope; identify affected blocks in descriptions. Select the appropriate [block development](../isp-block-development/SKILL.md), [Visualizations](../isp-visualizations/SKILL.md), [Image Viewer](../isp-image-viewer/SKILL.md) or [Documentation](../isp-documentation/SKILL.md) skill for the actual outcome. Start before working; reconcile ownership if already started. Complete only after the required implementation, accurate metadata, relevant validation and local commit for graph/code changes. Analysis-only work needs no empty commit. Keep unfinished work open and record accurate progress on interruption/failure.
+Use `--global` for global JOBs. They may coordinate multiple blocks, but remain within graph implementation scope; identify affected blocks in descriptions. Select the appropriate [block development](../isp-block-development/SKILL.md), [Visualizations](../isp-visualizations/SKILL.md), [Image Viewer](../isp-image-viewer/SKILL.md) or [Documentation](../isp-documentation/SKILL.md) skill for the actual outcome. Start before working; reconcile ownership if already started. For substantial implementation/evaluation, start an [attempt](../isp-version-sharing/work-tracking.md) with exact scoped `jobRefs`; one JOB may have multiple attempts and one attempt may cover related JOBs. Starting/completing an attempt does not change a JOB's status. Complete the JOB only after required implementation, accurate metadata, relevant validation and a tested result checkpoint for graph/code changes. Analysis-only work needs no artificial code change. Keep unfinished work open and record accurate progress on interruption/failure.
 
 Re-read JOBs before starting and completing. A user-deleted JOB is cancelled: do not recreate it from retained source text or keep implementing it. Reconcile cancellation at the next safe step if a shell process is already running. Superseded work also must not be executed. On stale revision or uncertain response, inspect current JOBs/history and changed request text before retrying; never duplicate registration or blindly repeat a split/merge. Preserve unrelated work during every mutation.
 

@@ -2,30 +2,74 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {z} from 'zod';
+import {combineStatistics,checkAnalysisArea,MAX_STAT_SAMPLES} from './viewer-analysis.mjs';
 
-export function installViewerSession(app,{current,present,read,write,findImage,folder}) {
+export function installViewerSession(app,{current,present,read,write,findImage,folder,cropStatistics,changes}) {
   const point=z.object({x:z.number().finite().nonnegative(),y:z.number().finite().nonnegative()});
   const region=point.extend({width:z.number().finite().positive(),height:z.number().finite().positive()});
   const highlights=z.array(region.extend({label:z.string().max(120).default('')})).max(20);
   const render=z.object({mode:z.enum(['color','gray','cfa','simple']),gamma:z.number().min(.1).max(5),black:z.number().finite(),white:z.number().finite()}).refine(v=>v.white>v.black,'White must exceed black');
-  const view=z.object({imageId:z.string().uuid(),render,zoom:z.number().positive().max(100),area:region,visible:region,highlights,selection:region.optional(),selections:z.array(region).min(1).max(32).optional()});
+  const view=z.object({imageId:z.string().uuid(),render,pixelValues:z.boolean().optional(),zoom:z.number().positive().max(512),area:region,visible:region,highlights,selection:region.optional(),selections:z.array(region).min(1).max(32).optional()});
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
-  const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));v.selections?.forEach(r=>checkRegion(r,image.spec));return image;};
+  const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));if(v.selection)checkRegion(v.selection,image.spec);v.selections?.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';
   app.post('/api/viewer/view/hidden',(req,res)=>{const sessionId=z.string().uuid().parse(req.body.sessionId);if(live?.sessionId===sessionId&&liveWorkspace===current().workspace)live=null;res.json({ok:true});});
   const resolveSelection=selection=>{
     const requests=read('requests'),crops=[],missing=[];
     for(const item of selection.items){const request=requests.find(r=>r.id===item.requestId&&r.imageId===selection.imageId);const crop=(request?.crops||(request?.result?[{...request.result,id:request.id}]:[])).find(c=>c.id===item.cropId);if(crop)crops.push({...item,...crop});else missing.push(item);}
-    return {...selection,description:selection.description || "",crops,missing};
+    const inputs=crops.flatMap(crop=>(crop.regions||[crop]).map((r,regionIndex)=>({requestId:crop.requestId,cropId:crop.id,regionIndex,roi:r.roi,spec:r.output,path:path.resolve(current().workspace,r.paths.crop),metadataPath:path.resolve(current().workspace,r.paths.metadata),source:r.source})));
+    return {...selection,status:selection.status||'pending',purpose:selection.purpose||'analysis',description:selection.description || "",crops,missing,inputs,access:{workspaceRoot:current().workspace,instruction:'Reading this delivery does not consume it. Do not print binary image files or base64 into text context. Use inputs[].path with an image-capable tool or binary reader; compute numerical tasks using ROI statistics. Acknowledge this exact delivery ID only after processing.',statistics:`POST /api/viewer/crop-selection/${selection.id}/statistics`,acknowledge:`POST /api/viewer/crop-selection/${selection.id}/ack`}};
   };
   app.post('/api/viewer/crop-selection',(req,res)=>{
-    const input=z.object({description:z.string().max(12000).default(""),imageId:z.string().uuid(),items:z.array(z.object({requestId:z.string().uuid(),cropId:z.string().uuid()})).min(1).max(200)}).parse(req.body);findImage(input.imageId);
+    const input=z.object({description:z.string().max(12000).default(""),purpose:z.enum(['analysis','white_balance','input']).default('analysis'),imageId:z.string().uuid(),items:z.array(z.object({requestId:z.string().uuid(),cropId:z.string().uuid()})).min(1).max(200)}).parse(req.body);findImage(input.imageId);
     if(new Set(input.items.map(i=>i.requestId+':'+i.cropId)).size!==input.items.length)throw new Error('Duplicate crop selection');
-    const selection={...input,id:crypto.randomUUID(),sentAt:new Date().toISOString()},result=resolveSelection(selection);
+    const selection={...input,id:crypto.randomUUID(),status:'pending',sentAt:new Date().toISOString()},result=resolveSelection(selection);
     if(result.missing.length)return res.status(409).json({error:'선택한 크롭이 변경되거나 제거됐습니다. 다시 선택하세요.'});
+    const requests=read('requests');
+    if(input.items.some(item=>requests.find(r=>r.id===item.requestId)?.status==='cancelled'))return res.status(409).json({error:'취소된 요청에는 전달할 수 없습니다.'});
+    // Persist by request: a later unrelated delivery must not steal this reply.
+    write('requests',requests.map(r=>input.items.some(i=>i.requestId===r.id)?{...r,delivery:{...selection,items:selection.items.filter(i=>i.requestId===r.id)}}:r));
     write('crop-selection',[selection]);res.json(result);
   });
+  app.get('/api/viewer/requests/:id/wait',(req,res)=>{
+    const requestId=z.string().uuid().parse(req.params.id);
+    const seconds=z.coerce.number().finite().min(0).max(60).parse(req.query.seconds??55);
+    const workspace=current().workspace;
+    if(!read('requests').some(r=>r.id===requestId))return res.status(404).json({error:'Crop request not found'});
+    if(changes.listenerCount('change')>=32)return res.status(429).json({error:'Too many crop waiters'});
+    let timer,workspaceTimer,finished=false;
+    const cleanup=()=>{clearTimeout(timer);clearInterval(workspaceTimer);changes.off('change',check);res.off('close',cleanup);};
+    const finish=value=>{if(finished)return;finished=true;cleanup();res.json(value);};
+    const check=()=>{
+      try {
+        if(current().workspace!==workspace)return finish({requestId,status:'workspace_changed'});
+        const request=read('requests').find(r=>r.id===requestId);
+        if(!request)return finish({requestId,status:'missing'});
+        if(request.status==='cancelled')return finish({requestId,status:'cancelled'});
+        if(request.delivery){const delivery=resolveSelection(request.delivery);return finish({requestId,status:delivery.missing.length||delivery.inputs.some(i=>!fs.existsSync(i.path))?'unavailable':'fulfilled',delivery});}
+      } catch(error){finish({requestId,status:'unavailable',error:String(error.message)});}
+    };
+    changes.on('change',check);res.on('close',cleanup);
+    timer=setTimeout(()=>finish({requestId,status:'pending',timedOut:true,retry:`isp viewer-wait ${requestId} --wait 55`}),seconds*1000);
+    workspaceTimer=setInterval(()=>{if(current().workspace!==workspace)check();},500);
+    check();
+  });
   app.get('/api/viewer/crop-selection',(req,res)=>{const selection=read('crop-selection')[0];res.json(selection?resolveSelection(selection):null);});
+  const currentSelection=(id,res)=>{z.string().uuid().parse(id);const selection=read('crop-selection')[0];if(!selection||selection.id!==id){res.status(409).json({error:'Crop delivery changed. Read the latest crop selection before acting; the previous delivery was not consumed.'});return null;}return selection;};
+  app.post('/api/viewer/crop-selection/:id/ack',(req,res)=>{
+    const input=z.object({resolution:z.string().max(4000).default('')}).parse(req.body),selection=currentSelection(req.params.id,res);if(!selection)return;
+    if(selection.status!=='consumed'){selection.status='consumed';selection.consumedAt=new Date().toISOString();selection.resolution=input.resolution;write('crop-selection',[selection]);}
+    res.json(resolveSelection(selection));
+  });
+  app.post('/api/viewer/crop-selection/:id/statistics',(req,res)=>{
+    const options=z.object({black:z.number().finite().optional(),white:z.number().finite().optional()}).parse(req.body),selection=currentSelection(req.params.id,res);if(!selection)return;
+    const resolved=resolveSelection(selection);if(resolved.missing.length)return res.status(409).json({error:'Some selected crops were removed. Send a new selection.'});
+    const image=findImage(selection.imageId),regions=resolved.crops.flatMap(crop=>(crop.regions||[crop]).map((r,regionIndex)=>({requestId:crop.requestId,cropId:crop.id,regionIndex,region:r,area:r.roi})));
+    for(const r of regions)checkAnalysisArea(image.spec,r.area);
+    if(regions.reduce((sum,r)=>sum+r.area.width*r.area.height,0)>MAX_STAT_SAMPLES)throw new Error(`Selected crop statistics exceed ${MAX_STAT_SAMPLES.toLocaleString('en-US')} samples; analyze fewer regions per call`);
+    const results=regions.map(({area,region,...identity})=>({...identity,...cropStatistics(image,region,options)}));
+    res.json({selectionId:selection.id,imageId:image.id,purpose:selection.purpose||'analysis',results,aggregate:combineStatistics(results)});
+  });
   const liveFresh=()=>liveWorkspace===current().workspace&&live&&Date.now()-Date.parse(live.updatedAt)<10000;
   app.get('/api/viewer/view',(req,res)=>res.json({live:liveWorkspace===current().workspace&&live?{...live,active:!!liveFresh()}:null,snapshots:read('views').slice().reverse()}));
   app.post('/api/viewer/view',(req,res)=>{
@@ -42,10 +86,11 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   app.get('/api/viewer/current/attachment',(req,res)=>{
     if(!liveFresh()||!live.paths)return res.status(409).json({error:'현재 Viewer 화면이 없습니다. Image Viewer를 열고 이미지가 표시될 때까지 기다리세요.'});
     if(req.query.vision!=='true')return res.json({live,imageSupported:false,instruction:'Read live.paths.image with an available image tool. This file is replaced as the visible view changes.'});
+    if(fs.statSync(live.paths.image).size>1024*1024)return res.json({live,imageSupported:false,inlineLimitBytes:1024*1024,instruction:'This PNG exceeds the 1 MiB inline image limit. Read live.paths.image with an image-capable tool, resize it locally, or request a smaller current view. Never print its bytes/base64 into text context.'});
     res.json({live,content:[{type:'text',text:JSON.stringify(live)},{type:'image',mimeType:'image/png',data:fs.readFileSync(live.paths.image).toString('base64')}]});
   });
   app.post('/api/viewer/commands',(req,res)=>{
-    const input=z.object({imageId:z.string().uuid(),zoom:z.number().min(.1).max(8).optional(),center:point.optional(),fit:z.boolean().optional(),render:render.optional(),highlights:highlights.optional(),message:z.string().max(4000).default(''),show:z.boolean().default(true)}).parse(req.body);
+    const input=z.object({imageId:z.string().uuid(),zoom:z.number().min(.1).max(512).optional(),center:point.optional(),fit:z.boolean().optional(),render:render.optional(),highlights:highlights.optional(),message:z.string().max(4000).default(''),show:z.boolean().default(true)}).parse(req.body);
     const image=findImage(input.imageId);if(input.center&&(input.center.x>=image.spec.width||input.center.y>=image.spec.height))throw new Error('Center is outside the source image');
     input.highlights?.forEach(r=>checkRegion(r,image.spec));
     const command={...input,id:crypto.randomUUID(),status:'pending',createdAt:new Date().toISOString()};
@@ -76,7 +121,10 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   app.get('/api/viewer/views/:id/attachment',(req,res)=>{
     const s=snapshot(req.params.id);
     if(req.query.vision!=='true')return res.json({snapshot:s,imageSupported:false,instruction:'Use paths.image with your available image-reading tool. Only request vision=true if the receiving integration supports image content.'});
-    res.json({snapshot:s,content:[{type:'text',text:JSON.stringify({...s,paths:undefined})},{type:'image',mimeType:'image/png',data:fs.readFileSync(path.join(folder(),'views',s.id,'view.png')).toString('base64')}]});
+    const file=path.join(folder(),'views',s.id,'view.png');
+    if(fs.statSync(file).size>1024*1024)return res.json({snapshot:s,imageSupported:false,inlineLimitBytes:1024*1024,instruction:'This PNG exceeds the 1 MiB inline image limit. Use paths.image with an image-capable tool or resize it locally. Never print binary image bytes/base64 into text context.'});
+    res.json({snapshot:s,content:[{type:'text',text:JSON.stringify({...s,paths:undefined})},{type:'image',mimeType:'image/png',data:fs.readFileSync(file).toString('base64')}]});
   });
   app.delete('/api/viewer/views/:id',(req,res)=>{const s=snapshot(req.params.id);write('views',read('views').filter(x=>x.id!==s.id));for(const f of ['view.png','metadata.json'])fs.rmSync(path.join(folder(),'views',s.id,f),{force:true});res.json({removed:s.id});});
+  return {resetSession(){live=null;liveWorkspace='';}};
 }

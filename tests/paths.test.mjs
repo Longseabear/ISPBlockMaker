@@ -23,10 +23,13 @@ test("explicit workspaces isolate writable server state and retain local edits o
     const skill=path.join(a,".agents/skills/isp-block-maker/SKILL.md");
     fs.appendFileSync(skill,"\nCustom rule\n");
     const content=fs.readFileSync(skill,"utf8");
-    const graph=fs.readFileSync(path.join(a,"graph.json"),"utf8");
+    const graph=fs.readFileSync(path.join(a,"project/graph.json"),"utf8");
     openWorkspace(a,root);
     assert.equal(fs.readFileSync(skill,"utf8"),content);
-    assert.equal(fs.readFileSync(path.join(a,"graph.json"),"utf8"),graph);
+    assert.equal(fs.readFileSync(path.join(a,"project/graph.json"),"utf8"),graph);
+    const fromSource=serverPaths(root,{...env,ISP_WORKSPACE:path.join(a,"project")});
+    assert.equal(fromSource.initialFolder,first.initialFolder);
+    assert.equal(fromSource.runtime,first.runtime);
     assert.match(fs.readFileSync(path.join(a,"AGENTS.md"),"utf8"),/^My original instructions/);
     assert.match(fs.readFileSync(path.join(a,".isp/tools/isp.cmd"),"utf8"),/node\.exe|\/node/);
   } finally { fs.rmSync(temp,{recursive:true,force:true}); }
