@@ -136,6 +136,36 @@ export async function main() {
     return encodeURIComponent(value);
   };
   if (command === "workspace-info") result = await request('/workspace-info');
+
+  else if (command === "graph-check") {
+    const [{workspace},project]=await Promise.all([request('/workspace-info'),request('/project')]);
+    const {graphCheck}=await import('../server/graph-check.mjs');
+    result=await graphCheck(workspace,project,{blockId:option('block'),changedFiles:option('changed')?.split(',')||[]});
+    const current=await request('/project');
+    result={...result,revision:project.revision,stale:current.revision!==project.revision};
+    if(!result.ok)process.exitCode=1;
+  }
+  else if (['recipes','recipe-show','recipe-save','recipe-plan','recipe-run'].includes(command)) {
+    const {workspace}=await request('/workspace-info');
+    const recipes=await import('../server/recipes.mjs');
+    if(command==='recipes')result=await recipes.listRecipes(workspace);
+    else if(command==='recipe-show')result=await recipes.readRecipe(workspace,decodeURIComponent(requiredId(args[0])));
+    else if(command==='recipe-save'){
+      const input=jsonFile(args[0]);
+      result=await recipes.saveRecipe(workspace,input.recipe,{expectedHash:input.expectedHash});
+    } else {
+      const id=decodeURIComponent(requiredId(args[0])),parameters=option('params')?jsonFile(option('params')):{};
+      const options={parameters,...(option('hash')?{expectedHash:option('hash')}:{})};
+      result=await (command==='recipe-plan'?recipes.planRecipeRun(workspace,id,options):recipes.runRecipe(workspace,id,options));
+      if(command==='recipe-run' && result.status!=='succeeded')process.exitCode=1;
+    }
+  }
+  else if (command === 'report-build') {
+    if(!option('out'))throw Error('Usage: isp report-build FILE.json --out artifacts/generated/name.html');
+    const {workspace}=await request('/workspace-info');
+    const {buildReport}=await import('../server/report-builder.mjs');
+    result=await buildReport(workspace,jsonFile(args[0]),option('out'));
+  }
   else if (command === "skills") result=await request('/skills');
   else if (command === "skill-show") result=await request(`/skills/item/${requiredId(args[0])}`);
   else if (command === "skill-save") result=await request('/skills/save',{method:'POST',body:JSON.stringify(jsonFile(args[0]))});
@@ -544,6 +574,13 @@ isp viewer-command COMMAND_ID    Check applied/failed acknowledgement
 isp viewer-command-show COMMAND_ID  Present a stored command again
 isp viewer-view [VIEW_ID]        Read live display metadata / explicitly shared screens
 isp viewer-image [current|VIEW_ID] [--vision]  Display metadata / PNG path, never image bytes on stdout
+isp graph-check [--block ID] [--changed FILE,FILE]  Read-only evidence and review items
+isp recipes                      List reusable project execution recipes
+isp recipe-show ID               Read recipe and content hash
+isp recipe-save FILE.json        Save {recipe,expectedHash:null|HASH}; does not execute
+isp recipe-plan ID [--params FILE.json] [--hash HASH]   Preview executable/argv/cwd/outputs
+isp recipe-run ID [--params FILE.json] [--hash HASH]    Execute locally and write a bounded run manifest
+isp report-build FILE.json --out artifacts/generated/name.html   Build local offline report; register separately
 isp skills                       List project and read-only framework skills
 isp skill-show NAME              Read files and current version
 isp skill-save FILE.json         Create/update {name, files, version:null|HASH}

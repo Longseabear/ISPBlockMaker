@@ -33,6 +33,10 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post("/viewer/images/import",{path:external,spec:{format:"bmp"}})).status,400);
   const imported=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-import","input.raw","--spec","spec.json"],{cwd:temp,windowsHide:true,encoding:"utf8"}));
   assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=0&y=0&width=2&height=2`)).status,401);
+  assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/tile?x=0&y=0&width=2&height=2`)).status,401);
+  const tileResponse=await fetch(base+`/api/viewer/images/${imported.id}/tile?x=2&y=1&width=2&height=2`,{headers});assert.equal(tileResponse.status,200);
+  assert.equal(JSON.parse(tileResponse.headers.get('X-Tile-Metadata')).encoding,'r16le');const tileBytes=Buffer.from(await tileResponse.arrayBuffer());assert.deepEqual([...Array(4)].map((_,i)=>tileBytes.readUInt16LE(i*2)),[70,77,126,133]);
+  assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/tile?x=7&y=0&width=2&height=2`,{headers})).status,400);
   const pixels=await(await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=2&y=1&width=2&height=2`,{headers})).json();assert.deepEqual(pixels.values,[70,77,126,133]);assert.equal(pixels.channels,1);assert.deepEqual(pixels.area,{x:2,y:1,width:2,height:2});
   assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=7&y=0&width=2&height=2`,{headers})).status,400);
   const stats=await(await fetch(base+`/api/viewer/images/${imported.id}/statistics?x=0&y=0&width=8&height=8`,{headers})).json();assert.equal(stats.sampleCount,64);assert.equal(stats.channels.Gr.count,16);assert.equal(stats.channels.Gr.blackCount,1);assert.equal(stats.valueDomain.includes('before display'),true);
@@ -55,6 +59,11 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post(`/viewer/requests/${request.id}/submit`,{x:0,y:0,width:1,height:1})).status,409);
   const downloaded=await fetch(base+`/api/viewer/requests/${request.id}/files/crop`,{headers});assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()),crop);
   const preview=await(await fetch(base+`/api/viewer/images/${imported.id}/preview`,{headers})).json();assert.match(preview.url,/^data:image\/png;base64,/);
+  fs.writeFileSync(path.join(temp,'wide.raw'),Buffer.alloc(1300*2*2));
+  const wide=await(await post('/viewer/images/import',{path:path.join(temp,'wide.raw'),spec:{format:'raw',width:1300,height:2,pattern:'GRBG'}})).json();
+  const fullCfa=await(await fetch(base+`/api/viewer/images/${wide.id}/preview?mode=cfa&fullFrame=true`,{headers})).json();
+  assert.deepEqual(fullCfa.area,{x:0,y:0,width:1300,height:2});assert.equal(fullCfa.width,1200);
+  const legacyCfa=await(await fetch(base+`/api/viewer/images/${wide.id}/preview?mode=cfa`,{headers})).json();assert.equal(legacyCfa.area.width,1200);
   const view={imageId:imported.id,render:{mode:'simple',gamma:2.2,black:0,white:1023},zoom:2,area:{x:0,y:0,width:8,height:8},visible:{x:1,y:1,width:3,height:3},highlights:[{x:1,y:1,width:2,height:2,label:'edge'}]};
   const command=await(await post('/viewer/commands',{imageId:imported.id,zoom:2,center:{x:3,y:3},render:view.render,highlights:view.highlights,show:false})).json();assert.equal(command.status,'pending');assert.equal(command.delivered,0);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:512,show:false})).status,201);assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:513,show:false})).status,400);
@@ -65,9 +74,10 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post('/viewer/view',{...view,sessionId,png:preview.url})).status,200);
   const currentImage=await(await fetch(base+'/api/viewer/current/attachment?vision=true',{headers})).json();assert.equal(currentImage.content[1].data,preview.url.split(',')[1]);
   assert.ok(fs.existsSync(currentImage.live.paths.image));
-  const moved={...view,visible:{x:2,y:2,width:2,height:2}};
+  const moved={...view,sourceScale:{x:2,y:2},rendering:'native-webgl2',visible:{x:2,y:2,width:2,height:2}};
   await post('/viewer/view',{...moved,sessionId,png:preview.url});
   const currentAgain=await(await fetch(base+'/api/viewer/current/attachment',{headers})).json();assert.equal(currentAgain.live.paths.image,currentImage.live.paths.image);assert.deepEqual(currentAgain.live.visible,moved.visible);
+  assert.equal(currentAgain.live.rendering,'native-webgl2');assert.deepEqual(currentAgain.live.sourceScale,{x:2,y:2});
   assert.equal((await(await fetch(base+'/api/viewer/view',{headers})).json()).snapshots.length,0);
   const currentCli=JSON.parse(execFileSync(process.execPath,[path.join(temp,'.isp/tools/isp.mjs'),'viewer-image'],{cwd:temp,windowsHide:true,encoding:'utf8'}));assert.equal(currentCli.live.imageId,imported.id);
   assert.equal((await(await fetch(base+`/api/viewer/commands/${command.id}`,{headers})).json()).status,'applied');

@@ -21,7 +21,7 @@ export function cfaChannel(spec, x, y) {
 }
 
 // Read only the requested scanline bytes. Numeric APIs never load a complete RAW frame.
-function scanRegion(file, input, area, visit) {
+function scanRegion(file, input, area, visit, includeAlpha=false) {
   const spec = imageSpec.parse(input.format === 'png' ? {...input,format:'rgba8'} : input), fd = fs.openSync(file, 'r');
   try {
     const size = fs.fstatSync(fd).size;
@@ -69,7 +69,7 @@ function scanRegion(file, input, area, visit) {
       const bytes = read(spec.offset + y * stride + area.x * pixelBytes, area.width * pixelBytes);
       for (let x = 0; x < area.width; x++) {
         if (spec.format === 'raw') { const word = bytes.readUInt16LE(x * 2); visit(area.x + x, y, spec.alignment === 'msb' ? word >>> (16 - spec.bitDepth) : word & (2 ** spec.bitDepth - 1)); }
-        else visit(area.x + x, y, [bytes[x * 4], bytes[x * 4 + 1], bytes[x * 4 + 2]]);
+        else visit(area.x + x, y, includeAlpha ? [bytes[x * 4], bytes[x * 4 + 1], bytes[x * 4 + 2], bytes[x * 4 + 3]] : [bytes[x * 4], bytes[x * 4 + 1], bytes[x * 4 + 2]]);
       }
     }
   } finally { fs.closeSync(fd); }
@@ -85,6 +85,19 @@ export function imagePixels(file, image, area) {
   scanRegion(file, image.spec, area, (_x, _y, value) => Array.isArray(value) ? values.push(...value) : values.push(value));
   const {pattern, group, originX, originY} = image.spec;
   return {...base(image, area), channels:image.spec.format === 'raw' ? 1 : 3, values, ...(image.spec.format === 'raw' ? {cfa:{pattern,group,originX,originY}} : {}), maxSamples:MAX_PIXEL_SAMPLES};
+}
+
+// A bounded binary transport for GPU textures. Reads only requested scanlines;
+// no whole-frame decoding, PNG conversion, or display transform for RAW/RGB.
+export function imageTile(file,image,area) {
+  checkAnalysisArea(image.spec,area,576*576);
+  if(area.width>576||area.height>576)throw Error('Tile dimensions must not exceed 576 pixels');
+  const raw=image.spec.format==='raw',bytes=Buffer.alloc(area.width*area.height*(raw?2:4));let index=0;
+  scanRegion(file,image.spec,area,(_x,_y,value)=>{
+    if(raw){bytes.writeUInt16LE(value,index);index+=2;}
+    else {bytes[index++]=value[0];bytes[index++]=value[1];bytes[index++]=value[2];bytes[index++]=value[3]??255;}
+  },true);
+  return {bytes,metadata:{imageId:image.id,area,encoding:raw?'r16le':'rgba8'}};
 }
 
 function whiteBalance(channels, sampleType, black, white) {

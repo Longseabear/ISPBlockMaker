@@ -11,13 +11,14 @@ Choose the workflow from the user's intended outcome. Read only the relevant ski
 
 | Request | Workflow |
 | --- | --- |
-| Implement/change blocks, wiring, descriptions, contracts, or graph overview | [isp-block-development](../isp-block-development/SKILL.md) |
+| Implement/change blocks, wiring, descriptions, contracts, graph overview, or check graph/source consistency | [isp-block-development](../isp-block-development/SKILL.md) |
 | “JOB 등록해”, split/merge work, implement block memos, process queued work | [isp-job-management](../isp-job-management/SKILL.md) |
 | “리포트 발행해”, “시각화해”, compare or explain measured results | [isp-visualizations](../isp-visualizations/SKILL.md) → Visualizations |
 | “뷰어에 띄워”, show RAW/BMP, inspect current view, zoom/pan/highlight, select crops | [isp-image-viewer](../isp-image-viewer/SKILL.md) → Image Viewer |
 | Explicit Documentation / SDD / Software Development Document | [isp-documentation](../isp-documentation/SKILL.md) → Documentation |
 | Create/update reusable project-specific skills or share skills alone | [project-skills.md](project-skills.md) → Project Skills |
 | Track attempts, compare/restore checkpoints, inspect branches/tags/commits, share/open a `.bundle` | [isp-version-sharing](../isp-version-sharing/SKILL.md) |
+| Inspect, reuse or save a parameterized project command | [execution-recipes.md](execution-recipes.md) |
 
 An explicit destination overrides the defaults. A generic report is not automatically an SDD. “발행” here means a local registered report, not external publishing. An HTML report belongs in Visualizations because Image Viewer cannot display HTML. If both source inspection and a report are requested, use both tools and leave the user's last requested view in front.
 
@@ -25,4 +26,4 @@ For a selected-block question, use `context --selection`; for project purpose or
 
 Workflows compose only as needed: executing a substantial JOB may require block development, an attempt and a source checkpoint; registering a JOB alone requires none of those. A visualization can read code without changing it. Repeated experiments use [experiment-loop.md](experiment-loop.md) when requested, not an automatic background scheduler. Scratch work follows [temporary-files.md](temporary-files.md).
 
-Current algorithms, entry points and decisions belong in graph overview/block metadata. Reusable project-specific procedures belong in separately managed project skills; follow the judgment guidance in common.md. Existing links to `viewer.md`, `sdd.md`, `graph-overview.md`, `temporary-files.md`, and `experiment-loop.md` remain supported.
+Current algorithms, entry points and decisions belong in graph overview/block metadata. Use [change-impact.md](change-impact.md) for affected records/evidence and [validation-method.md](validation-method.md) when selecting ISP checks. Reusable project-specific procedures belong in separately managed project skills; follow the judgment guidance in common.md. Existing links to `viewer.md`, `sdd.md`, `graph-overview.md`, `temporary-files.md`, and `experiment-loop.md` remain supported.

@@ -48,6 +48,14 @@ test("CFA crops align both boundaries for every pattern, group and imported phas
 });
 
 function pixels(png){const parts=[];for(let p=8;p<png.length;){const n=png.readUInt32BE(p);if(png.toString("ascii",p+4,p+8)==="IDAT")parts.push(png.subarray(p+8,p+8+n));p+=n+12;}return inflateSync(Buffer.concat(parts));}
+test('CFA overview preserves full source extent with a bounded display raster',()=>{
+ const image=openImage(Buffer.alloc(3000*4000*2),{format:'raw',width:3000,height:4000,bitDepth:12,pattern:'GRBG',group:4});
+ const result=preview(image,{mode:'cfa',fullFrame:true});
+ assert.deepEqual(result.area,{x:0,y:0,width:3000,height:4000});assert.equal(result.width,900);assert.equal(result.height,1200);
+ const large=openImage(Buffer.alloc(8000*16*2),{format:'raw',width:8000,height:16});
+ const bounded=preview(large,{mode:'cfa',fullFrame:true});assert.equal(bounded.width,1200);assert.deepEqual(bounded.area,{x:0,y:0,width:8000,height:16});
+});
+
 test("CFA colors preserve every pattern/group and Simple ISP reconstructs constant color planes with gamma",()=>{
  for(const group of [1,2,4])for(const pattern of ["RGGB","GRBG","GBRG","BGGR"]){
   const spec={format:"raw",width:24,height:24,group,pattern,originX:1,originY:1,bitDepth:12};const bytes=Buffer.alloc(24*24*2),values={R:1024,G:2048,B:3072};

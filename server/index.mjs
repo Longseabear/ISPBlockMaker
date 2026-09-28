@@ -1,3 +1,4 @@
+import { graphCheck } from "./graph-check.mjs";
 import {restructureJobs,restructureSchema} from './job-restructure.mjs';
 import {openWorkspaceServer, findWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
@@ -107,7 +108,7 @@ app.use("/api", (req, res, next) => {
 app.use("/api", express.json({ limit: "16mb" }));
 app.use("/api", (req,res,next)=>{
  const folder=dataDir,endpoint=req.path,method=req.method;
- if (method!=="GET" && !["/selection","/present","/activity/summaries","/shutdown","/viewer/view","/viewer/view/hidden","/bundle/import/preview","/bundle/import/destination"].includes(endpoint) && !endpoint.startsWith("/bundle/import/preview/")) {
+ if (method!=="GET" && !["/selection","/present","/activity/summaries","/graph-check","/shutdown","/viewer/view","/viewer/view/hidden","/bundle/import/preview","/bundle/import/destination"].includes(endpoint) && !endpoint.startsWith("/bundle/import/preview/")) {
   let result;const json=res.json.bind(res);res.json=(body)=>{result=body;return json(body);};
   res.on("finish",()=>{try {
    const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
@@ -207,6 +208,12 @@ app.post("/api/shutdown", (req,res) => {
 });
 app.get("/api/project", (req, res) => res.json(store.get()));
 app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
+app.post("/api/graph-check", async (req,res) => {
+  const options=z.object({blockId:z.string().min(1).max(80).optional(),changedFiles:z.array(z.string().min(1).max(1000)).max(200).default([])}).strict().parse(req.body);
+  const checkedWorkspace=workspace,project=store.get(),revision=project.revision;
+  const report=await graphCheck(checkedWorkspace,project,options);
+  res.json({...report,revision,stale:workspace!==checkedWorkspace||store.get().revision!==revision});
+});
 app.get("/api/tracking", async (req, res) => res.json(await listTracking(workspace, store.get())));
 app.get("/api/checkpoints/compare", async (req, res) => res.json(await compareCheckpoints(workspace, req.query.from, req.query.to)));
 app.get("/api/checkpoints/:id/preview", async (req, res) => res.json(await previewRestore(workspace, req.params.id)));
@@ -895,14 +902,20 @@ function startTerminal(socket, message) {
       );
   }
   clearTimeout(session.timer);
+  // One input owner: a refreshed/duplicated tab takes over without killing the PTY.
+  for (const previous of session.sockets) {
+    send(previous, { type: "detached" });
+    previous.sessionId = null;
+  }
+  session.sockets.clear();
   session.sockets.add(socket);
   socket.sessionId = sessionId;
   send(socket, {
     type: "started",
     blockId: session.blockId,
     agent: session.agent,
+    cols: session.pty.cols, rows: session.pty.rows, buffer: session.buffer,
   });
-  if (session.buffer) send(socket, { type: "output", data: session.buffer });
 }
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url, origin);
@@ -938,7 +951,7 @@ wss.on("connection", (socket) => {
         return;
       }
       const session = sessions.get(socket.sessionId);
-      if (!session) throw new Error("터미널을 먼저 시작하세요.");
+      if (!session || !session.sockets.has(socket)) throw new Error("터미널을 먼저 시작하세요.");
       if (message.type === "input")
         session.pty.write(z.string().max(65536).parse(message.data));
       else if (message.type === "resize")
@@ -956,12 +969,7 @@ wss.on("connection", (socket) => {
     const session = sessions.get(socket.sessionId);
     if (!session) return;
     session.sockets.delete(socket);
-    if (!session.sockets.size)
-      session.timer = setTimeout(() => {
-        try {
-          session.pty.kill();
-        } catch {}
-      }, 60000);
+    // Browser disconnects do not end a shell or running agent. Stop/server shutdown does.
   });
 });
 

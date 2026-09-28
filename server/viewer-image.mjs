@@ -44,17 +44,22 @@ export function encodePng(width,height,rgba){
   for(let y=0;y<height;y++)rgba.copy(scan,y*(width*4+1)+1,y*width*4,(y+1)*width*4);
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",header),chunk("IDAT",deflateSync(scan)),chunk("IEND",Buffer.alloc(0))]);
 }
-export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,gamma=2.2,viewX=0,viewY=0,roi}={}){
+export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,gamma=2.2,viewX=0,viewY=0,roi,fullFrame=false}={}){
   if(!Number.isFinite(black)||!Number.isFinite(white)||white<=black)throw new Error("White level은 black level보다 커야 합니다.");
   if(!["gray","color","cfa","simple"].includes(mode))throw new Error("잘못된 preview mode");
   if(!Number.isFinite(gamma)||gamma<0.1||gamma>5)throw new Error("Gamma는 0.1–5 범위여야 합니다.");
   const s=image.spec;
   let area=roi||{x:0,y:0,width:s.width,height:s.height};
-  if(mode==="cfa"&&image.sample&&!roi){
+  if(mode==="cfa"&&image.sample&&!roi&&!fullFrame){
     if(!Number.isInteger(viewX)||!Number.isInteger(viewY)||viewX<0||viewY<0||viewX>=s.width||viewY>=s.height)throw new Error("CFA view 좌표가 범위를 벗어났습니다.");
     area={x:viewX,y:viewY,width:Math.min(1200,s.width-viewX),height:Math.min(1200,s.height-viewY)};
   }
-  const scale=Math.min(1,1200/Math.max(area.width,area.height));const w=Math.max(1,Math.round(area.width*scale)),h=Math.max(1,Math.round(area.height*scale));const out=Buffer.alloc(w*h*4);
+  // Interactive CFA viewing needs a full-image coordinate space, not a fixed
+  // top-left window. Native detail is fetched independently as bounded tiles;
+  // this overview keeps the complete source extent at a bounded raster size.
+  // Explicit legacy windows and crop thumbnails retain their smaller budget.
+  const limit=1200;
+  const scale=Math.min(1,limit/Math.max(area.width,area.height));const w=Math.max(1,Math.round(area.width*scale)),h=Math.max(1,Math.round(area.height*scale));const out=Buffer.alloc(w*h*4);
   const level=v=>Math.round(Math.max(0,Math.min(1,(v-black)/(white-black)))*255);
   const groupCache=new Map();
   const groupValue=(gx,gy)=>{

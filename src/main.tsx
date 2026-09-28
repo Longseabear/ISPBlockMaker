@@ -773,6 +773,13 @@ function TerminalPane({
   const runningRef = useRef(false);
   const autoStarted = useRef(false);
   useEffect(() => {
+    const storageKey = 'isp-terminal:' + token;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (saved && /^[0-9a-f-]{36}$/i.test(saved.sessionId) && ['shell','codex','claude'].includes(saved.agent) && typeof saved.blockId === 'string') active.current = saved;
+    } catch {}
+    const remember = () => { try { if(active.current) sessionStorage.setItem(storageKey,JSON.stringify(active.current)); else sessionStorage.removeItem(storageKey); } catch {} };
+    runningRef.current = false;
     const terminal = new XTerminal({
       fontFamily: "Cascadia Code, Consolas, monospace",
       fontSize: 12,
@@ -830,7 +837,7 @@ function TerminalPane({
         setOnline(true);
         if (!autoStarted.current) {
           autoStarted.current = true;
-          active.current = {
+          active.current ||= {
             sessionId: crypto.randomUUID(),
             agent: "shell",
             blockId: block.id,
@@ -838,16 +845,28 @@ function TerminalPane({
           setStarting(true);
         }
         if (active.current) {
-          terminal.reset();
+          remember();
+          runningRef.current = false;
+          setStarting(true);
           send({ type: "start", ...active.current });
         }
       };
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
+        if (disposed) return;
+        if (message.type === "detached") {
+          active.current = null;
+          remember();
+          runningRef.current = false;
+          setRunning(false); setStarting(false);
+          terminal.writeln('\r\n[다른 탭에 터미널이 연결되었습니다. Reconnect로 다시 연결하세요.]');
+          return;
+        }
         if (message.type === "workspace-changed") {
           if (message.bundleRestore?.backupPath) {
             sessionStorage.setItem("isp-last-bundle-backup", JSON.stringify(message.bundleRestore));
           }
+          active.current = null; remember(); runningRef.current = false;
           disposed = true;
           setOnline(false);
           setRunning(false);
@@ -863,13 +882,19 @@ function TerminalPane({
         }
         if (message.type === "output") terminal.write(message.data);
         if (message.type === "started") {
-          setStarting(false);
-          setRunning(true);
-          runningRef.current = true;
+          runningRef.current = false;
+          terminal.reset();
+          if(message.cols && message.rows) terminal.resize(message.cols,message.rows);
+          setAgent(message.agent);
           setPinned(message.blockId);
-          fitter.fit();
-          send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
-          terminal.focus();
+          remember();
+          terminal.write(message.buffer || '', () => {
+            if(disposed || socket.current !== ws || ws.readyState !== WebSocket.OPEN || !active.current) return;
+            setStarting(false); setRunning(true); runningRef.current = true;
+            fitter.fit();
+            send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
+            terminal.focus();
+          });
         }
         if (message.type === "exit") {
           terminal.writeln(`\r\n[Session ended · exit ${message.exitCode}]`);
@@ -877,10 +902,11 @@ function TerminalPane({
           setStarting(false);
           runningRef.current = false;
           active.current = null;
+          remember();
         }
         if (message.type === "error") {
           setStarting(false);
-          if (!runningRef.current) active.current = null;
+          if (!runningRef.current) { active.current = null; remember(); }
           notifyCallback.current(message.error);
         }
       };
@@ -892,7 +918,7 @@ function TerminalPane({
     }
     connect();
     const input = terminal.onData((data) => {
-      if (active.current) send({ type: "input", data });
+      if (active.current && runningRef.current) send({ type: "input", data });
     });
     const resize = new ResizeObserver(() => {
       fitter.fit();
@@ -916,6 +942,8 @@ function TerminalPane({
       agent: nextAgent,
       blockId: block.id,
     };
+    try { sessionStorage.setItem('isp-terminal:' + token,JSON.stringify(active.current)); } catch {}
+    runningRef.current = false;
     setStarting(true);
     term.current?.reset();
     socket.current?.send(JSON.stringify({ type: "start", ...active.current }));

@@ -1,3 +1,4 @@
+import { installWorkspaceGuidance } from "./workspace-guidance.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -119,5 +120,6 @@ export function openWorkspace(folder, root) {
     if (missing.length)
       fs.appendFileSync(ignore, "\n" + missing.join("\n") + "\n");
   }
+  installWorkspaceGuidance(workspace, root);
   return { workspace, sourceRoot, dataDir, artifactDir, store, cli };
 }

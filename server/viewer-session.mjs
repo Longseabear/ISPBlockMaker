@@ -9,7 +9,7 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   const region=point.extend({width:z.number().finite().positive(),height:z.number().finite().positive()});
   const highlights=z.array(region.extend({label:z.string().max(120).default('')})).max(20);
   const render=z.object({mode:z.enum(['color','gray','cfa','simple']),gamma:z.number().min(.1).max(5),black:z.number().finite(),white:z.number().finite()}).refine(v=>v.white>v.black,'White must exceed black');
-  const view=z.object({imageId:z.string().uuid(),render,pixelValues:z.boolean().optional(),zoom:z.number().positive().max(512),area:region,visible:region,highlights,selection:region.optional(),selections:z.array(region).min(1).max(32).optional()});
+  const view=z.object({imageId:z.string().uuid(),render,pixelValues:z.boolean().optional(),zoom:z.number().positive().max(512),sourceScale:z.object({x:z.number().finite().positive(),y:z.number().finite().positive()}).optional(),rendering:z.enum(['overview','native-webgl2']).optional(),area:region,visible:region,highlights,selection:region.optional(),selections:z.array(region).min(1).max(32).optional()});
   const checkRegion=(r,s)=>{if(r.x+r.width>s.width+.01||r.y+r.height>s.height+.01)throw new Error('View region is outside the source image');};
   const checkView=v=>{const image=findImage(v.imageId);checkRegion(v.area,image.spec);checkRegion(v.visible,image.spec);v.highlights.forEach(r=>checkRegion(r,image.spec));if(v.selection)checkRegion(v.selection,image.spec);v.selections?.forEach(r=>checkRegion(r,image.spec));return image;};
   let live=null,liveWorkspace='';

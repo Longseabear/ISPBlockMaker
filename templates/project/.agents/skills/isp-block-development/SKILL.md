@@ -1,6 +1,6 @@
 ---
 name: isp-block-development
-description: Implement or edit ISP graph blocks, connections, code entry points, human descriptions and agent contracts. Use for algorithm changes, code-to-node mapping, input/output explanations, or whole-graph context; combine with job management only when requests or JOBs are involved.
+description: Implement or edit ISP graph blocks, connections, code entry points, human descriptions and agent contracts. Use for algorithm changes, graph/source consistency checks, code-to-node mapping, input/output explanations, or whole-graph context; combine with job management only when requests or JOBs are involved.
 ---
 
 # Develop the graph
@@ -46,17 +46,10 @@ Set `implementation` relative to the discovered `sourceRoot` and actual `impleme
 
 Connected-node deletion requires `--with-edges` and removes incident edges atomically; use it only when disconnecting is part of the request. Source files and historical artifacts remain. The final node cannot be deleted. Cycles, incompatible port types and multiple drivers for one input are rejected. `mermaid` exports the graph; JSON remains the specification.
 
-## Keep code, explanations and evidence aligned
+## Validate and reconcile the change
 
-For optional input/output collection or C-model porting evidence, read [reference I/O](../isp-block-maker/reference-io.md). Preserve chosen block/region boundaries without imposing a one-to-one implementation mapping.
+Use [change-impact.md](../isp-block-maker/change-impact.md) to select affected metadata, source checks and evidence. `graph-check [--block ID] [--changed FILE,FILE]` provides read-only structural/reference findings and shared-file impact; it does not establish algorithm correctness.
 
-Code changes alone are not completion, even without a JOB:
+For behavior changes, use [validation-method.md](../isp-block-maker/validation-method.md) to choose relevant ISP invariants, reference cases and edge cases. Discover existing execution commands first; [execution recipes](../isp-block-maker/execution-recipes.md) support repeatable commands and capture run provenance without requiring a runner for every node. Optional boundary dumps/private-model exchange use [reference I/O](../isp-block-maker/reference-io.md).
 
-- Update affected card text, human detail, agent principle/contract, ports, parameters and source symbols. Rename a misleading display name while preserving its stable ID. Inspect downstream consumers and nodes sharing changed code; update only affected information.
-- For example, replacing mean/mean-square variance with min/max must describe the actual estimator, such as `(max-min)^2/12` if implemented, its approximation and threshold implications. An old ID does not justify an obsolete formula.
-- Inspect related visualization generators, controls, captions, legends, units, metrics, SDD descriptions and alternate references. Update tools made inaccurate by the change, including executable formulas. Refreshing a title/hash alone does not prove equivalence.
-- For behavior changes, produce useful evidence from actual execution where feasible. Prefer improving a relevant existing tool and the smallest useful output: input/output/difference, estimator distribution/mask coverage, or ROI/profile. Use [Visualizations](../isp-visualizations/SKILL.md) to register it. Do not create every chart or invent a dashboard for a minor edit.
-- A before/after comparison requires both versions run on the same input and stated parameters; otherwise label current-output validation. Preserve historical registered files/version identity and register a new current result. Record input/seed/hash, parameters, source version plus dirty state, graph revision, and verification limits as appropriate.
-- Re-read saved context, check code composition against ports/edges/contracts, and inspect the result. Required unfinished checks/metadata updates keep the relevant JOB open. If useful visual evidence cannot be produced, state the concrete limitation and actual validation. Spelling/layout edits or behavior-preserving refactors need appropriate checks, not an artificial experiment.
-
-Save a coherent graph/source/generator [checkpoint](../isp-version-sharing/SKILL.md), link the tested result to its attempt, then follow [completion.md](../isp-block-maker/completion.md). A normal branch commit may be requested separately; a checkpoint already preserves the implementation without changing the branch or user staging. Prefer a new useful comparison for final presentation; otherwise highlight changed blocks and surviving edges. If work originated in requests/JOBs, finish its lifecycle through [job management](../isp-job-management/SKILL.md). For requested optimization/iteration, additionally read [experiment-loop.md](../isp-block-maker/experiment-loop.md).
+Follow [completion.md](../isp-block-maker/completion.md) for the coherent checkpoint, work summary and useful final view. If work originated in requests/JOBs, finish its lifecycle through [job management](../isp-job-management/SKILL.md). For requested optimization/iteration, additionally read [experiment-loop.md](../isp-block-maker/experiment-loop.md).

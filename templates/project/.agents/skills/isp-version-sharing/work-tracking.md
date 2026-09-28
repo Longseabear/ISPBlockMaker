@@ -27,7 +27,7 @@ Use `blockId: null` in `jobRefs` for a global JOB. Scope is part of the referenc
 
 ## Record measured work
 
-Update an active attempt with `attempt-update ATTEMPT_ID FILE.json`. Fields include `title`, `approach`, `inputConditions`, `summary`, `validation` (strings), `artifactIds`, `resultCheckpointId`, and `status` (`in_progress`, `completed`, `failed`, `cancelled`). Record actual input identity, parameters, seed, command and relevant environment in `inputConditions`; use `validation` for checks and measured metrics with units, reference and direction. Do not invent success/quality from a zero exit code or an input/output difference metric.
+Update an active attempt with `attempt-update ATTEMPT_ID FILE.json`. Fields include `title`, `approach`, `inputConditions`, `summary`, `validation` (strings), `artifactIds`, `resultCheckpointId`, and `status` (`in_progress`, `completed`, `failed`, `cancelled`). Record actual input identity, parameters, seed, command and relevant environment in `inputConditions`; reuse verified values and a manifest reference from [execution recipes](../isp-block-maker/execution-recipes.md) when available. Use `validation` for checks and measured metrics with units, reference and direction. Do not invent success/quality from a zero exit code or an input/output difference metric.
 
 Preserve reproducible source identity before generating evidence when practical:
 

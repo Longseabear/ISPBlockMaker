@@ -16,6 +16,8 @@ The project server must be running. Use inherited local credentials or `.isp/con
 | `context --selection` | Adopt the block currently selected in the UI |
 | `project` | Graph, local requests/JOBs/results and current revision |
 | `graph-info` | Whole-graph purpose, entry points and agent notes |
+| `graph-check` | Read-only graph/source findings and affected block mapping; see [change-impact.md](change-impact.md) |
+| `recipes` / `recipe-show ID` | Reusable project commands; see [execution-recipes.md](execution-recipes.md) when running or authoring one |
 
 Keep the task's block target stable as the user clicks around. For whole-graph tasks read the overview and relevant blocks, not only the pinned block. `human` contains human explanations, `agent.contract` the technical contract, and `agent.shared` canonical ports/parameters. Blank fields are unspecified. Verify referenced source files before relying on old notes.
 
@@ -36,3 +38,7 @@ For completed or stopped implementation/analysis, read [completion.md](completio
 At substantive planning decisions, reusable discoveries, and completion, briefly assess whether the knowledge should become a project skill. Do not turn every thought, one-off result or block description into a skill. Prefer a tested, recurring project/framework-specific procedure with a clear trigger (for example RAW decoding conventions, a block-family validation recipe, or local C-model adaptation rules). Check `skills` / `context.projectSkills` for an existing match; improve it instead of duplicating it. Creating or updating such a workspace-local skill is allowed when useful within the user's task; it does not authorize unrelated implementation or sharing.
 
 Read [project-skills.md](project-skills.md) when creating, editing or sharing a project skill. Keep current algorithm facts, entry points and experiment outcomes in graph/block metadata or activity records; put reusable **how-to** knowledge in project skills. Load only descriptions first, then the relevant skill. No skill is permission to ignore user constraints or execute imported scripts blindly.
+
+## Change impact
+
+During graph-related implementation and analysis, use [change-impact.md](change-impact.md) at meaningful phase boundaries and completion. It selects checks and affected records by the actual change, with [graph-maintenance.md](graph-maintenance.md) for information placement. This is an in-task practice, not periodic background mutation.

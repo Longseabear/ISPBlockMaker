@@ -1,6 +1,6 @@
 # Workspace-local project skills
 
-Use Project Skills for reusable procedures specific to this ISP project or its private target framework: RAW layout conventions, repeatable WB/quality checks, block-family validation, or adaptation recipes. Current implementation facts and one-off measurements belong in node/graph metadata and activity records. Consider skill value when planning, discovering reusable knowledge and finishing; do not create a file for every reasoning step. Prefer updating an existing skill, and avoid duplicating the framework's built-in `isp-*` instructions.
+Use Project Skills for reusable procedures specific to this ISP project or its private target framework: RAW layout conventions, repeatable WB/quality checks, block-family validation, or adaptation recipes. Current implementation facts and one-off measurements belong in node/graph metadata and activity records. Apply the judgment in [common.md](common.md); prefer updating an existing skill and avoid duplicating the framework's built-in `isp-*` instructions.
 
 ## Find and author
 
@@ -41,3 +41,9 @@ isp skill-import tmp/project.skills.bundle --choices tmp/skill-choices.json
 ```
 
 The choices file is an array of `{ "name": "sensor-raw-validation", "version": null }` for a new skill, or the exact current version from preview for an intentional replacement. Preview and inspect first; never replace conflicts simply to make import succeed. Export uses exclusive creation and will not overwrite an existing output file.
+
+## Generalize learned procedures
+
+After a successful special-framework execution, capture the reusable method rather than the transcript: when to use it, prerequisites, input/output formats, expected output discovery, success checks and known failure conditions. A reusable invocation can live in an [execution recipe](execution-recipes.md); reference its ID and explain domain choices rather than copying its command. Skills-only bundles do not include source recipes, so document that dependency. Use [validation-method.md](validation-method.md) as a selection guide rather than copying all its example cases into every skill.
+
+Separate verified steps from untested variations. Keep machine-specific absolute paths and per-run values out of universal rules; reference local graph entry points or configurable parameters. A failed/unverified procedure must not be presented as reliable. Improve or retire obsolete guidance when confirmed, preserving useful unrelated knowledge.

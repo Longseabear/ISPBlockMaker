@@ -7,7 +7,7 @@ import {z} from "zod";
 import {openImage,preview,cropImage} from "./viewer-image.mjs";
 import {writeZip} from "./bundle-zip.mjs";
 import {installViewerSession} from "./viewer-session.mjs";
-import {imagePixels,imageStatistics,MAX_PIXEL_SAMPLES,MAX_STAT_SAMPLES} from "./viewer-analysis.mjs";
+import {imagePixels,imageStatistics,imageTile,MAX_PIXEL_SAMPLES,MAX_STAT_SAMPLES} from "./viewer-analysis.mjs";
 
 export function installViewer(app,{current,present}) {
   const changes=new EventEmitter(); changes.setMaxListeners(64);
@@ -62,10 +62,15 @@ export function installViewer(app,{current,present}) {
   app.get("/api/viewer/images/:id/preview",(req,res)=>{
     const image=findImage(req.params.id);
     const mode=z.enum(["gray","color","cfa","simple"]).parse(req.query.mode||"color");
-    const output=preview(load(image),{mode,gamma:Number(req.query.gamma??2.2),viewX:Number(req.query.viewX??0),viewY:Number(req.query.viewY??0),black:Number(req.query.black||0),white:req.query.white===undefined?2**image.spec.bitDepth-1:Number(req.query.white)});
+    const fullFrame=z.enum(['true','false']).parse(req.query.fullFrame??'false')==='true';
+    const output=preview(load(image),{mode,fullFrame,gamma:Number(req.query.gamma??2.2),viewX:Number(req.query.viewX??0),viewY:Number(req.query.viewY??0),black:Number(req.query.black||0),white:req.query.white===undefined?2**image.spec.bitDepth-1:Number(req.query.white)});
     res.json({width:output.width,height:output.height,area:output.area,url:"data:image/png;base64,"+output.png.toString("base64")});
   });
   const areaFromQuery=query=>Object.fromEntries(["x","y","width","height"].map(key=>[key,Number(query[key])]));
+  app.get('/api/viewer/images/:id/tile',(req,res)=>{
+    const image=findImage(req.params.id),tile=imageTile(original(image),image,areaFromQuery(req.query));
+    res.set('Cache-Control','no-store').set('X-Tile-Metadata',JSON.stringify(tile.metadata)).type('application/octet-stream').send(tile.bytes);
+  });
   app.get("/api/viewer/images/:id/pixels",(req,res)=>{
     const image=findImage(req.params.id);res.json(imagePixels(original(image),image,areaFromQuery(req.query)));
   });
