@@ -1,4 +1,5 @@
 import { graphCheck } from "./graph-check.mjs";
+import { installReportSharing } from './report-sharing.mjs';
 import {restructureJobs,restructureSchema} from './job-restructure.mjs';
 import {openWorkspaceServer, findWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
@@ -119,6 +120,7 @@ app.use("/api", (req,res,next)=>{
  }
  next();
 });
+const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.get().artifacts}));
 const viewer = installViewer(app, {
   current: () => ({workspace,state:store.get()}),
   present: (requestId,message,commandId) => {
@@ -1012,6 +1014,7 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
 async function shutdown() {
+  await reportSharing.stop();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
     if (process.platform === "win32") {

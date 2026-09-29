@@ -1,5 +1,15 @@
 # ISP Block Maker
 
+### Local-network report sharing
+
+In **Visualizations**, click the share icon next to the report selector, then **현재 리포트 공유**. A separate read-only HTTP server starts on port 4311 (or the next available port) and generates a random-token link. Choose the appropriate LAN address and copy the link. Wi-Fi / Ethernet addresses are preferred over common VPN and virtual adapters. To use a specific port, enter it and click **공유 서버 시작** before publishing.
+
+The editor remains on loopback; the sharing listener binds to `0.0.0.0` and serves only explicitly published snapshots, without terminal, workspace or management APIs. Network selection changes the generated link, not the binding. Allow the chosen TCP port on trusted private networks in Windows Firewall if needed; firewall settings are not changed automatically. This is plain HTTP, with access granted to anyone holding the link, intended for trusted networks.
+
+Use **공유본 업데이트** to replace a snapshot while keeping its token, the trash button to revoke one link, or **전체 공유 중지** to stop all access. Revocation does not delete the source visualization. Snapshots and tokens are stored in the workspace server's local runtime state (`report-shares`); they survive server restarts but are not included in workspace bundles. Sharing always starts **OFF** after a restart. Start it again to reactivate saved links. The PC must stay awake and running; changes to its LAN IP or port change the URL. There is no automatic expiration.
+
+Self-contained HTML reports (including embedded images and offline math fonts) and registered images are supported. Local file paths, external assets and API dependencies are not published or rewritten; use embedded assets when building a report for sharing.
+
 [설치·사용·공유 가이드 (GitHub Pages)](https://longseabear.github.io/ISPBlockMaker/) · [프로젝트 공유 방법](https://longseabear.github.io/ISPBlockMaker/#sharing)
 
 로컬 CLI 에이전트와 함께 ISP 블록을 설계·구현·시각화하는 웹 작업 공간입니다. MCP 없이 HTTP API와 WebSocket으로 동작합니다.

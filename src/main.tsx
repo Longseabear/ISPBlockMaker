@@ -1,4 +1,5 @@
 import {ProjectSkills} from './ProjectSkills';
+import {ReportShare} from './ReportShare';
 import {BundleOpen} from "./BundleOpen";
 import {BundleShare} from "./BundleShare";
 import { Viewer } from "./Viewer";
@@ -1910,6 +1911,7 @@ function App() {
                         onDelete={artifacts => { setDeleteError(""); setDeleteCandidates(artifacts); }}
                       />
                     </> : <h1>Visualizations</h1>}
+                    <ReportShare api={api} artifact={artifact}/>
                   </div>
                   {artifact ? (
                     <>
