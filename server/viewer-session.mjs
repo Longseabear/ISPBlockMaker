@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import {z} from 'zod';
 import {combineStatistics,checkAnalysisArea,MAX_STAT_SAMPLES} from './viewer-analysis.mjs';
 
-export function installViewerSession(app,{current,present,read,write,findImage,folder,cropStatistics,changes}) {
+export function installViewerSession(app,{current,present,read,write,findImage,folder,cropStatistics,changes,reinterpret}) {
   const point=z.object({x:z.number().finite().nonnegative(),y:z.number().finite().nonnegative()});
   const region=point.extend({width:z.number().finite().positive(),height:z.number().finite().positive()});
   const highlights=z.array(region.extend({label:z.string().max(120).default('')})).max(20);
@@ -90,10 +90,11 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
     res.json({live,content:[{type:'text',text:JSON.stringify(live)},{type:'image',mimeType:'image/png',data:fs.readFileSync(live.paths.image).toString('base64')}]});
   });
   app.post('/api/viewer/commands',(req,res)=>{
-    const input=z.object({imageId:z.string().uuid(),zoom:z.number().min(.1).max(512).optional(),center:point.optional(),fit:z.boolean().optional(),render:render.optional(),highlights:highlights.optional(),message:z.string().max(4000).default(''),show:z.boolean().default(true)}).parse(req.body);
+    const input=z.object({imageId:z.string().uuid(),zoom:z.number().min(.1).max(512).optional(),zoomPercent:z.number().min(1).max(51200).optional(),pixelValues:z.boolean().optional(),pixels:z.object({bitDepth:z.number().int().min(8).max(16).optional(),pattern:z.enum(['GRBG','RGGB','GBRG','BGGR']).optional(),group:z.union([z.literal(1),z.literal(2),z.literal(4)]).optional(),alignment:z.enum(['lsb','msb']).optional()}).strict().refine(p=>Object.keys(p).length>0,'Provide pixel settings').optional(),center:point.optional(),fit:z.boolean().optional(),render:render.optional(),highlights:highlights.optional(),message:z.string().max(4000).default(''),show:z.boolean().default(true)}).strict().refine(c=>[c.zoom!==undefined,c.zoomPercent!==undefined,c.fit===true].filter(Boolean).length<=1,'Choose only zoomPercent, zoom or fit').parse(req.body);
     const image=findImage(input.imageId);if(input.center&&(input.center.x>=image.spec.width||input.center.y>=image.spec.height))throw new Error('Center is outside the source image');
     input.highlights?.forEach(r=>checkRegion(r,image.spec));
-    const command={...input,id:crypto.randomUUID(),status:'pending',createdAt:new Date().toISOString()};
+    const effectiveImage=input.pixels?reinterpret(image,input.pixels):image;
+    const command={...input,imageId:effectiveImage.id,sourceImageId:image.id,imageSpec:effectiveImage.spec,id:crypto.randomUUID(),status:'pending',createdAt:new Date().toISOString()};
     write('commands',[...read('commands').slice(-99),command]);
     res.status(201).json({...command,delivered:input.show?present('',input.message,command.id):0});
   });

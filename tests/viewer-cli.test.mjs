@@ -20,11 +20,21 @@ test('Viewer CLI keeps image bytes out of text context and bounds numeric inspec
     assert.equal(req.headers.authorization,'Bearer cli-test-token');
     res.setHeader('Content-Type','application/json');
     if(req.url.includes('/attachment'))res.end(JSON.stringify(req.url.includes('vision=true')?{content:[{type:'image',data:'x'.repeat(100_000)}]}:{live:{imageId:'sample',paths:{image:'C:/workspace/.isp/viewer/current-view.png'}},imageSupported:false}));
+    else if(req.url==='/api/viewer/commands')res.end(JSON.stringify({id:'control-test',status:'pending',delivered:1}));
+    else if(req.url==='/api/viewer/commands/control-test')res.end(JSON.stringify({id:'control-test',status:'applied'}));
     else if(req.url==='/api/viewer/crop-selection')res.end(JSON.stringify({id:'delivery',status:'pending',purpose:'white_balance',crops:[]}));
     else res.end(JSON.stringify({ok:true}));
   }).listen(0,'127.0.0.1');
   await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
   const run=(...args)=>promisify(execFile)(process.execPath,[fileURLToPath(new URL('../scripts/isp.mjs',import.meta.url)),...args],{windowsHide:true,env:{...process.env,ISP_API_URL:`http://127.0.0.1:${server.address().port}`,ISP_API_TOKEN:'cli-test-token'}});
+
+  const controlDir=fs.mkdtempSync(path.join(os.tmpdir(),'isp-control-cli-'));
+  t.after(()=>fs.rmSync(controlDir,{recursive:true,force:true}));
+  const controlFile=path.join(controlDir,'control.json'),options={imageId:'sample',pixels:{bitDepth:10,pattern:'GRBG',group:2},zoomPercent:400,pixelValues:true};
+  fs.writeFileSync(controlFile,JSON.stringify(options));
+  const noWait=JSON.parse((await run('viewer-control',controlFile,'--wait','0')).stdout);assert.equal(noWait.displayed,false);assert.deepEqual(calls.at(-1).body,options);
+  const applied=JSON.parse((await run('viewer-control',controlFile,'--wait','2')).stdout);assert.equal(applied.displayed,true);assert.equal(applied.delivered,1);
+  await assert.rejects(run('viewer-control',controlFile,'--wait','-1'),/--wait/);
 
   const vision=await run('viewer-image','current','--vision');
   assert.ok(vision.stdout.length<2000);

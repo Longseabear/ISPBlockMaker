@@ -26,7 +26,10 @@ export function installViewer(app,{current,present}) {
     const result=imageStatistics(file,{id:image.id,spec:region.output},{x:0,y:0,width:region.output.width,height:region.output.height},options);
     return {...result,area:region.roi,spec:image.spec,cropSpec:region.output,analysisSource:"saved-crop",path:region.paths.crop};
   };
-  const session=installViewerSession(app,{current,present,read,write,findImage,folder,statistics,cropStatistics,changes});
+  const session=installViewerSession(app,{current,present,read,write,findImage,folder,statistics,cropStatistics,changes,reinterpret:(image,pixels)=>{
+    if(image.spec.format!=="raw")throw new Error("Pixel settings require a RAW image");
+    return register(fs.readFileSync(original(image)),{name:image.name,spec:{...image.spec,...pixels},reuse:true});
+  }});
   const register=(bytes,input)=>{
     if(!bytes.length||bytes.length>256*1024*1024)throw new Error("이미지는 최대 256MB입니다.");
     const images=read("images");
@@ -38,7 +41,7 @@ export function installViewer(app,{current,present}) {
     write("images",[...images,image]);return image;
   };
   const findRequest=value=>{const request=read("requests").find(r=>r.id===id(value));if(!request)throw new Error("크롭 요청을 찾을 수 없습니다.");return request;};
-  app.get("/api/viewer",(req,res)=>res.json({images:read("images"),requests:read("requests"),access:{pixelSamples:MAX_PIXEL_SAMPLES,statisticsSamples:MAX_STAT_SAMPLES,instruction:"Never print RAW, BMP, PNG or base64 into agent text context. Read current view with an image-capable tool, request bounded pixel values or ROI statistics, and use crop binary paths for computations.",pixels:"GET /api/viewer/images/:id/pixels?x=&y=&width=&height=",statistics:"GET /api/viewer/images/:id/statistics?x=&y=&width=&height=",delivery:"GET /api/viewer/crop-selection"}}));
+  app.get("/api/viewer",(req,res)=>res.json({images:read("images"),requests:read("requests"),access:{control:"POST /api/viewer/commands: imageId, pixels {bitDepth, pattern GRBG|RGGB|GBRG|BGGR, group 1|2|4, alignment lsb|msb}, zoomPercent (100 = source 1:1), center {x,y} in source pixels, fit, render {mode,gamma,black,white}, pixelValues, highlights, show. Check command status before claiming UI applied. RAW reinterpretation returns a new/reused imageId; old crops remain unchanged.",pixelSamples:MAX_PIXEL_SAMPLES,statisticsSamples:MAX_STAT_SAMPLES,instruction:"Never print RAW, BMP, PNG or base64 into agent text context. Read current view with an image-capable tool, request bounded pixel values or ROI statistics, and use crop binary paths for computations.",pixels:"GET /api/viewer/images/:id/pixels?x=&y=&width=&height=",statistics:"GET /api/viewer/images/:id/statistics?x=&y=&width=&height=",delivery:"GET /api/viewer/crop-selection"}}));
   app.post("/api/viewer/images",express.raw({type:"application/octet-stream",limit:"256mb"}),(req,res)=>{
     const input=JSON.parse(decodeURIComponent(req.headers["x-image-metadata"]||"{}"));
     if(!Buffer.isBuffer(req.body))throw new Error("이미지 바이너리가 필요합니다.");

@@ -245,8 +245,12 @@ export async function main() {
     }
   }
   else if (command === "viewer-control") {
-    if(!args[0])throw new Error('Usage: isp viewer-control command.json');
+    if(!args[0])throw new Error('Usage: isp viewer-control command.json [--wait 15]');
+    const seconds=Number(option('wait')??15);if(!Number.isFinite(seconds)||seconds<0||seconds>120)throw new Error('--wait must be between 0 and 120 seconds');
     result=await request('/viewer/commands',{method:'POST',body:fs.readFileSync(args[0],'utf8')});
+    const delivered=result.delivered,until=Date.now()+seconds*1000;
+    while(delivered>0&&result.status==='pending'&&Date.now()<until){await new Promise(r=>setTimeout(r,Math.min(500,until-Date.now())));result=await request(`/viewer/commands/${result.id}`);}
+    result={...result,delivered,displayed:result.status==='applied'};
   }
   else if (command === "viewer-command") result=await request(`/viewer/commands/${encodeURIComponent(args[0])}`);
   else if (command === "viewer-command-show") result=await request(`/viewer/commands/${encodeURIComponent(args[0])}/show`,{method:'POST',body:'{}'});
@@ -569,7 +573,7 @@ isp viewer-crops-ack DELIVERY_ID --note "Result / input paths"  Mark a handled c
 isp viewer-crop-stats DELIVERY_ID [--black N] [--white N]  Compact per-region/channel crop statistics
 isp viewer-stats IMAGE_ID --roi x,y,w,h [--black N] [--white N]  RAW/RGB source statistics
 isp viewer-pixels IMAGE_ID --roi x,y,w,h  Exact pixel values, at most 256 source pixels
-isp viewer-control command.json  Present image, zoom, center, render and highlights
+isp viewer-control command.json [--wait 15]  Set RAW pixels, zoomPercent, center, render, pixelValues and highlights
 isp viewer-command COMMAND_ID    Check applied/failed acknowledgement
 isp viewer-command-show COMMAND_ID  Present a stored command again
 isp viewer-view [VIEW_ID]        Read live display metadata / explicitly shared screens

@@ -69,6 +69,12 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:512,show:false})).status,201);assert.equal((await post('/viewer/commands',{imageId:imported.id,zoom:513,show:false})).status,400);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,center:{x:8,y:0}})).status,400);
   assert.equal((await post('/viewer/commands',{imageId:imported.id,highlights:[{x:7,y:0,width:2,height:1}]})).status,400);
+  const controlledResponse=await post('/viewer/commands',{imageId:imported.id,pixels:{bitDepth:10,pattern:'GBRG',group:2,alignment:'msb'},zoomPercent:400,center:{x:3,y:3},pixelValues:false,show:false});
+  assert.equal(controlledResponse.status,201);const controlled=await controlledResponse.json();
+  assert.notEqual(controlled.imageId,imported.id);assert.equal(controlled.sourceImageId,imported.id);assert.equal(controlled.imageSpec.pattern,'GBRG');assert.equal(controlled.imageSpec.bitDepth,10);assert.equal(controlled.zoomPercent,400);assert.equal(controlled.pixelValues,false);
+  const preserved=await(await fetch(base+'/api/viewer',{headers})).json();assert.deepEqual(preserved.images.find(i=>i.id===imported.id).spec,imported.spec);
+  const again=await(await post('/viewer/commands',{imageId:controlled.imageId,pixels:{pattern:'GRBG'},show:false})).json();assert.equal(again.imageSpec.bitDepth,10);assert.equal(again.imageSpec.group,2);assert.equal(again.imageSpec.pattern,'GRBG');
+  for(const options of [{zoom:2,zoomPercent:200},{fit:true,zoomPercent:200},{pixels:{group:3}},{pixels:{bitDepth:17}},{pixels:{pattern:'INVALID'}},{pixels:{unknown:1}},{zoomPercent:0},{bittage:12}])assert.equal((await post('/viewer/commands',{imageId:imported.id,...options,show:false})).status,400);
   const sessionId=crypto.randomUUID();assert.equal((await post(`/viewer/commands/${command.id}/ack`,{status:'applied',sessionId})).status,200);
   assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,409);
   assert.equal((await post('/viewer/view',{...view,sessionId,png:preview.url})).status,200);

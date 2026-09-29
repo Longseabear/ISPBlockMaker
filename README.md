@@ -388,3 +388,20 @@ workspace의 `AGENTS.md`에는 작업 시작·구현/검증 단계·완료 시 �
 보고서 도구는 제공된 이미지와 측정값을 표현합니다. 차이 영상·측정값은 프로젝트 실행 코드에서 준비하고, 축 범위·단위·비교 조건을 지정하세요. 임의 디모자익·정규화·리샘플링이나 자동 품질 판정을 하지 않습니다. 생성 이후 `isp artifact ... --revision N`과 `isp present --artifact ID`로 등록·표시합니다. 자유로운 HTML 작성도 계속 지원합니다.
 
 상세 스키마와 선택 기준은 로컬 스킬의 `execution-recipes.md`, `report-building.md`, `validation-method.md`, `change-impact.md`를 필요한 작업에서만 읽습니다. 검증은 변경한 보장 조건에 맞는 최소 사례를 선택하며 모든 블록에 CFA·시간축·포화 테스트를 일괄 강제하지 않습니다.
+
+### Agent Viewer options
+
+Use the local authenticated API `POST /api/viewer/commands` or `isp viewer-control <tmpDir>/viewer-control.json --wait 15` to change loaded image options:
+
+```json
+{
+  "imageId": "IMAGE_ID_FROM_VIEWER_LIST",
+  "pixels": {"bitDepth": 12, "pattern": "GRBG", "group": 2, "alignment": "lsb"},
+  "zoomPercent": 400,
+  "center": {"x": 1000, "y": 700},
+  "pixelValues": true,
+  "render": {"mode": "cfa", "gamma": 2.2, "black": 0, "white": 4095}
+}
+```
+
+`pixels` accepts partial RAW settings; `pattern` is pixel order and `group` 1/2/4 means Bayer/Tetra/TetraSquare. The returned `imageId` references the persisted new/reused interpretation; existing crops and source records remain unchanged. RGB images reject RAW settings. `zoomPercent:100` is source 1:1; `center` uses source pixel coordinates. Use either `fit:true`, `zoomPercent`, or legacy preview-scale `zoom`. The command response exposes `imageSpec`; CLI reports `displayed` after UI acknowledgement. No connected screen leaves the command pending. Read `isp viewer-view` for live UI state; image tiles may still be loading after settings are acknowledged. See the workspace Viewer skill for full options and retry guidance.
