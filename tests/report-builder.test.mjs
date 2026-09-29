@@ -172,3 +172,27 @@ test('a failed write cleans up its own incomplete output',()=>fixture(workspace=
   }finally{fs.writeFileSync=write;}
   assert.ok(fs.existsSync(buildReport(workspace,spec(),output).path));
 }));
+
+
+test('math reports embed offline fonts once and render fractions, matrices and inline equations',()=>fixture(workspace=>{
+  const report=spec({type:'math',title:'Variance',latex:String.raw`\sigma^2=\frac{1}{N}\sum_{i=1}^{N}(x_i-\mu)^2`,description:'Source DN variance <verified>'});
+  report.sections.push({type:'math',title:'Matrix',latex:String.raw`\begin{bmatrix}R&G\\G&B\end{bmatrix}`,displayMode:false});
+  const html=read(buildReport(workspace,report,output));
+  assert.match(html,/class="katex"/);assert.match(html,/<math /);assert.match(html,/data:font\/woff2;base64,/);
+  assert.equal((html.match(/@font-face/g)||[]).length,20);assert.match(html,/font-src data:/);
+  assert.match(html,/Source DN variance &lt;verified&gt;/);assert.match(html,/Math rendering license/);
+  assert.doesNotMatch(html,/<script|<link|url\(fonts\//i);
+  assert.ok(Buffer.byteLength(html)<500000);
+}));
+
+test('math rejects malformed, untrusted and excessive input without writing a report',()=>fixture(workspace=>{
+  for(const latex of [String.raw`\frac{`,String.raw`\href{https://example.com}{x}`,String.raw`\includegraphics{https://example.com/a.png}`,String.raw`\def\x{\x}\x`,'x'.repeat(8001),'']){
+    assert.throws(()=>buildReport(workspace,spec({type:'math',title:'Invalid',latex}),output));
+    assert.equal(fs.existsSync(path.join(workspace,output)),false);
+  }
+  assert.throws(()=>buildReport(workspace,spec({type:'math',title:'Invalid',latex:'x',displayMode:'true'}),output),/boolean/);
+}));
+
+test('ordinary reports carry no math font payload',()=>fixture(workspace=>{
+  assert.doesNotMatch(read(buildReport(workspace,spec(),output)),/data:font|class="katex"|Math rendering license/);
+}));

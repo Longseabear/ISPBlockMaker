@@ -11,7 +11,7 @@ try {
   if (Number(process.versions.node.split(".")[0]) < 24) throw new Error("Node.js 24 or newer is required. Place node.exe beside ISPBlockMaker.exe.");
   for (const file of ["dist/index.html", "server/index.mjs", "templates/project/.agents/skills/isp-block-maker/SKILL.md"])
     if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing ${file}. Use the complete distribution folder; the executable alone is not sufficient.`);
-  for (const dependency of ["express", "ws", "zod", "node-pty", "prismjs"]) require.resolve(dependency);
+  for (const dependency of ["express", "ws", "zod", "node-pty", "prismjs", "katex"]) require.resolve(dependency);
   const {runtime, initialFolder:workspace} = serverPaths(root);
   for (const folder of [runtime, workspace]) {
     fs.mkdirSync(folder, { recursive: true });

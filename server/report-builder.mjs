@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import {renderReportMath,reportMathStyles,reportMathLicense} from './report-math.mjs';
 
 export const REPORT_LIMITS = Object.freeze({specBytes:2*1024*1024,reportBytes:10*1024*1024,imageBytes:4*1024*1024,totalImageBytes:6*1024*1024,dataPoints:20000,sections:32,images:16});
 const COLORS = ['#1765b3','#bd4e00','#268347','#9c3a92','#806317','#007c83','#b13f55','#6253b7'];
@@ -252,12 +253,19 @@ export function buildReport(workspace,spec,outputPath) {
     } else if(section.type==='line')content=lineSection(section,state);
     else if(section.type==='histogram')content=histogramSection(section,state);
     else if(section.type==='table')content=tableSection(section,state);
-    else fail('section.type must be images, line, histogram or table');
+    else if(section.type==='math'){
+      object(section,'math section',['type','title','latex','description','displayMode']);
+      if(section.displayMode!==undefined&&typeof section.displayMode!=='boolean')fail('displayMode must be boolean');
+      const description=section.description===undefined?'':text(section.description,'math.description',4000,true);
+      content=(description?`<p>${esc(description)}</p>`:'')+`<div class="report-math">${renderReportMath(section.latex,section.displayMode!==false)}</div>`;
+      state.math=(state.math||0)+1;
+    }
+    else fail('section.type must be images, line, histogram, table or math');
     return `<section><h2>${esc(heading)}</h2>${content}</section>`;
   }).join('');
   let provenance='';
   if(spec.provenance!==undefined)provenance=`<section><h2>Provenance</h2><dl>${list(spec.provenance,'provenance',100,0).map(entry=>{object(entry,'provenance entry',['label','value']);return `<dt>${esc(text(entry.label,'provenance.label'))}</dt><dd>${esc(text(entry.value,'provenance.value',4000,true))}</dd>`;}).join('')}</dl></section>`;
-  const html=`<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>${esc(title)}</title><style>${CSS}</style></head><body><main><header><h1>${esc(title)}</h1>${subtitle?`<p>${esc(subtitle)}</p>`:''}</header>${body}${textList(spec.findings,'Findings')}${textList(spec.limitations,'Limitations')}${provenance}<footer>Offline ISP report. Images and data were supplied by the report author. This renderer does not calculate image differences, compare numeric results, or judge improvement.</footer></main></body></html>\n`;
+  const html=`<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'"><title>${esc(title)}</title><style>${CSS}${state.math?reportMathStyles():''} .report-math{overflow-x:auto;padding:12px 0;font-size:1.15em}.report-math .katex-display{margin:0}</style></head><body><main><header><h1>${esc(title)}</h1>${subtitle?`<p>${esc(subtitle)}</p>`:''}</header>${body}${textList(spec.findings,'Findings')}${textList(spec.limitations,'Limitations')}${provenance}<footer>Offline ISP report. Images and data were supplied by the report author. This renderer does not calculate image differences, compare numeric results, or judge improvement.</footer>${state.math?`<details><summary>Math rendering license</summary><pre>${esc(reportMathLicense())}</pre></details>`:''}</main></body></html>\n`;
   const bytes=Buffer.byteLength(html);
   if(bytes>REPORT_LIMITS.reportBytes)fail(`rendered report exceeds ${REPORT_LIMITS.reportBytes} bytes`);
   checkComponents(root,path.dirname(output),true);

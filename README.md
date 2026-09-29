@@ -405,3 +405,13 @@ Use the local authenticated API `POST /api/viewer/commands` or `isp viewer-contr
 ```
 
 `pixels` accepts partial RAW settings; `pattern` is pixel order and `group` 1/2/4 means Bayer/Tetra/TetraSquare. The returned `imageId` references the persisted new/reused interpretation; existing crops and source records remain unchanged. RGB images reject RAW settings. `zoomPercent:100` is source 1:1; `center` uses source pixel coordinates. Use either `fit:true`, `zoomPercent`, or legacy preview-scale `zoom`. The command response exposes `imageSpec`; CLI reports `displayed` after UI acknowledgement. No connected screen leaves the command pending. Read `isp viewer-view` for live UI state; image tiles may still be loading after settings are acknowledged. See the workspace Viewer skill for full options and retry guidance.
+
+### Offline math in reports
+
+`isp report-build` supports a `math` section with LaTeX equations, fractions, sums and matrices:
+
+```json
+{"title":"Noise model","sections":[{"type":"math","title":"Variance","latex":"\\sigma^2 = \\frac{1}{N}\\sum_{i=1}^{N}(x_i-\\mu)^2","description":"Pixel values in DN; N is the sample count."}]}
+```
+
+Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` defaults to true. Ordinary text does not auto-render `$$...$$`. KaTeX runs on the server and embeds its CSS and WOFF2 fonts once in the generated HTML (approximately 369 KB overhead only for reports containing math). Shared reports need no internet, browser scripts or LaTeX installation. The installer includes KaTeX and its dependency; users do not run npm. Invalid formulas fail rather than silently displaying raw markup. Limit: 8,000 characters per expression, bounded macro expansion; links/HTML/external resources are disabled. Typesetting does not validate mathematical correctness.

@@ -35,7 +35,7 @@ function visit(name, parent = "") {
   required.add(relative);
   for(const dependency of Object.keys(lock.packages[relative].dependencies || {}))visit(dependency,relative);
 }
-for(const name of ["express","ws","zod","node-pty","prismjs"])visit(name);
+for(const name of ["express","ws","zod","node-pty","prismjs","katex"])visit(name);
 for(const relative of required) {
   const pkg=lock.packages[relative];
   const source=path.join(root,relative);
