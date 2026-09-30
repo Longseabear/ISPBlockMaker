@@ -5,6 +5,17 @@ description: 시각화, 비주얼라이제이션, 리포트, 차트, 이미지 �
 
 # Visualizations · 시각화와 결과 리포트
 
+## Updating an existing report
+
+HTML and report generators may be edited. For corrections to wording, layout or presentation of the same result, read `project`, inspect the target artifact and retain its current `file` value. Edit the authoring file and update the registered report:
+
+```text
+artifact-update ARTIFACT_ID artifacts/generated/result.html --expected-file CURRENT_FILE --title "Corrected comparison"
+present --artifact ARTIFACT_ID --message "Report updated"
+```
+
+`--title` is optional; omitted metadata stays unchanged. The ID, block, revision, run association and creation time are preserved; `updatedAt` records the edit. Connected Visualizations reload the new file. A stale `--expected-file` is rejected: inspect the intervening edit and merge before retrying. If the authoring file is missing, recover the current registered content through the authenticated `/artifacts/FILE` route into an authoring file before editing. Never write directly into the managed artifact store. New experiments, changed measurements or changed implementation provenance should be registered as a new artifact instead. Existing LAN share snapshots are unchanged until explicitly updated using the sharing UI; a local report edit does not authorize publication.
+
 Read [shared rules](../isp-block-maker/common.md) once. A report/visualization request should produce a registered result in Visualizations, not only a chat explanation, file path or source opened in Image Viewer. Here “발행” means local registration, not external publication. Follow an explicitly requested destination; use [Image Viewer](../isp-image-viewer/SKILL.md) for source inspection and [Documentation](../isp-documentation/SKILL.md) only for explicit SDD requests.
 
 Use [visualization methodology](../isp-block-maker/visualization-method.md) to choose evidence and presentation from the user's question. Read the relevant graph, code and outputs. Prefer an existing relevant generator; use [report-building.md](../isp-block-maker/report-building.md) for the reusable `report-build` renderer when images, lines, histograms or tables fit the question. Use [execution recipes](../isp-block-maker/execution-recipes.md) when a verified repeatable command is needed to produce data.

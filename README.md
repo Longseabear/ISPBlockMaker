@@ -2,6 +2,8 @@
 
 ### Local-network report sharing
 
+Existing reports can be corrected without creating duplicate entries: read `isp project` for the artifact ID and current `file`, edit the authoring HTML, then run `isp artifact-update ID result.html --expected-file CURRENT_FILE [--title TITLE]`. The registered ID and provenance are retained, connected views refresh, and concurrent updates are rejected. New experiments should remain separate artifacts. LAN share snapshots require an explicit share update.
+
 In **Visualizations**, click the share icon next to the report selector, then **현재 리포트 공유**. A separate read-only HTTP server starts on port 4311 (or the next available port) and generates a random-token link. Choose the appropriate LAN address and copy the link. Wi-Fi / Ethernet addresses are preferred over common VPN and virtual adapters. To use a specific port, enter it and click **공유 서버 시작** before publishing.
 
 The editor remains on loopback; the sharing listener binds to `0.0.0.0` and serves only explicitly published snapshots, without terminal, workspace or management APIs. Network selection changes the generated link, not the binding. Allow the chosen TCP port on trusted private networks in Windows Firewall if needed; firewall settings are not changed automatically. This is plain HTTP, with access granted to anyone holding the link, intended for trusted networks.

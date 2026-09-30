@@ -33,6 +33,8 @@ Keep intermediate scripts, patch/JOB/summary JSON, debug files and exploratory o
 
 For completed or stopped implementation/analysis, read [completion.md](completion.md) to record evidence and show the useful result. A read-only context lookup or queue-only edit does not need a fabricated experiment, commit, or report.
 
+Report HTML and its generator are editable. The restriction on directly editing framework state does not prohibit editing report content. Edit the authoring HTML, then use `artifact-update` to refresh the registered copy (see `../isp-visualizations/SKILL.md`); do not patch the managed artifact file or registry behind the server.
+
 ## Project skill judgment
 
 At substantive planning decisions, reusable discoveries, and completion, briefly assess whether the knowledge should become a project skill. Do not turn every thought, one-off result or block description into a skill. Prefer a tested, recurring project/framework-specific procedure with a clear trigger (for example RAW decoding conventions, a block-family validation recipe, or local C-model adaptation rules). Check `skills` / `context.projectSkills` for an existing match; improve it instead of duplicating it. Creating or updating such a workspace-local skill is allowed when useful within the user's task; it does not authorize unrelated implementation or sharing.

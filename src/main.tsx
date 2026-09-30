@@ -1047,6 +1047,7 @@ function ArtifactInformation({ artifact, revision, relatedArtifacts, onDelete }:
           <dt>블록</dt><dd>{artifact.blockId || "전체"}</dd>
           <dt>버전</dt><dd>r{artifact.revision} · {artifact.revision < revision ? "earlier version" : "current"}</dd>
           <dt>생성 시각</dt><dd>{new Date(artifact.createdAt).toLocaleString()}</dd>
+          {artifact.updatedAt&&<><dt>수정 시각</dt><dd>{new Date(artifact.updatedAt).toLocaleString()}</dd></>}
           <dt>형식</dt><dd>{artifact.kind.toUpperCase()}</dd>
         </dl>
         <div className="artifact-info-actions">

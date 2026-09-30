@@ -7,6 +7,7 @@ import os from "node:os";
 import {planBundle,packBundle,bundleFilename} from "./bundles.mjs";
 import { installViewer } from "./viewer.mjs";
 import { deleteArtifacts } from "./artifact-delete.mjs";
+import { updateArtifact } from './artifact-update.mjs';
 import { serverPaths } from "./paths.mjs";
 import express from "express";
 import { requestDocument } from "./documents.mjs";
@@ -114,8 +115,8 @@ app.use("/api", (req,res,next)=>{
   res.on("finish",()=>{try {
    const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
    const trackingTitle=endpoint==="/attempts"?`작업 시도 · ${result?.title||req.body.title||"등록"}`:endpoint.startsWith("/attempts/")?`${endpoint.endsWith("/accept")?"결과 채택":"시도 기록"} · ${result?.attempt?.title||result?.title||"작업 시도"}`:endpoint.startsWith("/checkpoints")?`${endpoint.endsWith("/restore")?"구현 복원":"체크포인트"} · ${result?.checkpoint?.title||result?.title||req.body.title||"구현"}`:null;
-   const title=trackingTitle||(endpoint.includes("jobs")?"JOB 변경":endpoint.includes("requests")?"요청 변경":endpoint==="/artifacts"?"시각화 등록":endpoint==="/versions/switch"?"구현 버전 전환":endpoint==="/workspace"?"작업 폴더 전환":endpoint==="/project"?"그래프 저장":endpoint.startsWith("/blocks")||endpoint==="/global"?"블록 / 요청 저장":"작업 실행");
-   recordActivity(folder,{title,detail:res.statusCode>=400?String(result?.error||`HTTP ${res.statusCode}`).slice(0,1000):trackingTitle?(result?.summary||result?.approach||result?.attempt?.summary||result?.checkpoint?.hash||result?.hash||""):`${method} ${endpoint}`,blockId,artifactId:endpoint==="/artifacts"?result?.id:undefined,failed:res.statusCode>=400});
+   const title=trackingTitle||(endpoint.includes("jobs")?"JOB 변경":endpoint.includes("requests")?"요청 변경":endpoint.startsWith("/artifacts/")&&method==="PATCH"?"시각화 수정":endpoint==="/artifacts"?"시각화 등록":endpoint==="/versions/switch"?"구현 버전 전환":endpoint==="/workspace"?"작업 폴더 전환":endpoint==="/project"?"그래프 저장":endpoint.startsWith("/blocks")||endpoint==="/global"?"블록 / 요청 저장":"작업 실행");
+   recordActivity(folder,{title,detail:res.statusCode>=400?String(result?.error||`HTTP ${res.statusCode}`).slice(0,1000):trackingTitle?(result?.summary||result?.approach||result?.attempt?.summary||result?.checkpoint?.hash||result?.hash||""):`${method} ${endpoint}`,blockId,artifactId:endpoint.startsWith("/artifacts")?result?.id:undefined,failed:res.statusCode>=400});
   }catch(e){console.error("Activity log:",e.message);}});
  }
  next();
@@ -755,6 +756,11 @@ app.delete("/api/artifacts", (req,res) => {
   const result=deleteArtifacts(store,artifactDir,[...new Set(ids)]);
   broadcast();
   res.json(result);
+});
+app.patch('/api/artifacts/:id',(req,res)=>{
+  const artifact=updateArtifact(store,artifactDir,req.params.id,req.body);
+  broadcast();
+  res.json(artifact);
 });
 app.post("/api/artifacts", (req, res) => {
   const input = artifactSchema.parse(req.body);

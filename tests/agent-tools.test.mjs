@@ -87,5 +87,13 @@ test('agent tools CLI checks graph, plans/runs recipes, builds and registers rep
  const spec={title:'Fixture measurement report',findings:['An illustrative execution fixture, not an ISP quality claim.'],sections:[{type:'table',title:'Conditions',columns:['Input','Value'],rows:[['value','a value with spaces; not shell code']]},{type:'line',title:'Supplied profile',xAxis:{label:'Position',unit:'px',scale:'linear',min:0,max:2},yAxis:{label:'Sample',unit:'DN',scale:'linear',min:0,max:10},series:[{label:'Fixture',points:[[0,2],[1,4],[2,3]]}]}],limitations:['Synthetic test only']};
  const report=await command('report-build',json('report.json',spec),'--out','artifacts/generated/fixture.html');assert.ok(fs.existsSync(report.path));assert.ok(report.bytes>100);assert.ok(fs.readFileSync(report.path,'utf8').includes('Fixture measurement report'));
  const current=await fetch(origin+'/api/project',{headers}).then(r=>r.json());const artifact=await command('artifact',report.path,'--block',current.blocks[0].id,'--revision',String(current.revision),'--title','Agent tool fixture');assert.ok(JSON.stringify(artifact).includes('Agent tool fixture'));
+ fs.writeFileSync(report.path,'<!doctype html><h1>Corrected report</h1>');
+ assert.equal((await fetch(origin+'/api/artifacts/'+artifact.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+ const updated=await command('artifact-update',artifact.id,report.path,'--expected-file',artifact.file);
+ assert.equal(updated.id,artifact.id);assert.equal(updated.title,artifact.title);assert.equal(updated.revision,artifact.revision);assert.notEqual(updated.file,artifact.file);
+ assert.match(await fetch(origin+'/artifacts/'+updated.file,{headers}).then(r=>r.text()),/Corrected report/);
+ assert.equal((await fetch(origin+'/artifacts/'+artifact.file,{headers})).status,404);
+ await assert.rejects(command('artifact-update',artifact.id,report.path,'--expected-file',artifact.file),/변경/);
+ assert.equal((await fetch(origin+'/api/project',{headers}).then(r=>r.json())).artifacts.length,1);
  const archive=path.join(home,'project.bundle');await packBundle(workspace,archive,{includeImages:false,includeViewer:false,includeData:false,includeVisualizations:false});const restored=path.join(home,'restored');await unpackBundle(archive,restored);assert.ok(fs.existsSync(path.join(restored,'project/.isp-recipes/fixture-run.json')));assert.equal(fs.existsSync(path.join(restored,'tmp/recipe-runs')),false);
 });

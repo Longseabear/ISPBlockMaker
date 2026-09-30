@@ -90,7 +90,7 @@ export async function request(endpoint, options = {}) {
 }
 export async function registerArtifact(
   file,
-  { blockId, revision, title, runId, metadata } = {},
+  { blockId, revision, title, runId, metadata, artifactId, expectedFile } = {},
 ) {
   const extension = path.extname(file).toLowerCase();
   const kind = {
@@ -104,6 +104,9 @@ export async function registerArtifact(
   if (!kind) throw new Error("지원 형식: HTML, PNG, JPEG, WebP");
   if (fs.statSync(file).size > 10 * 1024 * 1024)
     throw new Error("결과물은 10MB 이하여야 합니다.");
+  if(artifactId)return request(`/artifacts/${encodeURIComponent(artifactId)}`,{
+    method:'PATCH',body:JSON.stringify({expectedFile,kind,content:fs.readFileSync(file).toString('base64'),...(title===undefined?{}:{title})}),
+  });
   return request("/artifacts", {
     method: "POST",
     body: JSON.stringify({
@@ -506,6 +509,9 @@ export async function main() {
         patch: JSON.parse(fs.readFileSync(args[0], "utf8")),
       }),
     });
+  } else if (command === 'artifact-update') {
+    if(!args[0]||!args[1]||args[1].startsWith('--')||!option('expected-file'))throw new Error('Usage: isp artifact-update ID result.html --expected-file CURRENT_FILE [--title TITLE]');
+    result=await registerArtifact(path.resolve(args[1]),{artifactId:args[0],expectedFile:option('expected-file'),title:option('title')});
   } else if (command === "artifact") {
     if (!args[0] || args[0].startsWith("--") || !blockId || !option("revision"))
       throw new Error(
@@ -606,6 +612,7 @@ isp viewer-show REQUEST_ID       Present the crop request in connected browsers
 isp viewer-cancel REQUEST_ID     Cancel a pending request
 isp document sdd.html --revision N --title "Project SDD"
 isp artifact result.html --block ID --revision N --title "Comparison"
+isp artifact-update ID result.html --expected-file CURRENT_FILE [--title TITLE]  Update existing result, preserving ID and provenance
 isp mermaid                     Export the graph as Mermaid
 isp summary summary.json        Record work summary, verification and related IDs
 isp demo                        Run the synthetic flat-detection / denoise example

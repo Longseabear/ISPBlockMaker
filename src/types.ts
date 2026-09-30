@@ -57,6 +57,7 @@ export type Edge = {
   targetHandle: string;
 };
 export type Artifact = {
+  updatedAt?: string;
   id: string;
   title: string;
   blockId: string;

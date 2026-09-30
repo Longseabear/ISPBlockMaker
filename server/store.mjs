@@ -181,6 +181,15 @@ export function createStore(
       refresh();
       return persist({ ...state, artifacts: [...state.artifacts, artifact] });
     },
+    updateArtifact(id, expectedFile, patch) {
+      refresh();
+      const previous=state.artifacts.find(a=>a.id===id);
+      if(!previous)throw Object.assign(new Error('리포트를 찾을 수 없습니다.'),{status:404});
+      if(previous.file!==expectedFile)throw Object.assign(new Error('리포트가 변경되었습니다. 최신 리포트를 확인한 뒤 수정 내용을 병합하세요.'),{status:409});
+      const artifact={...previous,...patch,id};
+      persist({...state,artifacts:state.artifacts.map(a=>a.id===id?artifact:a)});
+      return artifact;
+    },
     removeArtifacts(ids) {
       refresh();
       return persist({ ...state, artifacts: state.artifacts.filter(a => !ids.includes(a.id)) });
