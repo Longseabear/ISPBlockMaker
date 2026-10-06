@@ -26,6 +26,8 @@ export function WorkspacePicker({
     [busy, setBusy] = useState(false),
     [opening, setOpening] = useState(false);
   const requestId = useRef(0);
+  const [projects,setProjects]=useState<{path:string;name:string;running:boolean;current:boolean}[]>([]);
+  const [catalogError,setCatalogError]=useState('');
   async function browse(target: string) {
     const id = ++requestId.current;
     setBusy(true);
@@ -47,7 +49,13 @@ export function WorkspacePicker({
   }
   useEffect(() => {
     void browse(current);
+    if(!onPick)api<typeof projects>('/workspaces').then(setProjects).catch(e=>setCatalogError(String(e)));
   }, []);
+  async function connect(folder:string){
+    setOpening(true);setError('');
+    try{const result=await api<{url:string}>('/workspace/open',{path:folder});location.assign(result.url);}
+    catch(e){setError(String(e));setOpening(false);}
+  }
   async function open() {
     if (!listing) return;
     if(onPick){onPick(listing.path);return;}
@@ -79,6 +87,11 @@ export function WorkspacePicker({
             ×
           </button>
         </header>
+        {!onPick&&<section aria-label="실행 중 · 최근 프로젝트" style={{maxHeight:190,overflow:'auto',marginBottom:16}}>
+          <h3>실행 중 · 최근 프로젝트</h3>
+          {catalogError&&<p className="hint">프로젝트 목록을 불러오지 못했습니다. 아래에서 폴더를 직접 선택할 수 있습니다.</p>}
+          {projects.map(p=><button key={p.path} disabled={opening||p.current} title={p.path} onClick={()=>connect(p.path)} style={{display:'flex',width:'100%',justifyContent:'space-between',gap:12,marginBottom:6,textAlign:'left'}}><span>{p.name}<small style={{display:'block',opacity:.65,overflowWrap:'anywhere'}}>{p.path}</small></span><span>{p.current?'현재':p.running?'● 실행 중 · 열기':'시작'}</span></button>)}
+        </section>}
         <form
           onSubmit={(e) => {
             e.preventDefault();

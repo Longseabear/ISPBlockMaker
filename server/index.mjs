@@ -1,4 +1,5 @@
 import { graphCheck } from "./graph-check.mjs";
+import {listWorkspaces} from './workspace-registry.mjs';
 import { installReportSharing } from './report-sharing.mjs';
 import {restructureJobs,restructureSchema} from './job-restructure.mjs';
 import {openWorkspaceServer, findWorkspaceServer} from './workspace-open.mjs';
@@ -293,6 +294,7 @@ app.get("/api/folders", (req, res) => {
     .sort((a, b) => a.name.localeCompare(b.name));
   res.json({ path: folder, parent: path.dirname(folder), directories });
 });
+app.get('/api/workspaces',async(req,res)=>res.json(await listWorkspaces(workspace)));
 app.post('/api/workspace/open',async(req,res)=>{
  const input=z.object({path:z.string().min(1)}).parse(req.body);
  const target=fs.realpathSync(input.path);

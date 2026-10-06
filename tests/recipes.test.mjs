@@ -223,7 +223,8 @@ test('Missing executables fail with an audit record and .cmd requires an explici
 test('Timeout stops the process tree before returning and keeps a timed-out manifest', {timeout: 20000}, async () => {
   const f = fixture();
   try {
-    fs.writeFileSync(path.join(f.source, 'tree.mjs'), 'import {spawn} from "node:child_process"; import fs from "node:fs"; const child=spawn(process.execPath,["-e", "setTimeout(()=>require(\\"node:fs\\").writeFileSync(process.argv[1],\\"escaped\\"),2500);setInterval(()=>{},1000)",process.argv[2]],{stdio:"inherit"});fs.writeFileSync(process.argv[3],String(child.pid));setInterval(()=>{},1000);');
+    const childCode = 'setInterval(()=>require("node:fs").appendFileSync(process.argv[1],"tick"),100)';
+    fs.writeFileSync(path.join(f.source, 'tree.mjs'), `import {spawn} from "node:child_process"; import fs from "node:fs"; const child=spawn(process.execPath,["-e",${JSON.stringify(childCode)},process.argv[2]],{stdio:"inherit"});fs.writeFileSync(process.argv[3],String(child.pid));setInterval(()=>{},1000);`);
     create(f.workspace, recipe({args: ['{{sourceRoot}}/tree.mjs', '{{workspace}}/escaped.txt', '{{runDir}}/child.pid'], timeoutMs: 800}));
     const result = await runRecipe(f.workspace, 'run-model');
     assert.equal(result.status, 'timed_out'); assert.equal(result.timedOut, true); assert.equal(result.cleanupError, null);
@@ -235,7 +236,12 @@ test('Timeout stops the process tree before returning and keeps a timed-out mani
     } else {
       assert.throws(() => process.kill(childPid, 0), /ESRCH/);
     }
-    assert.equal(fs.existsSync(path.join(f.workspace, 'escaped.txt')), false);
+    // taskkill may take seconds: verify no further writes after cleanup returns.
+    const output = path.join(f.workspace, 'escaped.txt');
+    const readOutput = () => fs.existsSync(output) ? fs.readFileSync(output, 'utf8') : '';
+    const stoppedOutput = readOutput();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(readOutput(), stoppedOutput);
     assert.equal(JSON.parse(fs.readFileSync(result.manifestPath, 'utf8')).timedOut, true);
   } finally { f.cleanup(); }
 });

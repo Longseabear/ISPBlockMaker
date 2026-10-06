@@ -12,7 +12,9 @@ isp-block-maker "D:\Workspace\another project"
 
 The folder must exist. A new workspace gets graph.json, local skills, agent guidance and ignored .isp tools/state. Existing implementation, graph and customized skills are preserved. The Start menu shortcut opens a folder chooser.
 
-Same-folder commands reuse the existing launcher/server. Other folders get separate ports starting at 4310; PORT changes the starting port and the next 100 ports are considered. Closing a launcher or pressing its stop button stops its server and terminal trees. Folder-specific servers refuse in-place folder switching: run the command in the other folder. Development npm start retains folder switching.
+Commands share one native Windows **server manager** window per user. Running and recent projects appear with their folder, server URL and status. Repeating a command reuses the window and existing workspace server; a different folder adds another isolated workspace server. Use **폴더 열기…**, **시작 / 웹 열기**, or **선택 서버 종료** to manage them. Closing the manager keeps workspace servers and terminals running; explicitly stopping a selected server ends its terminals and agents after confirmation. Reopening the manager discovers these running servers again.
+
+The web workspace UI stays unchanged. Its folder-open dialog also lists running and recent projects; opening one navigates directly to that workspace URL. There is no browser hub or iframe wrapper. Development `npm start` retains its existing in-place switching behavior. The local management endpoint uses port 4309 (or `ISP_HUB_PORT`) and is not a web workspace page.
 
 Updates install alongside older app versions under versions/. Close the old launcher before using the new version. Server configuration/discovery lives in `%LOCALAPPDATA%\ISPBlockMaker\state`; diagnostic logs live in `%LOCALAPPDATA%\ISPBlockMaker\logs`. Workspaces stay outside the installation. The bundled Node is available in the server terminal PATH.
 

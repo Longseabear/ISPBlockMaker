@@ -191,6 +191,18 @@ class Launcher : Form {
             resolve.EnvironmentVariables["ISP_CANONICAL_FOLDER"]=workspace;
             using(var canonical=Process.Start(resolve)) { string output=canonical.StandardOutput.ReadToEnd(); canonical.WaitForExit(); if(canonical.ExitCode!=0) throw new Exception("작업 폴더 경로를 확인할 수 없습니다."); workspace=output; }
         } catch(Exception e) { Environment.ExitCode=1; MessageBox.Show(e.Message,"ISP Block Maker"); return; }
+        if(Array.IndexOf(args,"--self-test")<0) {
+            try {
+                string stateHome=Environment.GetEnvironmentVariable("ISP_STATE_HOME") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ISPBlockMaker","state");
+                string managerKey;using(var sha=System.Security.Cryptography.SHA256.Create())managerKey=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(Path.GetFullPath(stateHome).ToLowerInvariant()))).Replace("-","");
+                bool owner;
+                using(var managerMutex=new Mutex(true,"Local\\ISPBlockMaker-Manager-"+managerKey,out owner)) {
+                    if(owner)Application.Run(new ServerManager(root,workspace));
+                    else ServerManager.SendOpen(root,workspace);
+                }
+            } catch(Exception e) {Environment.ExitCode=1;MessageBox.Show(e.Message,"ISP Block Maker");}
+            return;
+        }
         string key; using(var sha=System.Security.Cryptography.SHA256.Create()) key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(workspace.ToLowerInvariant()))).Replace("-","");
         bool first;
         using(var mutex=new Mutex(true,"Local\\ISPBlockMaker-"+key,out first)) {
