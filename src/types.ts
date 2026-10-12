@@ -32,6 +32,7 @@ export type Block = {
   detail?: string;
   implementation: string;
   implementationSymbol?: string;
+  implementationLine?: number;
   agentContract?: {
     inputs?: string;
     outputs?: string;

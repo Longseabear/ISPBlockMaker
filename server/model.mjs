@@ -37,6 +37,7 @@ export const blockSchema = z.object({
   principle: z.string().max(20000),
   implementation: z.string().max(1000),
   implementationSymbol: z.string().max(200).default(""),
+  implementationLine: z.number().int().min(0).max(10000000).default(0),
   agentContract: z
     .object({
       inputs: z.string().max(12000).default(""),
@@ -161,6 +162,7 @@ export function contextFor(state, blockId) {
       algorithm: block.principle,
       implementation: block.implementation,
       implementationSymbol: block.implementationSymbol || "",
+      implementationLine: block.implementationLine || 0,
       contract: blockSchema.parse(block).agentContract,
       shared: {
         inputs: block.inputs,

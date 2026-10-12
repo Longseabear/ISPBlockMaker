@@ -211,6 +211,16 @@ app.post("/api/shutdown", (req,res) => {
   setTimeout(() => shutdown().then(() => process.exit(0)), 100);
 });
 app.get("/api/project", (req, res) => res.json(store.get()));
+app.get("/api/terminals", (req, res) => res.json(
+  [...sessions].map(([sessionId, session]) => ({sessionId, agent: session.agent, blockId: session.blockId})),
+));
+app.delete("/api/terminals/:id", (req, res) => {
+  if (versionChanging) throw new Error("버전 전환 중에는 터미널을 종료할 수 없습니다.");
+  const id = z.string().uuid().parse(req.params.id);
+  const session = sessions.get(id);
+  if (session) session.pty.kill();
+  res.json({ok: true});
+});
 app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
 app.post("/api/graph-check", async (req,res) => {
   const options=z.object({blockId:z.string().min(1).max(80).optional(),changedFiles:z.array(z.string().min(1).max(1000)).max(200).default([])}).strict().parse(req.body);
@@ -353,6 +363,7 @@ app.get("/api/blocks/:id/source", async (req, res) => {
         block.implementation,
         block.implementationSymbol,
         block.id,
+        block.implementationLine,
       )),
     });
   } catch (error) {

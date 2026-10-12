@@ -287,7 +287,10 @@
   overflow: auto;
   padding: 12px;
   border-right: 1px solid #303b45;
+  max-width: calc(100% - 160px);
 }
+.code-list-resizer { flex: 0 0 6px; cursor: col-resize; touch-action: none; background: #26313a; }
+.code-list-resizer:hover, .code-list-resizer:focus-visible { background: #77d9b8; }
 .code-node-list h3 {
   font-size: 12px;
   color: #94a6b6;

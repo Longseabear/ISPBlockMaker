@@ -73,16 +73,30 @@ test('terminal survives browser disconnect, replays history, and transfers exclu
  const sockets=[];t.after(()=>sockets.forEach(s=>s.close()));
  const sessionId=crypto.randomUUID(), blockId=boot.state.blocks[0].id;
  const until=async fn=>{for(let i=0;i<200;i++){const v=fn();if(v)return v;await new Promise(r=>setTimeout(r,25));}throw Error('Terminal event timeout');};
- async function connect(){const s=new WebSocket(origin.replace('http','ws')+'/ws?token='+boot.token);s.messages=[];s.on('message',data=>s.messages.push(JSON.parse(data)));sockets.push(s);await once(s,'open');s.send(JSON.stringify({type:'start',sessionId,agent:'shell',blockId}));await until(()=>s.messages.find(m=>m.type==='started'));return s;}
+ const headers={Authorization:'Bearer '+boot.token};
+ const list=()=>fetch(origin+'/api/terminals',{headers}).then(r=>r.json());
+ assert.equal((await fetch(origin+'/api/terminals')).status,401);
+ async function connect(id=sessionId){const s=new WebSocket(origin.replace('http','ws')+'/ws?token='+boot.token);s.messages=[];s.on('message',data=>s.messages.push(JSON.parse(data)));sockets.push(s);await once(s,'open');s.send(JSON.stringify({type:'start',sessionId:id,agent:'shell',blockId}));await until(()=>s.messages.find(m=>m.type==='started'));return s;}
  const first=await connect();
  const command=process.platform==='win32'?'set ISP_RESUME_PROBE=survived-session\r':'export ISP_RESUME_PROBE=survived-session\r';
  first.send(JSON.stringify({type:'input',data:command}));
  await until(()=>first.messages.some(m=>m.type==='output'&&m.data.includes('ISP_RESUME_PROBE')));
  first.close();await once(first,'close');
+ assert.deepEqual(await list(),[{sessionId,agent:'shell',blockId}]);
+ const otherId=crypto.randomUUID();
+ const other=await connect(otherId);
+ assert.equal((await list()).length,2);
+ other.close();await once(other,'close');
+ assert.equal((await list()).length,2);
  const second=await connect();assert.match(second.messages.find(m=>m.type==='started').buffer,/ISP_RESUME_PROBE/);
  second.send(JSON.stringify({type:'input',data:process.platform==='win32'?'echo %ISP_RESUME_PROBE%\r':'echo $ISP_RESUME_PROBE\r'}));
  await until(()=>second.messages.some(m=>m.type==='output'&&m.data.includes('survived-session')));
  const third=await connect();await until(()=>second.messages.some(m=>m.type==='detached'));
  second.send(JSON.stringify({type:'input',data:'echo old-owner\r'}));await until(()=>second.messages.some(m=>m.type==='error'));
  third.send(JSON.stringify({type:'stop'}));await until(()=>third.messages.some(m=>m.type==='exit'));
+ assert.deepEqual((await list()).map(s=>s.sessionId),[otherId]);
+ assert.equal((await fetch(origin+'/api/terminals/'+otherId,{method:'DELETE'})).status,401);
+ assert.equal((await fetch(origin+'/api/terminals/'+otherId,{method:'DELETE',headers})).status,200);
+ for(let i=0;i<200 && (await list()).length;i++)await new Promise(r=>setTimeout(r,25));
+ assert.deepEqual(await list(),[]);
 });

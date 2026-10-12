@@ -239,7 +239,7 @@ function Inspector({
     setDirty(true);
     onDirty(true);
   }
-  function edit(key: keyof Block, value: string) {
+  function edit(key: keyof Block, value: string | number) {
     mark();
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -276,6 +276,7 @@ function Inspector({
             principle: draft.principle,
             implementation: draft.implementation,
             implementationSymbol: draft.implementationSymbol || "",
+            implementationLine: draft.implementationLine || 0,
             agentContract: draft.agentContract || emptyContract,
             status: draft.status,
             parameters: JSON.parse(params),
@@ -629,7 +630,7 @@ function Inspector({
                 className="mono"
                 value={draft.implementation}
                 onChange={(e) => edit("implementation", e.target.value)}
-                placeholder="examples/block.py"
+                placeholder="blocks/filter.cpp 또는 blocks/filter.py"
               />
             </label>
 
@@ -640,6 +641,13 @@ function Inspector({
                 onChange={(e) => edit("implementationSymbol", e.target.value)}
                 placeholder="예: flat_detection 또는 Denoiser.process"
               />
+            </label>
+            <label>
+              Start line · 코드 시작 행 (심볼보다 우선)
+              <input type="number" min={1} max={10000000} step={1}
+                value={draft.implementationLine || ""}
+                onChange={e => edit("implementationLine", e.target.value ? Math.max(1, Math.min(10000000, Math.trunc(Number(e.target.value) || 1))) : 0)}
+                placeholder="예: 100 · 비워 두면 시작 심볼 검색" />
             </label>
             {(
               [
@@ -738,13 +746,102 @@ function Inspector({
   );
 }
 
+type TerminalSession = {sessionId: string; agent: string; blockId: string};
+
+function TerminalPanel(props: {
+  token: string; block: Block; api: Api; onState: (state: Project) => void;
+  onPresent: (presentation: Presentation) => void; notify: (s: string) => void;
+}) {
+  const [tabs, setTabs] = useState<TerminalSession[]>([]);
+  const [selectedTab, setSelectedTab] = useState('');
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [closing, setClosing] = useState('');
+  const callbacks = useRef(props);
+  callbacks.current = props;
+  // Keep graph/agent updates alive even after the last terminal tab is closed.
+  const noTabs = tabs.length === 0;
+  useEffect(() => {
+    if (!noTabs) return;
+    let disposed = false;
+    let socket: WebSocket;
+    let timer: ReturnType<typeof setTimeout>;
+    function connect() {
+      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${props.token}`);
+      socket.onmessage = event => {
+        if (disposed) return;
+        const message = JSON.parse(event.data);
+        if (message.type === 'state') callbacks.current.onState(message.state);
+        if (message.type === 'present') { callbacks.current.onState(message.state); callbacks.current.onPresent(message.presentation); }
+        if (message.type === 'workspace-changed') { disposed = true; callbacks.current.notify('작업 폴더 또는 구현 버전이 변경되었습니다. 페이지를 새로고침하세요.'); }
+      };
+      socket.onclose = () => { if (!disposed) timer = setTimeout(connect, 2000); };
+    }
+    connect();
+    return () => { disposed = true; clearTimeout(timer); socket.close(); };
+  }, [noTabs, props.token]);
+  useEffect(() => {
+    let cancelled = false;
+    setError('');
+    props.api<TerminalSession[]>('/terminals').then(sessions => {
+      if (cancelled) return;
+      const restored = sessions.length ? sessions : [{sessionId: crypto.randomUUID(), agent: 'shell', blockId: props.block.id}];
+      setTabs(restored);
+      setLoaded(true);
+      let saved = '';
+      try { saved = localStorage.getItem('isp-terminal-active:' + props.token) || ''; } catch {}
+      setSelectedTab(restored.some(s => s.sessionId === saved) ? saved : restored[0].sessionId);
+    }).catch(e => { if (!cancelled) setError(String(e)); });
+    return () => { cancelled = true; };
+  }, [props.token, props.api, retry]);
+  useEffect(() => { try { if(selectedTab) localStorage.setItem('isp-terminal-active:' + props.token, selectedTab); } catch {} }, [selectedTab, props.token]);
+  async function closeTab(id: string) {
+    setClosing(id);
+    try {
+      await props.api('/terminals/' + id, undefined, 'DELETE');
+      const remaining = tabs.filter(t => t.sessionId !== id);
+      setTabs(remaining);
+      if(selectedTab === id) setSelectedTab(remaining[0]?.sessionId || '');
+      try { localStorage.removeItem('isp-terminal:' + props.token + ':' + id); } catch {}
+    } catch(e) { props.notify(String(e)); }
+    finally { setClosing(''); }
+  }
+  return <section className="terminal-pane terminal-panel">
+    <div className="terminal-tabs" role="tablist" aria-label="터미널 세션">
+      {tabs.map((tab, i) => <div className="terminal-tab" key={tab.sessionId}>
+        <button role="tab" id={'tab-' + tab.sessionId} aria-controls={'pane-' + tab.sessionId} aria-selected={selectedTab === tab.sessionId}
+          onClick={() => setSelectedTab(tab.sessionId)} title={tab.blockId}>{tab.agent === 'shell' ? 'Shell' : tab.agent} {i + 1}</button>
+        <button aria-label={`터미널 ${i + 1} 종료 및 닫기`} title="프로세스 종료 및 탭 닫기" disabled={!!closing}
+          onClick={() => closeTab(tab.sessionId)}><X size={12}/></button>
+      </div>)}
+      <button aria-label="새 터미널" title="새 터미널 (최대 8개)" disabled={!loaded || tabs.length >= 8 || !!error || !!closing}
+        onClick={() => { const tab = {sessionId: crypto.randomUUID(), agent: 'shell', blockId: props.block.id}; setTabs(current => [...current, tab]); setSelectedTab(tab.sessionId); }}><Plus size={14}/> 터미널</button>
+    </div>
+    {error && <div role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>다시 연결</button></div>}
+    {tabs.map((tab, i) => <div key={tab.sessionId} id={'pane-' + tab.sessionId} role="tabpanel" aria-labelledby={'tab-' + tab.sessionId}
+      className="terminal-tab-content" hidden={selectedTab !== tab.sessionId}>
+      <TerminalPane {...props} session={tab} visible={selectedTab === tab.sessionId} eventLeader={i === 0}
+        onAgent={agent => setTabs(current => current.map(t => t.sessionId === tab.sessionId ? {...t, agent} : t))}/>
+    </div>)}
+  </section>;
+}
+
 function TerminalPane({
+  session,
+  visible,
+  eventLeader,
+  onAgent,
   token,
   block,
   onState,
   onPresent,
   notify,
 }: {
+  session: TerminalSession;
+  visible: boolean;
+  eventLeader: boolean;
+  onAgent: (agent: string) => void;
   token: string;
   block: Block;
   onState: (state: Project) => void;
@@ -773,13 +870,21 @@ function TerminalPane({
   } | null>(null);
   const runningRef = useRef(false);
   const autoStarted = useRef(false);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const leaderRef = useRef(eventLeader);
+  leaderRef.current = eventLeader;
+  const agentCallback = useRef(onAgent);
+  agentCallback.current = onAgent;
+  useEffect(() => { if (visible) { fit.current?.fit(); term.current?.focus(); } }, [visible]);
   useEffect(() => {
-    const storageKey = 'isp-terminal:' + token;
+    const storageKey = 'isp-terminal:' + token + ':' + session.sessionId;
+    active.current = session;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
       if (saved && /^[0-9a-f-]{36}$/i.test(saved.sessionId) && ['shell','codex','claude'].includes(saved.agent) && typeof saved.blockId === 'string') active.current = saved;
     } catch {}
-    const remember = () => { try { if(active.current) sessionStorage.setItem(storageKey,JSON.stringify(active.current)); else sessionStorage.removeItem(storageKey); } catch {} };
+    const remember = () => { try { if(active.current) localStorage.setItem(storageKey,JSON.stringify(active.current)); else localStorage.removeItem(storageKey); } catch {} };
     runningRef.current = false;
     const terminal = new XTerminal({
       fontFamily: "Cascadia Code, Consolas, monospace",
@@ -857,7 +962,6 @@ function TerminalPane({
         if (disposed) return;
         if (message.type === "detached") {
           active.current = null;
-          remember();
           runningRef.current = false;
           setRunning(false); setStarting(false);
           terminal.writeln('\r\n[다른 탭에 터미널이 연결되었습니다. Reconnect로 다시 연결하세요.]');
@@ -876,8 +980,8 @@ function TerminalPane({
           );
           return;
         }
-        if (message.type === "state") stateCallback.current(message.state);
-        if (message.type === "present") {
+        if (message.type === "state" && leaderRef.current) stateCallback.current(message.state);
+        if (message.type === "present" && leaderRef.current) {
           stateCallback.current(message.state);
           presentationCallback.current(message.presentation);
         }
@@ -887,14 +991,15 @@ function TerminalPane({
           terminal.reset();
           if(message.cols && message.rows) terminal.resize(message.cols,message.rows);
           setAgent(message.agent);
+          agentCallback.current(message.agent);
           setPinned(message.blockId);
           remember();
           terminal.write(message.buffer || '', () => {
             if(disposed || socket.current !== ws || ws.readyState !== WebSocket.OPEN || !active.current) return;
             setStarting(false); setRunning(true); runningRef.current = true;
-            fitter.fit();
+            if (visibleRef.current) fitter.fit();
             send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
-            terminal.focus();
+            if (visibleRef.current) terminal.focus();
           });
         }
         if (message.type === "exit") {
@@ -922,6 +1027,7 @@ function TerminalPane({
       if (active.current && runningRef.current) send({ type: "input", data });
     });
     const resize = new ResizeObserver(() => {
+      if (!visibleRef.current || !host.current?.clientWidth || !host.current?.clientHeight) return;
       fitter.fit();
       if (runningRef.current)
         send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
@@ -939,11 +1045,11 @@ function TerminalPane({
   function start(nextAgent = agent) {
     if (!online || starting) return;
     active.current = {
-      sessionId: crypto.randomUUID(),
+      sessionId: session.sessionId,
       agent: nextAgent,
       blockId: block.id,
     };
-    try { sessionStorage.setItem('isp-terminal:' + token,JSON.stringify(active.current)); } catch {}
+    try { localStorage.setItem('isp-terminal:' + token + ':' + session.sessionId,JSON.stringify(active.current)); } catch {}
     runningRef.current = false;
     setStarting(true);
     term.current?.reset();
@@ -1855,6 +1961,7 @@ function App() {
                     </ReactFlow>
                   </div>
                   <div className="graph-footer">
+                    <button onClick={() => switchView("code")} title="선택한 블록의 구현 코드 보기"><Code2 size={14}/> 코드 보기</button>
                     <span>
                       <i className="legend-image" /> Image{" "}
                       <i className="legend-mask" /> Mask
@@ -1992,7 +2099,9 @@ function App() {
             className="splitter bottom"
             onPointerDown={(e) => resize(e, "bottom")}
           />
-          <TerminalPane
+          <TerminalPanel
+            key={token}
+            api={api}
             token={token}
             block={block}
             onState={accept}

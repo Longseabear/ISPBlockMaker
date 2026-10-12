@@ -40,8 +40,10 @@ test('workspace source layout and tracking API preserve work while comparing and
     const cli = await promisify(execFile)(process.execPath, [path.join(root,'scripts/isp.mjs'), 'workspace-info'], {cwd:info.sourceRoot, windowsHide:true, env:{...process.env, ISP_API_URL:url, ISP_API_TOKEN:boot.token}});
     assert.equal(JSON.parse(cli.stdout).sourceRoot, info.sourceRoot);
     fs.writeFileSync(path.join(info.sourceRoot, 'filter.py'), 'def process(x):\n    return x\n');
-    const project = await call('/blocks/input', {revision:boot.state.revision, patch:{implementation:'filter.py', implementationSymbol:'process'}}, 'PATCH');
+    const project = await call('/blocks/input', {revision:boot.state.revision, patch:{implementation:'filter.py', implementationSymbol:'process', implementationLine:2}}, 'PATCH');
+    assert.equal(project.blocks.find(b=>b.id==='input').implementationLine,2);
     const source = await call('/blocks/input/source'); assert.match(source.content, /return x/);
+    assert.equal(source.startLine,2); assert.equal(source.explicitLine,true);
     const context = await call('/context'); assert.equal(context.paths.sourceRoot, info.sourceRoot);
     await call('/global/jobs', {revision:project.revision, title:'Improve filter', description:'Compare two implementations'}, 'POST', 201);
     const queued = await call('/project'); const job = queued.globalWork.jobs[0];

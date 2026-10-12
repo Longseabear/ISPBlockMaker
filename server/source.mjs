@@ -75,6 +75,7 @@ export async function readImplementation(
   implementation,
   symbol = "",
   blockId = "",
+  startLine = 0,
 ) {
   if (!implementation?.trim())
     throw new Error("구현 파일이 지정되지 않았습니다.");
@@ -97,6 +98,12 @@ export async function readImplementation(
     ".jsx": "JSX",
     ".c": "C",
     ".cpp": "C++",
+    ".cc": "C++",
+    ".cxx": "C++",
+    ".hh": "C++",
+    ".hxx": "C++",
+    ".ipp": "C++",
+    ".tpp": "C++",
     ".h": "C/C++",
     ".hpp": "C++",
     ".v": "Verilog",
@@ -113,6 +120,12 @@ export async function readImplementation(
     throw new Error("바이너리 파일은 표시할 수 없습니다.");
   return {
     ...locateEntry(content, languages[ext], symbol, blockId),
+    ...(Number.isInteger(startLine) && startLine > 0 ? {
+      startLine: Math.min(startLine, content.split('\n').length),
+      entryFound: true,
+      entrySymbol: '',
+      explicitLine: true,
+    } : {}),
     path: relative.split(path.sep).join("/"),
     language: languages[ext],
     content,

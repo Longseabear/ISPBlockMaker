@@ -5,6 +5,24 @@ import os from "node:os";
 import path from "node:path";
 import { readImplementation, locateEntry } from "../server/source.mjs";
 
+test("C++ implementations open at explicit line 100 and clamp past end of file", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'isp-cpp-line-'));
+  try {
+    const code = Array.from({length: 120}, (_, i) => `// line ${i + 1}`).join('\n');
+    for (const extension of ['cpp', 'cc', 'cxx', 'hpp', 'hxx']) {
+      const file = `filter.${extension}`;
+      await fs.writeFile(path.join(dir, file), code);
+      const source = await readImplementation(dir, file, 'process', 'filter', 100);
+      assert.equal(source.language, 'C++');
+      assert.equal(source.startLine, 100);
+      assert.equal(source.entryFound, true);
+      assert.equal(source.explicitLine, true);
+      assert.equal((await readImplementation(dir, file, '', '', 999)).startLine, 120);
+      assert.equal((await readImplementation(dir, file)).entryFound, false);
+    }
+  } finally { await fs.rm(dir, {recursive: true, force: true}); }
+});
+
 test("shared Python entry lookup preserves multiline context and resolves qualified methods", () => {
   const code =
     '# def fake():\n"""\ndef fake():\n"""\n\ndef flat_detection(image):\n    return image\n\nclass Denoiser:\n    async def process(self, image):\n        return image\n\nclass Other:\n    def process(self, image):\n        return image\n';

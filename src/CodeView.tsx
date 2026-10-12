@@ -19,6 +19,7 @@ type Source = {
   startLine: number;
   entryFound: boolean;
   entrySymbol: string;
+  explicitLine?: boolean;
 };
 function highlightLines(source: Source) {
   const language = (
@@ -69,6 +70,13 @@ export function CodeView({
   const [source, setSource] = useState<Source | null>(null);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [listWidth, setListWidth] = useState(() => {
+    try { return Math.max(140, Math.min(600, Number(localStorage.getItem('isp-code-list-width')) || 220)); }
+    catch { return 220; }
+  });
+  const drag = useRef<{x: number; width: number} | null>(null);
+  useEffect(() => { try { localStorage.setItem('isp-code-list-width', String(listWidth)); } catch {} }, [listWidth]);
+  const resizeList = (width: number) => setListWidth(Math.max(140, Math.min(600, width)));
   const scroller = useRef<HTMLDivElement>(null);
   const startRow = useRef<HTMLDivElement>(null);
   function jumpToEntry() {
@@ -105,13 +113,14 @@ export function CodeView({
     block.id,
     block.implementation,
     block.implementationSymbol,
+    block.implementationLine,
     project.revision,
     refresh,
     api,
   ]);
   return (
     <section className="code-workspace">
-      <nav className="code-node-list" aria-label="구현 코드 노드 목록">
+      <nav className="code-node-list" style={{flexBasis: listWidth}} aria-label="구현 코드 노드 목록">
         <h3>Node implementations</h3>
         {project.blocks.map((b) => (
           <button
@@ -127,10 +136,18 @@ export function CodeView({
               {b.implementationSymbol && (
                 <small>↳ {b.implementationSymbol}</small>
               )}
+              {!!b.implementationLine && <small>↳ L{b.implementationLine}</small>}
             </span>
           </button>
         ))}
       </nav>
+      <div className="code-list-resizer" role="separator" aria-label="블록 목록 너비 조절" aria-orientation="vertical"
+        aria-valuemin={140} aria-valuemax={600} aria-valuenow={listWidth} tabIndex={0}
+        onDoubleClick={() => resizeList(220)}
+        onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); resizeList(listWidth + (e.key === 'ArrowRight' ? 20 : -20)); } }}
+        onPointerDown={e => { if(e.button !== 0) return; e.preventDefault(); e.currentTarget.focus(); drag.current = {x: e.clientX, width: listWidth}; e.currentTarget.setPointerCapture(e.pointerId); }}
+        onPointerMove={e => { if(drag.current) resizeList(drag.current.width + e.clientX - drag.current.x); }}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }} />
       <div className="code-file">
         <header>
           <div>
@@ -151,7 +168,7 @@ export function CodeView({
           {source?.language || "Source"} · 읽기 전용 · 현재 workspace 파일
           {source?.entryFound ? (
             <button className="entry-jump" onClick={jumpToEntry}>
-              {source.entrySymbol} · L{source.startLine} ↗
+              {source.explicitLine ? '지정한 시작 행' : source.entrySymbol} · L{source.startLine} ↗
             </button>
           ) : (
             source && (
