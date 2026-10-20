@@ -11,6 +11,7 @@ Choose the workflow from the user's intended outcome. Read only the relevant ski
 
 | Request | Workflow |
 | --- | --- |
+| GPU simulator, GPU 미리보기, shader 확장 | [gpu-simulator.md](gpu-simulator.md) |
 | Implement/change blocks, wiring, descriptions, contracts, graph overview, or check graph/source consistency | [isp-block-development](../isp-block-development/SKILL.md) |
 | “JOB 등록해”, split/merge work, implement block memos, process queued work | [isp-job-management](../isp-job-management/SKILL.md) |
 | “리포트 발행해”, “시각화해”, compare or explain measured results | [isp-visualizations](../isp-visualizations/SKILL.md) → Visualizations |

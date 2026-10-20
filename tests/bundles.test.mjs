@@ -214,3 +214,28 @@ test('Two concurrent imports cannot replace the same destination behind a valid 
   const result=await first;assert.ok(result.backupPath);assert.equal((await fs.readdir(f.temp)).filter(name=>name.startsWith('destination.backup-')).length,1);
  }finally{await clean(f.temp);}
 });
+
+test('Oversized data remains visible in preview and can be excluded before export',async()=>{
+ const f=await separatedFixture();try{
+  await fs.mkdir(path.join(f.project,'datasets'));
+  const large=await fs.open(path.join(f.project,'datasets/large.raw'),'w');await large.truncate(256*1024*1024+1);await large.close();
+  const plan=await planBundle(f.workspace);
+  assert.match(plan.problems.join(' '),/256 MiB/);
+  const item=plan.dataItems.find(x=>x.id==='project/datasets/large.raw');assert.equal(item.oversized,true);assert.equal(item.bytes,256*1024*1024+1);
+  await assert.rejects(()=>packBundle(f.workspace,path.join(f.temp,'bad.bundle')),/256 MiB/);
+  const options={excludedData:[item.id]};const selected=await planBundle(f.workspace,options);assert.deepEqual(selected.problems,[]);assert.equal(selected.dataItems.find(x=>x.id===item.id).included,false);
+  const output=path.join(f.temp,'selected.bundle');await packBundle(f.workspace,output,options);await unpackBundle(output,path.join(f.temp,'selected'));
+  await assert.rejects(()=>fs.stat(path.join(f.temp,'selected/project/datasets/large.raw')));
+  assert.equal(await fs.readFile(path.join(f.temp,'selected/project/blocks/input.py'),'utf8'),'def process(image):\n    return image\n');
+ }finally{await clean(f.temp);}
+});
+
+test('Reference payload selection excludes complete sets and shows individual file sizes',async()=>{
+ const f=await fixture();try{
+  const id='11111111-1111-4111-8111-111111111111',prefix='.isp/reference-sets/'+id+'/';
+  await f.write(prefix+'manifest.json',JSON.stringify({title:'Camera dataset'}));await f.write(prefix+'files/sample.bin',Buffer.alloc(13));
+  const plan=await planBundle(f.workspace);const item=plan.dataItems.find(x=>x.id===prefix);assert.equal(item.label,'Reference I/O · Camera dataset');assert.equal(item.fileCount,2);assert.equal(item.files.find(x=>x.path.endsWith('sample.bin')).size,13);
+  const selected=await planBundle(f.workspace,{excludedData:[prefix]});assert.ok(!selected.files.some(x=>x.path.startsWith(prefix)));assert.equal(selected.dataItems.find(x=>x.id===prefix).included,false);
+  const output=path.join(f.temp,'no-reference.bundle');await packBundle(f.workspace,output,{excludedData:[prefix]});await unpackBundle(output,path.join(f.temp,'restored'));await assert.rejects(()=>fs.stat(path.join(f.temp,'restored',prefix)));
+ }finally{await clean(f.temp);}
+});

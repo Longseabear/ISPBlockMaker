@@ -947,3 +947,5 @@
 .sidebar-slot .workspace-sidebar .layout-toolbar,.sidebar-slot .workspace-sidebar .agent-help {flex-shrink:0;}
 .sidebar-collapsed .sidebar-slot .workspace-sidebar > button,.sidebar-collapsed .sidebar-slot .workspace-sidebar .sidebar-toggle button {padding:0;}
 .visualization-expanded .sidebar-slot {display:none;}
+
+.gpu-images[data-layout="stack"],.gpu-images[data-layout="output"]{grid-template-columns:1fr}.gpu-images figure[hidden]{display:none}.gpu-sliders select{display:block;width:100%;padding:8px;background:#1c252d;color:inherit}.gpu-images[data-layout="output"] figure{max-width:1200px}

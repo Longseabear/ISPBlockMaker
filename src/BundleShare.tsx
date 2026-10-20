@@ -4,28 +4,27 @@ import type {Api} from './types';
 import './bundle-exchange.css';
 
 type BundleArtifact={id:string;title:string;kind:string;file:string;blockId:string};
-type Plan={downloadName:string;fileCount:number;bytes:number;revision:number;skipped:string[];files:{path:string;size:number}[];includeGit:boolean;sourceRoot?:string;availableArtifacts?:BundleArtifact[];selectedArtifactIds?:string[]};
+type Plan={problems:string[];categories:Record<string,number>;dataItems:{id:string;label:string;bytes:number;fileCount:number;files:{path:string;size:number}[];oversized:boolean;included:boolean}[];downloadName:string;fileCount:number;bytes:number;revision:number;skipped:string[];files:{path:string;size:number}[];includeGit:boolean;sourceRoot?:string;availableArtifacts?:BundleArtifact[];selectedArtifactIds?:string[]};
 type VisualizationChoice='all'|'selected'|'none';
 const size=(bytes:number)=>bytes<1024*1024?`${(bytes/1024).toFixed(1)} KiB`:`${(bytes/1024/1024).toFixed(1)} MiB`;
 export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolean}){
  const [open,setOpen]=useState(false),[images,setImages]=useState(true),[viewer,setViewer]=useState(true),[data,setData]=useState(false),[git,setGit]=useState(false);
  const [visualizations,setVisualizations]=useState<VisualizationChoice>('all'),[artifactIds,setArtifactIds]=useState<string[]>([]),[availableArtifacts,setAvailableArtifacts]=useState<BundleArtifact[]>([]);
  const [planned,setPlanned]=useState<{key:string;value:Plan}|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[refresh,setRefresh]=useState(0),[notice,setNotice]=useState('');
- const options={includeImages:viewer&&images,includeViewer:viewer,includeData:data,includeGit:git,includeVisualizations:visualizations!=='none',...(visualizations==='selected'?{artifactIds}:{} )};
+ const [excludedData,setExcludedData]=useState<string[]>([]);
+ const options={excludedData,includeImages:viewer&&images,includeViewer:viewer,includeData:data,includeGit:git,includeVisualizations:visualizations!=='none',...(visualizations==='selected'?{artifactIds}:{} )};
  const settingsKey=JSON.stringify(options),plan=planned?.key===settingsKey?planned.value:null;
  useEffect(()=>{
   if(!open)return;
   let alive=true;
   setPlanned(null);setError('');setNotice('');
   const values=JSON.parse(settingsKey) as typeof options;
-  const query=new URLSearchParams();
-  for(const [name,value] of Object.entries(values))query.set(name,Array.isArray(value)?value.join(','):String(value));
-  api<Plan>(`/bundle/preview?${query}`).then(result=>{if(alive){setPlanned({key:settingsKey,value:result});setAvailableArtifacts(result.availableArtifacts||[]);}}).catch(async error=>{
+  api<Plan>('/bundle/preview',values).then(result=>{if(alive){setPlanned({key:settingsKey,value:result});setAvailableArtifacts(result.availableArtifacts||[]);}}).catch(async error=>{
    if(!alive)return;
    if(/unknown visualization/i.test(String(error))&&values.artifactIds){
     try{
-     query.delete('artifactIds');
-     const catalog=await api<Plan>(`/bundle/preview?${query}`);
+     delete values.artifactIds;
+     const catalog=await api<Plan>('/bundle/preview',values);
      if(!alive)return;
      const available=catalog.availableArtifacts||[];
      setAvailableArtifacts(available);setArtifactIds(ids=>ids.filter(id=>available.some(artifact=>artifact.id===id)));return;
@@ -50,7 +49,7 @@ export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolea
   <button className="bundle-share-button" title="프로젝트를 .bundle로 공유" aria-label="프로젝트 공유" onClick={()=>setOpen(true)}><Package size={15}/><span>공유</span></button>
   {open&&<div className="workspace-picker-backdrop"><section className="bundle-dialog bundle-exchange-dialog" role="dialog" aria-modal="true" aria-label="프로젝트 번들 저장" onKeyDown={e=>{if(e.key==='Escape'&&!busy)setOpen(false);}}>
    <header><div><h2>프로젝트 공유</h2><p>구현과 함께 전달할 결과를 선택하세요.</p></div><button autoFocus disabled={busy} aria-label="번들 창 닫기" onClick={()=>setOpen(false)}><X size={18}/></button></header>
-   <div className="bundle-core"><Check size={17}/><div><strong>Project · 항상 포함</strong><small>그래프, 구현 코드, 요청/JOB, 작업 기록, 참조 입출력 세트 및 프로젝트 스킬</small></div></div>
+   <div className="bundle-core"><Check size={17}/><div><strong>Project · 항상 포함</strong><small>그래프, 구현 코드, 요청/JOB, 작업 기록, 프로젝트 스킬 (입력 데이터는 아래에서 선택)</small></div></div>
    <fieldset className="bundle-choices" disabled={busy}><legend>Visualizations</legend><div className="bundle-choice-row">
     {([['all','전체'],['selected','선택'],['none','제외']] as const).map(([value,label])=><label key={value} className={visualizations===value?'active':''}><input type="radio" name="bundle-visualizations" value={value} checked={visualizations===value} onChange={()=>setVisualizations(value)}/>{label}{value==='all'&&availableArtifacts.length>0?` (${availableArtifacts.length})`:''}</label>)}
    </div>
@@ -70,10 +69,13 @@ export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolea
    {notice&&<p role="status">{notice}</p>}
    {plan?<>
     <div className="bundle-size"><small>저장 파일: {plan.downloadName}</small><strong>{plan.fileCount.toLocaleString()}개 파일 · {size(plan.bytes)}</strong><small>선택한 파일 기준 · ZIP 헤더{git?' 및 Git 이력':''} 용량 별도</small><button disabled={busy} onClick={()=>setRefresh(n=>n+1)}>목록 새로고침</button></div>
+    <div className="bundle-size">{Object.entries(plan.categories).map(([name,bytes])=><span key={name}>{name}: {size(bytes)} · </span>)}</div>
+    <fieldset className="bundle-choices" disabled={busy}><legend>데이터별 선택 · 큰 항목 순</legend><p>참조 세트는 메타데이터와 파일을 함께 제외합니다. 데이터 제외 시 실행에 필요한 입력은 별도로 전달하세요.</p><button onClick={()=>setExcludedData(plan.dataItems.map(item=>item.id))}>데이터 모두 제외</button><button onClick={()=>setExcludedData([])}>데이터 모두 포함</button><div className="bundle-artifact-list">{plan.dataItems.map(item=><label key={item.id}><input type="checkbox" checked={item.included} onChange={e=>setExcludedData(ids=>e.target.checked?ids.filter(id=>id!==item.id):[...ids,item.id])}/><span>{item.label}<small>{size(item.bytes)} · {item.fileCount}개{item.oversized?' · 256 MiB 초과 파일 포함':''}</small>{item.fileCount>1&&item.files.map(file=><small key={file.path}>{file.path.split('/').slice(-2).join('/')} · {size(file.size)}</small>)}</span></label>)}</div></fieldset>
+    {plan.problems.length>0&&<div role="alert"><p>파일당 256 MiB / 전체 2 GiB 제한입니다. 아래 항목을 제외한 뒤 저장하세요.</p>{plan.problems.map(problem=><p key={problem}>{problem}</p>)}</div>}
     <details><summary>포함 파일 확인</summary><ul className="bundle-files">{plan.files.map(file=><li key={file.path}><code>{file.path}</code><span>{size(file.size)}</span></li>)}</ul></details>
     <details><summary>제외 항목 ({plan.skipped.length})</summary><ul className="bundle-files">{plan.skipped.map(file=><li key={file}><code>{file}</code></li>)}</ul></details>
    </>:!error&&<p role="status">포함 파일과 용량 확인 중…</p>}
-   <footer><p>받는 사람은 ‘번들 열기’에서 복원합니다. 에이전트가 파일을 수정 중이면 완료 후 저장하세요.</p><button className="primary" disabled={!plan||busy||dirty} onClick={()=>void download()}><Download size={16}/>{busy?'번들 만드는 중…':'.bundle 저장'}</button></footer>
+   <footer><p>받는 사람은 ‘번들 열기’에서 복원합니다. 에이전트가 파일을 수정 중이면 완료 후 저장하세요.</p><button className="primary" disabled={!plan||!!plan.problems.length||busy||dirty} onClick={()=>void download()}><Download size={16}/>{busy?'번들 만드는 중…':'.bundle 저장'}</button></footer>
   </section></div>}
  </>;
 }

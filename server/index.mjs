@@ -1,3 +1,4 @@
+import {installAppUpdates} from './app-updates.mjs';
 import { graphCheck } from "./graph-check.mjs";
 import {listWorkspaces} from './workspace-registry.mjs';
 import { installReportSharing } from './report-sharing.mjs';
@@ -171,10 +172,12 @@ installBundleImport(app,{
     } finally {workspaceReplacing=false;versionChanging=false;}
   },
 });
+installAppUpdates(app,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
 installReferenceSets(app,{current:()=>({workspace})});
 installProjectSkills(app,{current:()=>({workspace}),root});
-const bundleOptions=z.object({includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
-app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+const bundleOptions=z.object({excludedData:z.array(z.string().min(1).max(2000)).max(10000).optional(),includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
+app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({...(typeof req.query.excludedData==='string'?{excludedData:JSON.parse(req.query.excludedData)}:{}),includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+app.post('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse(req.body);const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
 app.post('/api/bundle/export',async(req,res)=>{
  const options=bundleOptions.parse(req.body);if(req.body.revision!==undefined&&req.body.revision!==store.get().revision)return res.status(409).json({error:'프로젝트가 변경됐습니다. 목록을 새로 확인하세요.'});
  versionChanging=true;let temp;const downloadName=bundleFilename(store.get().name);

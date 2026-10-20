@@ -1,3 +1,4 @@
+import {AppUpdate} from './AppUpdate';
 import {ProjectSkills} from './ProjectSkills';
 import {ReportShare} from './ReportShare';
 import {BundleOpen} from "./BundleOpen";
@@ -923,7 +924,7 @@ function TerminalPane({
     terminal.writeln(
       "\x1b[38;2;112;212;179mISP BLOCK MAKER\x1b[0m  /  local terminal",
     );
-    terminal.writeln("Connecting to your local shell automatically…");
+    terminal.writeln("Windows 터미널은 cmd로 실행됩니다. PowerShell에서 명령이 실패하면 cmd /d 를 입력한 뒤 다시 실행하세요.");
     terminal.writeln(
       "Read context: isp context   ·   Generate a visualization: isp demo\r\n",
     );
@@ -1661,6 +1662,7 @@ function App() {
           <ChevronDown size={13} />
         </button>
         <div className="top-actions">
+          <AppUpdate api={api}/>
           <BundleOpen api={api} token={token} current={workspacePath} dirty={dirty || pending} />
           <BundleShare api={api} token={token} dirty={dirty || pending} />
           <VersionControl api={api} revision={project.revision} dirty={dirty} />

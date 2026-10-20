@@ -44,3 +44,7 @@ Read [project-skills.md](project-skills.md) when creating, editing or sharing a 
 ## Change impact
 
 During graph-related implementation and analysis, use [change-impact.md](change-impact.md) at meaningful phase boundaries and completion. It selects checks and affected records by the actual change, with [graph-maintenance.md](graph-maintenance.md) for information placement. This is an in-task practice, not periodic background mutation.
+
+## Windows shells
+
+The embedded Windows terminal uses cmd.exe. PowerShell can run `node $env:ISP_CLI context` or `node .isp/tools/isp.mjs context` from the workspace. cmd macros and `%ISP_CLI%` syntax do not work in PowerShell. If a cmd-oriented launcher or command fails in PowerShell, tell the user to enter `cmd /d` in that folder and rerun it there. Do not claim PowerShell itself is unsupported.

@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {validateGraph} from './model.mjs';
 import {sourceRoot,normalizeWorkspaceFolder} from './project-layout.mjs';
 import {referenceManifest} from './reference-sets.mjs';
+import {dataGroup,bundleCategory} from './bundle-data.mjs';
 import {writeZip,openZip,sha256,safeName,MAX_FILE,MAX_TOTAL,MAX_FILES} from './bundle-zip.mjs';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const metaName='isp-bundle.json',historyName='.isp/history.gitbundle';
@@ -46,7 +47,8 @@ async function gitInfo(source){
 }
 function sourceRelative(workspace,source){const relative=path.relative(workspace,source).split(path.sep).join('/')||'.';if(!['.','project'].includes(relative))throw new Error('Unsupported project source root');return relative;}
 export async function planBundle(folder,options={}){
- const workspace=normalizeWorkspaceFolder(folder),files=[],skipped=[],names=new Set();let bytes=0;
+ const workspace=normalizeWorkspaceFolder(folder),files=[],skipped=[],names=new Set(),dataItems=new Map();let bytes=0;
+ if(options.excludedData!==undefined&&(!Array.isArray(options.excludedData)||options.excludedData.some(x=>typeof x!=='string')))throw new Error('Invalid data selection');
  if(await fs.stat(path.join(workspace,'.isp/storage-transaction.json')).then(()=>true,()=>false))throw new Error('Pending workspace transaction. Open the workspace before exporting.');
  const source=sourceRoot(workspace),relativeSource=sourceRelative(workspace,source),graphPath=path.join(source,'graph.json');
  if((await fs.lstat(graphPath)).isSymbolicLink())throw new Error('Linked graph files are not bundled');
@@ -63,23 +65,30 @@ export async function planBundle(folder,options={}){
   const dir=path.join(workspace,relative);if((await fs.lstat(dir)).isSymbolicLink())throw new Error('Linked directories are not bundled: '+relative);
   for(const e of (await fs.readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const name=(relative?relative+'/':'')+e.name;
    if(name===metaName)throw new Error('Reserved filename: '+metaName);
-   if(!relative&&relativeSource==='project'&&!['project','.isp','.agents','.claude','AGENTS.md','CLAUDE.md','isp.cmd','isp.mjs','data'].includes(name)){skipped.push(name);continue;}
+   if(!relative&&relativeSource==='project'&&!['project','.isp','.agents','.claude','AGENTS.md','CLAUDE.md','isp.cmd','isp.mjs','data','inputs','datasets'].includes(name)){skipped.push(name);continue;}
    // Traverse .isp/.agents/.claude containers to reach only the allowed children.
    if(!['.isp','.agents','.claude','project/.agents','project/.claude'].includes(name)&&excluded(name,options)){skipped.push(name);continue;}
    safeName(name);if(names.has(name.toLowerCase()))throw new Error('Case-colliding path: '+name);names.add(name.toLowerCase());const absolute=path.join(workspace,name),stat=await fs.lstat(absolute);if(stat.isSymbolicLink()){skipped.push(name+' (link)');continue;}
    if(stat.isDirectory()){await walk(name);continue;}if(!stat.isFile()){skipped.push(name);continue;}
    if(filterArtifacts&&name.startsWith('.isp/artifacts/')&&!selectedFiles.has(name)){skipped.push(name);continue;}
    const data=name==='.isp/project.json'?transformed:null,size=data?data.length:stat.size;
-   if(size>MAX_FILE)throw new Error('File exceeds 256 MiB: '+name);bytes+=size;if(bytes>MAX_TOTAL||files.length>=MAX_FILES)throw new Error('Bundle limit: 2 GiB / 10,000 files');files.push({path:name,size,mtime:stat.mtimeMs,source:absolute,...(data?{data,sourceHash:sha256(await fs.readFile(absolute))}:{})});
+   const group=dataGroup(name);
+   if(group){const item=dataItems.get(group.id)||{...group,bytes:0,fileCount:0,files:[],oversized:false,included:!options.excludedData?.includes(group.id)};item.bytes+=size;item.fileCount++;item.files.push({path:name,size});item.oversized ||= size>MAX_FILE;dataItems.set(group.id,item);if(!item.included){skipped.push(name);continue;}}
+   bytes+=size;files.push({path:name,size,mtime:stat.mtimeMs,source:absolute,...(data?{data,sourceHash:sha256(await fs.readFile(absolute))}:{})});
   }
  }
  await walk();for(const file of selectedFiles)if(!files.some(f=>f.path===file))throw new Error('Missing selected visualization file: '+file);const history=options.includeGit?await gitInfo(source):null;
- return {workspace,sourceRoot:relativeSource,files,skipped,bytes,fileCount:files.length,history,availableArtifacts,selectedArtifactIds,includeImages:options.includeImages!==false,includeGit:!!options.includeGit,includeVisualizations:options.includeVisualizations!==false,includeViewer:options.includeViewer!==false,includeData:options.includeData!==false};
+ for(const item of dataItems.values()){if(item.id.startsWith('.isp/reference-sets/')){try{const meta=path.join(workspace,item.id,'manifest.json');if((await fs.stat(meta)).size<4*1024*1024){const value=JSON.parse(await fs.readFile(meta,'utf8'));if(typeof value.title==='string')item.label='Reference I/O · '+value.title;}}catch{ /* Retain path label for damaged metadata; import validation remains authoritative. */ }}}
+ const problems=files.filter(f=>f.size>MAX_FILE).map(f=>'File exceeds 256 MiB: '+f.path);
+ if(bytes>MAX_TOTAL||files.length>MAX_FILES)problems.push('Bundle limit: 2 GiB / 10,000 files');
+ const categories={};for(const f of files){const key=bundleCategory(f.path);categories[key]=(categories[key]||0)+f.size;}
+ return {workspace,sourceRoot:relativeSource,files,skipped,bytes,fileCount:files.length,history,problems,categories,dataItems:[...dataItems.values()].sort((a,b)=>b.bytes-a.bytes),availableArtifacts,selectedArtifactIds,includeImages:options.includeImages!==false,includeGit:!!options.includeGit,includeVisualizations:options.includeVisualizations!==false,includeViewer:options.includeViewer!==false,includeData:options.includeData!==false};
 }
 export async function packBundle(folder,output,options={}){
  output=path.resolve(output);if(!output.toLowerCase().endsWith('.bundle'))throw new Error('Output filename must end in .bundle');if(await fs.lstat(output).then(()=>true,()=>false))throw new Error('Output already exists');
  const plan=await planBundle(folder,options),temp=await fs.mkdtemp(path.join(os.tmpdir(),'isp-bundle-'));const partial=path.join(path.dirname(output),'.'+path.basename(output)+'.'+path.basename(temp)+'.tmp');
  try{
+  if(plan.problems.length)throw new Error(plan.problems.join('\n'));
   const items=[];for(const f of plan.files){if((await fs.lstat(f.source)).isSymbolicLink()||!((await fs.realpath(f.source)).startsWith(plan.workspace+path.sep)))throw new Error('File moved outside workspace: '+f.path);const original=await fs.readFile(f.source);if(f.sourceHash&&sha256(original)!==f.sourceHash)throw new Error('Workspace changed during export. Refresh and try again.');const data=f.data??original;items.push({...f,sha256:sha256(data)});}
   const project=path.resolve(plan.workspace,plan.sourceRoot),history=plan.history;if(history&&!history.empty){const source=path.join(temp,'history.gitbundle');await git(project,['bundle','create',source,'--all',...(history.head?['HEAD']:[])]);const data=await fs.readFile(source);if(data.length>MAX_FILE)throw new Error('Git history exceeds 256 MiB');items.push({path:historyName,source,size:data.length,sha256:sha256(data)});}
   const manifest={format:'isp-block-maker-bundle',version:2,sourceRoot:plan.sourceRoot,appVersion:JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version,createdAt:new Date().toISOString(),name:JSON.parse(await fs.readFile(path.join(project,'graph.json'),'utf8')).name,includeImages:plan.includeImages,includeViewer:plan.includeViewer,includeVisualizations:plan.includeVisualizations,includeData:plan.includeData,artifactIds:plan.selectedArtifactIds,history,files:items.map(({path,size,sha256})=>({path,size,sha256}))};

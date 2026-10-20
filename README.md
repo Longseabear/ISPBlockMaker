@@ -433,3 +433,13 @@ Use the local authenticated API `POST /api/viewer/commands` or `isp viewer-contr
 ```
 
 Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` defaults to true. Ordinary text does not auto-render `$$...$$`. KaTeX runs on the server and embeds its CSS and WOFF2 fonts once in the generated HTML (approximately 369 KB overhead only for reports containing math). Shared reports need no internet, browser scripts or LaTeX installation. The installer includes KaTeX and its dependency; users do not run npm. Invalid formulas fail rather than silently displaying raw markup. Limit: 8,000 characters per expression, bounded macro expansion; links/HTML/external resources are disabled. Typesetting does not validate mathematical correctness.
+
+## 업데이트와 Windows 셸
+
+앱 상단의 업데이트 버튼에서 설치 버전과 GitHub의 최신 안정 릴리스를 확인하고 설치 페이지 또는 설치 파일로 이동할 수 있습니다. 조회 실패 시 실패 상태를 표시하며, 설치 파일 실행은 사용자가 작업을 저장한 뒤 진행합니다.
+
+내장 Windows 터미널은 cmd.exe입니다. PowerShell에서는 `node $env:ISP_CLI context` 또는 워크스페이스에서 `node .isp/tools/isp.mjs context`를 사용하세요. cmd 전용 명령이 실패하면 같은 폴더에서 `cmd /d`를 실행한 뒤 다시 입력하세요.
+
+번들 미리보기는 데이터 파일 및 Reference I/O 세트별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Reference I/O는 메타데이터와 파일을 세트 단위로 제외합니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
+
+GPU simulator는 sourceRoot/extensions/gpu의 GLSL 확장을 실행합니다. Python 자동 변환기가 아닙니다. 확장의 ui.layout과 파라미터별 group/control/options로 배치와 컨트롤을 지정할 수 있습니다. 자세한 절차는 공급 스킬의 gpu-simulator.md를 참고하세요.
