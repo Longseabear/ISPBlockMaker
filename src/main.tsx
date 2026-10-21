@@ -1,3 +1,5 @@
+import {PortNames} from './PortNames';
+import {HarnessPanel,HarnessStepEditor,HarnessStatus,harnessStatus} from './Harness';
 import {DiagramTabs} from './DiagramTabs';
 import {Runs} from './Runs';
 import {Interaction} from './Interaction';
@@ -75,11 +77,21 @@ type FlowNode = Node<
   { block: Block; highlighted?: boolean; onRequests: (id: string) => void; onDescription: (id: string) => void },
   "block"
 >;
+function BlockDocuments({id,api,revision}:{id:string;api:Api;revision:number}){
+ const [documents,setDocuments]=useState<{name:string;path:string}[]>([]),[opened,setOpened]=useState<{name:string;content:string}|null>(null),[error,setError]=useState('');
+ useEffect(()=>{setOpened(null);setDocuments([]);},[id]);
+ useEffect(()=>{let live=true;const refresh=()=>{void api<{documents:{name:string;path:string}[]}>('/blocks/'+id+'/documents').then(v=>{if(live){setDocuments(v.documents);setError('');}}).catch(e=>{if(live)setError(String(e));});};refresh();const timer=setInterval(refresh,8000);return()=>{live=false;clearInterval(timer);};},[id,revision,api]);
+ if(!documents.length&&!error)return null;
+ return <section><h2>추가 문서</h2>{error&&<p role="alert">{error}</p>}<div>{documents.map(d=><button key={d.path} onClick={()=>{void api<{name:string;content:string}>('/blocks/'+id+'/documents?path='+encodeURIComponent(d.path)).then(setOpened).catch(e=>setError(String(e)));}}>{d.name}</button>)}</div>{opened&&<article><h3>{opened.name} <button onClick={()=>setOpened(null)}>닫기</button></h3><div className="reader-prose">{opened.content}</div></article>}</section>;
+}
+
 function BlockNode({ data, selected }: NodeProps<FlowNode>) {
+  const [execution,setExecution]=useState<{status:string;visit:number}|null>(null);
+  useEffect(()=>{const receive=(e:Event)=>{const run=(e as CustomEvent).detail;const attempt=run?.diagramId===data.block.diagramId?run.attempts.filter((a:any)=>a.stepId===data.block.id).at(-1):null;setExecution(attempt?{status:run.staleSteps?.includes(data.block.id)?'stale':attempt.status,visit:attempt.visit}:null);};window.addEventListener('isp-harness-state',receive);return()=>window.removeEventListener('isp-harness-state',receive);},[data.block.id,data.block.diagramId]);
   const b = data.block;
   return (
     <div
-      className={`block-node ${selected ? "selected" : ""} ${data.highlighted ? "agent-highlight" : ""}`}
+      className={`block-node ${selected ? "selected" : ""} ${data.highlighted ? "agent-highlight" : ""} ${execution?.status==='running'?'harness-active':''}`}
     >
       <div className="node-top">
         <span
@@ -114,6 +126,7 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
           {b.userRequests.filter((r) => r.status === "pending").length}
         </div>
       )}
+      {execution&&<div className={`harness-state ${execution.status}`}>{harnessStatus[execution.status]||execution.status} · {execution.visit}회</div>}
       <div className="node-ports">
         <div>
           {b.inputs.map((p) => (
@@ -143,8 +156,8 @@ function BlockNode({ data, selected }: NodeProps<FlowNode>) {
         </div>
       </div>
       <div className="node-bottom">
-        <span>{b.status === "implemented" ? "IMPLEMENTED" : "DRAFT"}</span>
-        <span>{Object.keys(b.parameters).length} params</span>
+        <span>{b.harnessStep?({agent:"에이전트",run:"Run 검증",manual:"사용자 확인"}[b.harnessStep.kind]):b.status === "implemented" ? "IMPLEMENTED" : "DRAFT"}</span>
+        <span>{b.harnessStep?(b.harnessStep.phase||b.id):Object.keys(b.parameters).length+" params"}</span>
       </div>
     </div>
   );
@@ -165,6 +178,7 @@ const emptyContract = {
 
 type EditControls = {save:()=>Promise<boolean>;discard:()=>void};
 function Inspector({
+  project,
   block,
   revision,
   api,
@@ -176,7 +190,19 @@ function Inspector({
   requestFocus,
   descriptionFocus,
   global = false,
+  reading = false,
+  onBack,
+  visible = false,
+  onViewportResize,
+  detailSize,
+  setDetailSize,
 }: {
+  detailSize: number;
+  setDetailSize: React.Dispatch<React.SetStateAction<number>>;
+  onViewportResize?: () => void;
+  visible?: boolean;
+  reading?: boolean;
+  onBack?: () => void;
   controls: React.RefObject<EditControls | null>;
   global?: boolean;
   requestFocus?: number;
@@ -184,11 +210,24 @@ function Inspector({
   artifacts: Artifact[];
   onResult: (id: string) => void;
   block: Block;
+  project: Project;
   revision: number;
   api: Api;
   notify: (s: string) => void;
   onDirty: (dirty: boolean) => void;
 }) {
+  const detailRef=useRef<HTMLElement>(null);
+  const resizing=useRef(false);
+  useEffect(()=>{
+    if(!reading || !visible)return;
+    const flow=detailRef.current?.parentElement?.querySelector('.flow-wrap');
+    if(!flow)return;
+    let frame=0;
+    const observer=new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>onViewportResize?.());});observer.observe(flow);
+    const escape=(event:KeyboardEvent)=>{if(event.key==='Escape' && !document.querySelector('dialog[open]'))onBack?.();};
+    window.addEventListener('keydown',escape);
+    return()=>{cancelAnimationFrame(frame);observer.disconnect();window.removeEventListener('keydown',escape);};
+  },[reading,visible,block.id]);
   const [draft, setDraft] = useState(block);
   const [params, setParams] = useState(
     JSON.stringify(block.parameters, null, 2),
@@ -200,11 +239,13 @@ function Inspector({
   const [dirty, setDirty] = useState(false),
     [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("spec");
+  const [editing, setEditing] = useState(false);
+  useEffect(()=>{if(descriptionFocus && !dirty)setEditing(false);},[descriptionFocus]);
   useEffect(()=>{if(descriptionFocus)setTab("spec");},[descriptionFocus]);
   const [newRequest, setNewRequest] = useState("");
   const requestInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (requestFocus) setTab("requests");
+    if (requestFocus) {setTab("requests");setEditing(true);}
   }, [requestFocus]);
   useEffect(() => {
     if (tab === "requests" && requestFocus) requestInput.current?.focus();
@@ -229,7 +270,7 @@ function Inspector({
   const saveLock = useRef(false);
   function discard() {undoStack.current=[];setDirty(false);onDirty(false);}
   function undo() {const previous=undoStack.current.pop();if(!previous)return;setDraft(previous.draft);setParams(previous.params);setPorts(previous.ports);setNewRequest(previous.newRequest);const remains=undoStack.current.length>0;setDirty(remains);onDirty(remains);}
-  useEffect(()=>{controls.current={save,discard};const keyboard=(e:KeyboardEvent)=>{
+  useEffect(()=>{if(block.harnessStep && tab!=="requests" && tab!=="results")return;controls.current={save,discard};const keyboard=(e:KeyboardEvent)=>{
     if (!(e.ctrlKey||e.metaKey)||e.altKey||e.isComposing) return;
     const target=e.target as HTMLElement;
     if(target.closest('.xterm,[data-unsaved-dialog]'))return;
@@ -319,14 +360,43 @@ function Inspector({
     }
   }
   return (
-    <section className="inspector">
-      <div className="panel-title">
+    <>
+      {reading && <div className="detail-height-resizer" role="separator" aria-label="그래프와 상세 높이 조절" aria-orientation="horizontal" aria-valuemin={25} aria-valuemax={70} aria-valuenow={detailSize} tabIndex={0}
+        onKeyDown={event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault();setDetailSize(value=>Math.max(25,Math.min(70,value+(event.key==='ArrowUp'?5:-5))));}}}
+        onDoubleClick={()=>setDetailSize(40)}
+        onPointerDown={event=>{if(event.button!==0)return;resizing.current=true;event.currentTarget.setPointerCapture(event.pointerId);}}
+        onPointerMove={event=>{if(!resizing.current)return;const rect=event.currentTarget.parentElement!.getBoundingClientRect();setDetailSize(Math.max(25,Math.min(70,100*(rect.bottom-event.clientY)/rect.height)));}}
+        onPointerUp={()=>{resizing.current=false;}} onPointerCancel={()=>{resizing.current=false;}} onLostPointerCapture={()=>{resizing.current=false;}}/>}
+    <section ref={detailRef} tabIndex={-1} aria-label={reading ? `${block.name} block details` : undefined} className={`inspector ${reading ? "detail-page" : ""}`} style={reading ? {flexBasis:`${detailSize}%`} : undefined}>
+      {reading && <div className="detail-navigation"><Box size={16}/><span><strong>{block.name}</strong>{dirty&&<small>Unsaved</small>}</span>
+        <button hidden={!!block.harnessStep} onClick={()=>{setTab("spec");setEditing(v=>!v);}}>{editing && tab!=="requests" && tab!=="results" ? "Preview" : "Edit"}</button>
+        {block.harnessStep&&<button aria-pressed={detailSize>=65} onClick={()=>setDetailSize(detailSize>=65?40:65)}>{detailSize>=65?"기본 크기":"크게 편집"}</button>}
+        <button aria-label="Close block details" title="상세 접기 (Esc)" onClick={onBack}><X size={18}/></button>
+      </div>}
+      {reading && <nav className="detail-sections" aria-label="Block detail sections">
+        <button disabled={dirty} aria-pressed={tab!=="requests" && tab!=="results"} onClick={()=>{setTab("spec");setEditing(false);}}>{block.harnessStep?"단계 설정":"설명"}</button>
+        <button disabled={dirty} aria-pressed={tab==="requests"} onClick={()=>setTab("requests")}>Requests / JOBs <span>{(draft.userRequests||[]).filter(r=>r.status==="pending").length + (block.jobs||[]).filter(j=>j.status!=="done").length}</span></button>
+        {!global && <button disabled={dirty} aria-pressed={tab==="results"} onClick={()=>setTab("results")}>Results</button>}
+      </nav>}
+      {block.harnessStep && tab!=="requests" && tab!=="results" ? <HarnessStepEditor block={block} project={project} api={api} controls={controls} onDirty={value=>{setDirty(value);onDirty(value);}}/> : reading && !editing && tab!=="requests" && tab!=="results" ? <article className="block-reader">
+        <header><div className="reader-eyebrow">{global ? "PROJECT OVERVIEW" : "BLOCK"} · {draft.id}</div><h1>{draft.name}</h1><span className={`status ${draft.status}`}>{draft.status}</span><p className="reader-summary">{draft.description || "아직 요약이 없습니다."}</p></header>
+        <section><h2>설명</h2><div className="reader-prose">{draft.detail || "아직 상세 설명이 없습니다. Edit에서 이 블록의 역할과 동작을 작성할 수 있습니다."}</div></section>
+
+        {!global && <BlockDocuments id={block.id} api={api} revision={revision}/>}
+        {!global && <section><h2>Inputs & Outputs</h2><div className="reader-ports">{([['Inputs',draft.inputs],['Outputs',draft.outputs]] as const).map(([label,ports])=><div key={label}><h3>{label}</h3>{ports.length ? ports.map(port=><div className="reader-port" key={port.id}><strong>{port.name}</strong><code>{port.type}</code></div>) : <p className="reader-muted">등록된 포트 없음</p>}</div>)}</div></section>}
+        {!!Object.keys(draft.parameters).length && <section><h2>Parameters</h2><dl className="reader-parameters">{Object.entries(draft.parameters).map(([key,value])=><div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}</dl></section>}
+        {draft.implementation && <section><h2>Implementation</h2><code className="reader-path">{draft.implementation}{draft.implementationSymbol ? ` · ${draft.implementationSymbol}` : ''}</code></section>}
+        {(draft.principle || Object.values(draft.agentContract || {}).some(Boolean)) && <details className="reader-contract"><summary>에이전트 설명 · 상세 계약</summary>{draft.principle && <p className="reader-prose">{draft.principle}</p>}{Object.entries(draft.agentContract || {}).filter(([,value])=>value).map(([key,value])=><section key={key}><h3>{key}</h3><div className="reader-prose">{value}</div></section>)}</details>}
+
+      </article> : <>
+
+      <div className="panel-title" hidden={reading}>
         <span>
           <Box size={15} /> {global ? "GRAPH OVERVIEW" : "BLOCK INSPECTOR"}
         </span>
         <span className="subtle">{dirty ? "Unsaved" : "Saved"}</span>
       </div>
-      <div className="inspector-heading">
+      <div className="inspector-heading" hidden={reading}>
         <span className="eyebrow">{block.id}</span>
         <h2>{block.name}</h2>
         <span className={`status ${block.status}`}>
@@ -334,7 +404,7 @@ function Inspector({
           {block.status}
         </span>
       </div>
-      <div className="tabs">
+      <div className="tabs" hidden={reading && (tab==="requests" || tab==="results")}>
         <button
           className={tab === "requests" ? "active" : ""}
           onClick={() => setTab("requests")}
@@ -380,7 +450,7 @@ function Inspector({
               원하는 내용을 평문으로 남기세요. 에이전트가 요청을 JOB으로 나누고
               하나씩 처리합니다.
             </p>
-            <label>
+            <label hidden={reading}>
               요청사항
               <textarea
                 ref={requestInput}
@@ -595,6 +665,7 @@ function Inspector({
                 }}
               />
             </label>
+            <PortNames value={ports} onChange={value=>{mark();setPorts(value);}}/>
             <label>
               Input / output ports · JSON
               <textarea
@@ -728,7 +799,7 @@ function Inspector({
           </div>
         )}
       </div>
-      <div className="inspector-footer"><button title="마지막 편집 되돌리기 (Ctrl+Z)" disabled={!dirty||saving||!undoStack.current.length} onClick={undo}>되돌리기</button>
+      <div className="inspector-footer" hidden={reading}><button title="마지막 편집 되돌리기 (Ctrl+Z)" disabled={!dirty||saving||!undoStack.current.length} onClick={undo}>되돌리기</button>
         <button
           className="icon-button"
           title="변경 취소 / 최신 상태 불러오기"
@@ -742,10 +813,13 @@ function Inspector({
         </button>
         <button className="primary" disabled={!dirty || saving} onClick={save}>
           <Save size={14} />
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? "Saving…" : tab==="requests" ? (newRequest.trim() ? "요청 등록 / 변경 저장" : "요청 변경 저장") : "Save changes"}
         </button>
       </div>
+      </>}
+      {reading && !block.harnessStep && <div className="detail-request-compose"><textarea aria-label="블록 요청 입력" rows={2} value={newRequest} placeholder="이 블록에 요청 남기기…" onChange={event=>{mark();setNewRequest(event.target.value);}}/><button className="primary" disabled={saving || !dirty} onClick={save}>{saving ? "저장 중…" : newRequest.trim() ? "요청 등록" : "변경 저장"}</button></div>}
     </section>
+    </>
   );
 }
 
@@ -1171,7 +1245,11 @@ function ArtifactInformation({ artifact, revision, relatedArtifacts, onDelete }:
 }
 
 function App() {
+  const [boardMenu,setBoardMenu]=useState<{id:string;x:number;y:number}|null>(null);
   const flowRef = useRef<ReactFlowInstance<FlowNode> | null>(null);
+  const boardViewportBeforeDetails=useRef<{diagram:string;viewport:{x:number;y:number;zoom:number}}|null>(null);
+  const [detailSize,setDetailSize]=useState(()=>{try{const saved=Number(localStorage.getItem('isp-detail-height'));return saved>=25&&saved<=70?saved:40;}catch{return 40;}});
+  useEffect(()=>{try{localStorage.setItem('isp-detail-height',String(detailSize));}catch{}},[detailSize]);
   const [deleteCandidates,setDeleteCandidates]=useState<Artifact[]>([]);
   const [deleteBusy,setDeleteBusy]=useState(false);
   const [deleteError,setDeleteError]=useState("");
@@ -1290,6 +1368,14 @@ function App() {
     } catch {}
     return { inspector: false, terminal: true };
   });
+  useEffect(()=>{
+    if(workMode==='interaction' && view==='graph' && layout.inspector && workPanelOpen)return;
+    const saved=boardViewportBeforeDetails.current;
+    if(!saved)return;
+    boardViewportBeforeDetails.current=null;
+    const frame=requestAnimationFrame(()=>{if(project?.selectedDiagramId===saved.diagram)void flowRef.current?.setViewport(saved.viewport);});
+    return()=>cancelAnimationFrame(frame);
+  },[workMode,view,layout.inspector,workPanelOpen,project?.selectedDiagramId]);
   const [focus, setFocus] = useState<"" | "editor" | "inspector" | "terminal">(
     "",
   );
@@ -1308,6 +1394,7 @@ function App() {
     if(next==='interaction'){changeWorkMode('interaction');return;}
     setWorkPanelOpen(true);
     setView(next);
+    if(next === "graph" && workMode === "interaction")setLayout(current=>({...current,inspector:false}));
     setFocus("");
     if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "mcp", "references"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
@@ -1317,6 +1404,7 @@ function App() {
     [contextText, setContextText] = useState("");
   const [dirty, setDirty] = useState(false),
     [pending, setPending] = useState(false);
+  const dirtyRef=useRef(false), deferredProject=useRef<Project|null>(null);
   const editControls=useRef<EditControls|null>(null);
   const [leaveTarget,setLeaveTarget]=useState<HTMLElement|null>(null),[leaveBusy,setLeaveBusy]=useState(false),[leaveError,setLeaveError]=useState('');
   useEffect(()=>{
@@ -1326,12 +1414,13 @@ function App() {
       if(target.closest('[data-unsaved-dialog],.artifact-info-trigger'))return;
       const destination=target.closest('.diagram-tabs button,.workspace-sidebar > button,.work-panel-tabs button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
       if(!destination)return;
+      if(!globalOpen && destination.matches('.react-flow__node') && destination.dataset.id===selected)return;
       e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
     };
     const unload=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};
     document.addEventListener('click',navigation,true);window.addEventListener('beforeunload',unload);
     return()=>{document.removeEventListener('click',navigation,true);window.removeEventListener('beforeunload',unload);};
-  },[dirty]);
+  },[dirty,globalOpen,selected]);
   async function resolveLeave(saveFirst:boolean){
     if(leaveBusy)return;setLeaveBusy(true);setLeaveError('');
     const destination=leaveTarget;
@@ -1352,6 +1441,7 @@ function App() {
     toastTimer.current = setTimeout(() => setMessage(""), 7000);
   }, []);
   const accept = useCallback((state: Project) => {
+    if(dirtyRef.current){if(!deferredProject.current||state.revision>=deferredProject.current.revision)deferredProject.current=state;return;}
     if (projectRef.current && state.revision < projectRef.current.revision)
       return;
     if(projectRef.current?.selectedDiagramId!==state.selectedDiagramId){
@@ -1363,6 +1453,7 @@ function App() {
     projectRef.current = state;
     setProject(state);
   }, []);
+  useEffect(()=>{if(!dirty&&deferredProject.current){const state=deferredProject.current;deferredProject.current=null;accept(state);}},[dirty,accept]);
   useEffect(() => {
     fetch("/api/bootstrap")
       .then((r) => {
@@ -1377,6 +1468,19 @@ function App() {
       })
       .catch((e) => setError(String(e)));
   }, [accept]);
+  useEffect(()=>{
+    let refreshing=false,disposed=false;
+    const recover=async()=>{
+      if(refreshing)return;refreshing=true;
+      try{const response=await fetch('/api/bootstrap');if(!response.ok)return;const data=await response.json();
+        if(disposed)return;
+        if(data.workspace!==workspacePath){setError('서버의 작업 폴더가 변경되었습니다. 입력 내용을 보존한 뒤 새로고침하세요.');return;}
+        setToken(data.token);accept(data.state);
+      }catch{/* The stream retries when the server is available. */}finally{refreshing=false;}
+    };
+    window.addEventListener('isp-session-expired',recover);
+    return()=>{disposed=true;window.removeEventListener('isp-session-expired',recover);};
+  },[workspacePath,accept]);
   const api: Api = useCallback(
     async <T,>(
       endpoint: string,
@@ -1391,6 +1495,7 @@ function App() {
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
+      if(response.status===401)window.dispatchEvent(new Event('isp-session-expired'));
       if (!response.ok)
         throw new Error((await response.json()).error || response.statusText);
       const result = response.headers.get("content-type")?.includes("json")
@@ -1403,8 +1508,7 @@ function App() {
   );
   const [viewerRequestId,setViewerRequestId] = useState("");
   const [viewerCommandId,setViewerCommandId] = useState("");
-  function present(result: Presentation, explicit = false) {
-    if(workMode==='interaction'&&!explicit){setPendingPresentation(result);notify('새 결과가 준비되었습니다. 결과 보기를 눌러 작업 패널에서 확인하세요.');return;}
+  function present(result: Presentation) {
     if (dirty) {
       setPendingPresentation(result);
       notify(
@@ -1473,8 +1577,9 @@ function App() {
         },
       })),
     );
-    setNodes(
+    setNodes(current =>
       project.blocks.filter(b=>(b.diagramId||"main")===(project.selectedDiagramId||"main")).map((block) => ({
+        ...current.find(node=>node.id===block.id),
         id: block.id,
         type: "block",
         deletable: false,
@@ -1527,20 +1632,24 @@ function App() {
     api("/selection", { blockId: id }).catch((e) => notify(String(e)));
   }
   function addBlock() {
+    if(!project)return;
     if (dirty) return notify("현재 블록의 변경을 먼저 저장하세요.");
     const id = `block-${crypto.randomUUID().slice(0, 8)}`;
+    const harnessDiagram=project.diagrams.find(d=>d.id===project.selectedDiagramId)?.kind==='harness';
+    const existing=project.blocks.filter(b=>b.diagramId===project.selectedDiagramId).length;
     const block: Block = {
       id,
-      diagramId: projectRef.current?.selectedDiagramId||"main",
-      name: "New block",
+      diagramId: project.selectedDiagramId||"main",
+      name: harnessDiagram?'New step':'New block',
+      ...(harnessDiagram?{harnessStep:{kind:'manual' as const,prompt:'',skills:[],recipeId:'',parameters:{},timeoutSeconds:1800}}:{}),
       description: "블록의 역할을 설명하세요.",
       principle: "",
       implementation: "",
       status: "draft",
-      inputs: [{ id: "image", name: "Image", type: "image" }],
-      outputs: [{ id: "image", name: "Image", type: "image" }],
+      inputs: harnessDiagram?[{id:"in",name:"Start",type:"signal"}]:[{ id: "image", name: "Image", type: "image" }],
+      outputs: harnessDiagram?[{id:"pass",name:"Pass",type:"signal"},{id:"fail",name:"Fail",type:"signal"}]:[{ id: "image", name: "Image", type: "image" }],
       parameters: {},
-      position: { x: 280, y: 320 },
+      position: { x: 80+(existing%3)*380, y: 80+Math.floor(existing/3)*340 },
     };
     mutate((p) => ({ ...p, blocks: [...p.blocks, block] }));
   }
@@ -1690,7 +1799,7 @@ function App() {
         </button>
         <div className="top-actions">
           <div className="work-mode-switch" role="group" aria-label="작업 모드"><button aria-label="Interaction mode" aria-pressed={workMode==='interaction'} onClick={()=>changeWorkMode('interaction')}>Interaction</button><button aria-label="Terminal mode" aria-pressed={workMode==='terminal'} onClick={()=>changeWorkMode('terminal')}>Terminal</button></div>
-          {workMode==='interaction'&&pendingPresentation&&<button onClick={()=>present(pendingPresentation,true)}>결과 보기</button>}
+          {workMode==='interaction'&&pendingPresentation&&<button onClick={()=>present(pendingPresentation)}>결과 보기</button>}
           <details className="project-actions-menu" onKeyDown={e=>{if(e.key==='Escape'){e.currentTarget.open=false;e.currentTarget.querySelector('summary')?.focus();}}}>
             <summary>프로젝트 메뉴 <ChevronDown size={13}/></summary>
             <div className="project-actions-popover">
@@ -1706,6 +1815,7 @@ function App() {
           </details>
           <BundleShare api={api} token={token} dirty={dirty || pending} />
           <VersionControl api={api} revision={project.revision} dirty={dirty} />
+          <HarnessStatus api={api} disabled={dirty||pending} onShow={()=>{switchView("graph");setWorkPanelOpen(true);}}/>
           <span className="saved">
             <Check size={13} />{" "}
             {pending ? "Saving…" : `Saved · r${project.revision}`}
@@ -1814,9 +1924,6 @@ function App() {
                 <ArrowDownToLine size={15} />
                 <span>Mermaid</span>
               </button>
-              <button onClick={addBlock} disabled={pending}>
-                <Plus size={15} /> Add block
-              </button>
             </div>}
           </div>
           {workMode === "terminal" && <div className="layout-toolbar">
@@ -1849,7 +1956,7 @@ function App() {
           </div>}
           <div className="rail-bottom">
             {pendingPresentation && (
-              <button title="결과 보기" aria-label="결과 보기" onClick={() => present(pendingPresentation,true)}>
+              <button title="결과 보기" aria-label="결과 보기" onClick={() => present(pendingPresentation)}>
                 <ArrowRight size={18} /><span>결과 보기</span>
               </button>
             )}
@@ -1861,14 +1968,14 @@ function App() {
 
         <main className="main-area">
           <section className="interaction-dock" aria-label="고정 채팅">
-            <Interaction api={api} project={project} workspace={workspacePath} blockId={selected} onArtifact={id=>{setArtifactId(id);switchView('artifacts');}} panelOpen={workPanelOpen} onTogglePanel={()=>setWorkPanelOpen(v=>!v)}/>
+            <Interaction api={api} token={token} project={project} workspace={workspacePath} blockId={selected} onArtifact={id=>{setArtifactId(id);switchView('artifacts');}} panelOpen={workPanelOpen} onTogglePanel={()=>setWorkPanelOpen(v=>!v)}/>
           </section>
           <div className="work-panel-resizer" role="separator" aria-label="채팅과 작업 패널 너비 조절" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={70} aria-valuenow={workPanelWidth} tabIndex={0}
-            onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setWorkPanelWidth(v=>Math.max(30,Math.min(70,v+(e.key==='ArrowLeft'?5:-5))));}}}
+            onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setWorkPanelWidth(v=>Math.max(30,Math.min(70,v+(e.key==='ArrowRight'?5:-5))));}}}
             onDoubleClick={()=>setWorkPanelWidth(50)} onPointerDown={e=>{if(e.button!==0)return;panelDrag.current=true;e.currentTarget.setPointerCapture(e.pointerId);}}
-            onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(rect.right-e.clientX)/rect.width)));}}
+            onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(e.clientX-rect.left)/rect.width)));}}
             onPointerUp={()=>{panelDrag.current=false;}} onPointerCancel={()=>{panelDrag.current=false;}} onLostPointerCapture={()=>{panelDrag.current=false;}}/>
-          <section className="work-panel" aria-label="작업 패널">
+          <section className={`work-panel ${workMode === "interaction" && view === "graph" && layout.inspector && (selected || globalOpen) ? "show-block-detail" : ""}`} aria-label="작업 패널">
           <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({skills:'Project Skills',mcp:'MCP Servers',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
             {view==='graph'&&<button disabled={!selected} aria-pressed={layout.inspector} onClick={()=>setLayout(l=>({...l,inspector:!l.inspector}))}>블록 상세</button>}
             <button aria-label={workPanelExpanded?'작업 패널 크기 복원':'작업 패널 최대화'} onClick={()=>setWorkPanelExpanded(v=>!v)}>{workPanelExpanded?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button>
@@ -1895,6 +2002,8 @@ function App() {
               ) : view === "graph" ? (
                 <div className="graph-area">
                   <DiagramTabs project={project} api={api} disabled={dirty||pending}/>
+                  <HarnessPanel project={project} api={api} disabled={dirty||pending}/>
+                  {boardMenu&&<div className="board-menu-scrim" onClick={()=>setBoardMenu(null)} onContextMenu={e=>{e.preventDefault();setBoardMenu(null);}}><div role="menu" className="board-context-menu" style={{left:boardMenu.x,top:boardMenu.y}} onClick={e=>e.stopPropagation()}><small>{boardMenu.id}</small><button role="menuitem" disabled={dirty||pending} onClick={()=>{selectBlock(boardMenu.id);setBoardMenu(null);}}>설명 / 포트 편집</button><button role="menuitem" disabled={dirty||pending} onClick={()=>{selectBlock(boardMenu.id);setRequestTarget({id:boardMenu.id,nonce:Date.now()});setBoardMenu(null);}}>요청 남기기</button><button role="menuitem" disabled={dirty||pending} onClick={()=>{addBlock();setBoardMenu(null);}}>블록 추가</button><button role="menuitem" disabled={dirty||pending} onClick={()=>{const id=boardMenu.id;setBoardMenu(null);if(window.confirm('블록과 연결을 삭제할까요? '+id))mutate(p=>({...p,blocks:p.blocks.filter(b=>b.id!==id),edges:p.edges.filter(e=>e.source!==id&&e.target!==id)}));}}>블록 삭제…</button><button role="menuitem" onClick={()=>setBoardMenu(null)}>닫기</button></div></div>}
                   <div className="flow-wrap">
                     <ReactFlow<FlowNode>
                       key={project.selectedDiagramId}
@@ -1917,7 +2026,9 @@ function App() {
                           ),
                         )
                       }
-                      onNodeClick={(_, node) => selectBlock(node.id)}
+                      onNodeClick={(_, node) => {setBoardMenu(null);selectBlock(node.id);}}
+                      onPaneClick={()=>setBoardMenu(null)}
+                      onNodeContextMenu={(event,node)=>{event.preventDefault();setBoardMenu({id:node.id,x:Math.min(event.clientX,window.innerWidth-230),y:Math.min(event.clientY,window.innerHeight-250)});}}
                       onNodeDragStop={(_, node) =>
                         mutate((p) => ({
                           ...p,
@@ -1947,6 +2058,7 @@ function App() {
                       colorMode="dark"
                       deleteKeyCode={["Backspace", "Delete"]}
                     >
+                      <Panel position="top-right"><button className="board-add-float nodrag nopan" disabled={dirty||pending} onClick={addBlock} aria-label="블록 추가" title="현재 다이어그램에 블록 추가">＋</button></Panel>
                       <Background gap={20} size={1} color="#30383f" />
                       <Controls showInteractive={false} />
                       <Panel
@@ -2096,6 +2208,16 @@ function App() {
               onPointerDown={(e) => resize(e, "side")}
             />
             <Inspector
+            detailSize={detailSize} setDetailSize={setDetailSize}
+            onViewportResize={()=>{
+              const flow=flowRef.current;if(!flow)return;
+              const diagram=project.selectedDiagramId;
+              if(boardViewportBeforeDetails.current?.diagram!==diagram)boardViewportBeforeDetails.current={diagram,viewport:flow.getViewport()};
+              void flow.fitView({padding:0.15,minZoom:0.05,maxZoom:boardViewportBeforeDetails.current.viewport.zoom,duration:0});
+            }}
+            reading={workMode === "interaction"}
+            visible={workMode === "interaction" && view === "graph" && layout.inspector && workPanelOpen}
+            onBack={()=>setLayout(current=>({...current,inspector:false}))}
               key={globalOpen ? "global-requests" : block.id}
               descriptionFocus={!globalOpen && descriptionTarget?.id===block.id?descriptionTarget.nonce:undefined}
               global={globalOpen}
@@ -2106,12 +2228,13 @@ function App() {
                     ? requestTarget.nonce
                     : undefined
               }
+              project={project}
               block={inspectorBlock}
               revision={project.revision}
               api={api}
               notify={notify}
               controls={editControls}
-              onDirty={setDirty}
+              onDirty={value=>{dirtyRef.current=value;setDirty(value);}}
               artifacts={project.artifacts}
               onResult={(id) => {
                 setArtifactId(id);

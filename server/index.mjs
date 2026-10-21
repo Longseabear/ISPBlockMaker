@@ -1,3 +1,5 @@
+import {installHarness} from './harness.mjs';
+import {blockDirectory,blockDocuments,safeGraphPath} from './graph-storage.mjs';
 import {listRecipes,saveRecipe,deleteRecipe,planRecipeRun} from './recipes.mjs';
 import {installInteraction} from './interaction.mjs';
 import {installMcpSettings,prepareMcpLaunch} from './mcp-settings.mjs';
@@ -143,6 +145,7 @@ installBundleImport(app,{
   beforeReplace:async destination=>{
     const active=process.platform==='win32'?path.resolve(destination).toLowerCase()===path.resolve(workspace).toLowerCase():path.resolve(destination)===path.resolve(workspace);
     if(!active)return {active:false};
+    if(harness?.busy())throw new Error("하네스를 중지한 뒤 작업 폴더를 복원하세요.");
     if(demoRunning||versionChanging||workspaceReplacing)throw new Error("현재 실행 또는 저장 작업이 끝난 뒤 다시 복원하세요.");
     workspaceReplacing=true;versionChanging=true;
     try {
@@ -217,6 +220,7 @@ app.post("/api/activity/summaries",(req,res)=>{
 });
 
 
+const harness=installHarness(app,{current:()=>({workspace,store}),interaction:()=>interaction.get(),broadcast:()=>broadcast()});
 function broadcast() {
   const message = JSON.stringify({ type: "state", state: store.get() });
   for (const client of wss.clients)
@@ -276,6 +280,7 @@ app.patch("/api/attempts/:id", (req, res) => trackingMutation(res, () => updateA
 app.post("/api/attempts/:id/accept", (req, res) => trackingMutation(res, () => acceptAttempt(workspace, req.params.id)));
 app.post("/api/checkpoints", (req, res) => trackingMutation(res, () => createCheckpoint(workspace, req.body), 201));
 app.post("/api/checkpoints/:id/restore", (req, res) => {
+  if(harness.busy())return res.status(409).json({error:"하네스를 중지한 뒤 복원하세요."});
   const input = z.object({snapshot:z.string().min(1), stopTerminals:z.literal(true)}).parse(req.body);
   return trackingMutation(res, async () => {
     const result = await restoreCheckpoint(workspace, {checkpointId:req.params.id, snapshot:input.snapshot}, stopTerminals);
@@ -295,6 +300,7 @@ app.get("/api/versions/preview", async (req, res) =>
   ),
 );
 app.post("/api/versions/switch", async (req, res) => {
+  if(harness.busy())return res.status(409).json({error:"하네스를 중지한 뒤 버전을 전환하세요."});
   const input = z
     .object({
       target: z.object({
@@ -385,6 +391,16 @@ app.post("/api/workspace", (req, res) => {
     client.close(1000, "Workspace changed");
   }
   res.json({ workspace });
+});
+app.post('/api/graph-storage/migrate',(req,res)=>{
+ if(req.body.revision!==store.get().revision)return res.status(409).json({error:'revision conflict'});
+ res.json(store.migrate());
+});
+app.get('/api/blocks/:id/documents',(req,res)=>{
+ if(!store.get().blocks.some(b=>b.id===req.params.id))return res.status(404).json({error:'Block not found'});
+ const graphFile=workspaceInfo().graphFile,documents=blockDocuments(graphFile,req.params.id);
+ if(req.query.path){const doc=documents.find(d=>d.path===req.query.path);if(!doc)return res.status(404).json({error:'Document not found'});const file=safeGraphPath(sourceRoot(workspace),doc.path);if(fs.statSync(file).size>1024*1024)return res.status(413).json({error:'Document exceeds 1MB'});return res.json({...doc,content:fs.readFileSync(file,'utf8')});}
+ res.json({directory:blockDirectory(req.params.id),documents});
 });
 app.get("/api/blocks/:id/source", async (req, res) => {
   const block = store.get().blocks.find((b) => b.id === req.params.id);
@@ -765,7 +781,7 @@ app.post("/api/selection", (req, res) => {
 });
 app.get("/api/context", (req, res) =>
   res.json(
-    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
+    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), blockDocumentation:(req.query.blockId||store.get().selectedBlockId)?{directory:blockDirectory(req.query.blockId||store.get().selectedBlockId),documents:blockDocuments(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId)}:null, projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
   ),
 );
 app.get("/api/mermaid", (req, res) =>
@@ -1041,6 +1057,9 @@ wss.on("connection", (socket) => {
   });
 });
 
+// Serve the isolated, prebuilt chat surface in both production and Vite mode.
+app.use('/cloudcli',express.static(path.join(root,'dist/cloudcli')));
+app.use('/cloudcli',(_req,res)=>res.status(503).type('text').send('Interaction UI is not built. Run npm run build.'));
 if (process.argv.includes("--dev")) {
   const { createServer } = await import("vite");
   vite = await createServer({
@@ -1080,7 +1099,8 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
 async function shutdown() {
-  interaction?.close();
+  await harness?.close();
+  await interaction?.close();
   await reportSharing.stop();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);

@@ -295,6 +295,31 @@ export async function main() {
   else if(command==='diagram-select')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0]))+'/select',{method:'POST',body:'{}'});
   else if(command==='diagram-update')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0])),{method:'PATCH',body:JSON.stringify({revision:Number(option('revision')),patch:jsonFile(args[1])})});
   else if(command==='diagram-delete')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0])),{method:'DELETE',body:JSON.stringify({revision:Number(option('revision'))})});
+  else if (command === "harness-check") result=await request('/harness/check/'+encodeURIComponent(requiredId(args[0])));
+  else if (command === "harness-show") result=await request('/harness/runs/'+encodeURIComponent(args[0]||''));
+  else if (command === "harness-step") result=await request('/harness/steps/'+encodeURIComponent(requiredId(args[0])),{method:'POST',body:JSON.stringify({revision:Number(option('revision')),step:jsonFile(args[1])})});
+  else if (command === "harness-runs") result=await request('/harness/runs');
+  else if (command === "harness-start") {
+    if(!option('diagram'))throw Error('Usage: harness-start --diagram ID [--block ID] [--provider claude|codex] [--mode automatic|manual]');
+    result=await request('/harness/runs',{method:'POST',body:JSON.stringify({diagramId:option('diagram'),targetDiagramId:option('target-diagram')||'',...(option('revision')?{revision:Number(option('revision'))}:{}),...(option('request-id')?{requestId:option('request-id')}:{}),targetBlockId:option('block')||'',mode:option('mode')||'automatic',provider:option('provider')||'claude',instruction:option('instruction')||''})});
+  }
+  else if (command === "harness-control") {
+    if(!args[0]||!args[1])throw Error('Usage: harness-control RUN_ID pause|stop|resume|pass|fail|mode|record [--version N] [--mode automatic|manual] [--outcome pass|fail] [--note TEXT]');
+    result=await request('/harness/runs/'+encodeURIComponent(args[0])+'/'+encodeURIComponent(args[1]),{method:'POST',body:JSON.stringify({...(option('version')?{version:Number(option('version'))}:{}),...(option('attempt')?{attemptId:option('attempt')}:{}),...(option('mode')?{mode:option('mode')}:{}),...(option('outcome')?{outcome:option('outcome')}:{}),...(option('note')?{note:option('note')}:{}),...(option('file')?jsonFile(option('file')):{})})});
+  }
+  else if (command === "harness-export") result=await request('/harness/export/'+encodeURIComponent(args[0]||''));
+  else if (command === "harness-import") {
+    if(!args[0]||!option('revision'))throw Error('Usage: harness-import FILE --revision N');
+    result=await request('/harness/import',{method:'POST',body:JSON.stringify({bundle:JSON.parse(fs.readFileSync(args[0],'utf8')),revision:Number(option('revision'))})});
+  }
+  else if (command === "graph-migrate") {
+    if(!option('revision'))throw Error('Usage: isp graph-migrate --revision N');
+    result=await request('/graph-storage/migrate',{method:'POST',body:JSON.stringify({revision:Number(option('revision'))})});
+  }
+  else if (command === "block-docs") {
+    const id=option('block');if(!id)throw Error('Usage: isp block-docs --block ID');
+    result=await request('/blocks/'+encodeURIComponent(id)+'/documents');
+  }
   else if (command === "graph-info") {
     if (!args[0] || args[0].startsWith("--")) {
       const state = await request("/graph"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
@@ -567,6 +592,13 @@ isp diagram-select ID           Select the default graph for reads/registration
 isp diagram-update ID FILE.json --revision N  Rename or update overview
 isp diagram-delete ID --revision N      Remove an empty diagram
 isp project [--diagram ID|--all-diagrams] Read selected diagram or full project
+isp harness-runs                List server-owned harness runs and current steps
+isp harness-start --diagram ID [--block ID] [--provider claude|codex] [--mode automatic|manual]
+isp harness-control RUN_ID pause|stop|resume|pass|fail|mode|record [--version N] [--mode automatic|manual] [--outcome pass|fail] [--note TEXT]
+isp harness-export DIAGRAM_ID    Export a reusable definition as JSON
+isp harness-import FILE --revision N  Import without executing
+isp graph-migrate --revision N   Back up and migrate block metadata to folders
+isp block-docs --block ID        List additional block documents
 isp graph-info [--diagram ID]    Read selected diagram purpose, entry point and notes
 isp graph-info patch.json --revision N  Update supplied overview fields
 isp project                     Read the whole project

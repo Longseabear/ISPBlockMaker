@@ -3,7 +3,9 @@ export type Port = {
   name: string;
   type: "image" | "mask" | "signal";
 };
+export type HarnessStep={phase?:string;acceptance?:string;inputNotes?:string;outputNotes?:string;provider?:'inherit'|'claude'|'codex';maxVisits?:number;review?:boolean;kind:'agent'|'run'|'manual';prompt:string;skills:string[];recipeId:string;parameters:Record<string,string|number|boolean>;timeoutSeconds:number};
 export type Block = {
+  harnessStep?:HarnessStep;
   diagramId?: string;
   id: string;
   userRequests?: {
@@ -71,7 +73,7 @@ export type Artifact = {
   metadata?: Record<string, unknown>;
 };
 export type Project = {
-  diagrams: {id:string;name:string;overview?:Project["overview"]}[];
+  diagrams: {id:string;name:string;kind?:'pipeline'|'harness';harness?:{entry:string;maxSteps:number;maxVisits:number;resources?:string[]};overview?:Project["overview"]}[];
   selectedDiagramId:string;
   overview?: {description: string; detail: string; entryPoint: string; agentNotes: string};
   globalWork?: {

@@ -19,7 +19,7 @@ test('SDK adapter keeps settings, pauses for approvals/questions, resumes, and i
  const claudeQuery=({prompt,options})=>{
   calls.push(options);
   const gen=(async function*(){
-   yield {type:'system',session_id:'session-one'};
+   yield {type:'system',subtype:'init',session_id:'session-one',model:'company-model-id',permissionMode:'default'};
    const result=await options.canUseTool('Write',{file_path:'result.txt',content:'approved only'},{signal:options.abortController.signal});decisions.push(result);
    if(options.abortController.signal.aborted)return;
    if(prompt==='question')decisions.push(await options.canUseTool('AskUserQuestion',{questions:[{question:'Choose outputs',header:'Output',multiSelect:true,options:[{label:'PNG'},{label:'HTML'}]}]},{signal:options.abortController.signal}));
@@ -38,6 +38,7 @@ test('SDK adapter keeps settings, pauses for approvals/questions, resumes, and i
  await until(()=>[...app.requests.values()][0]?.method==='claude/requestUserInput');request=[...app.requests.values()][0];
  assert.throws(()=>app.answer({id:request.id,answers:{}}),/질문/);app.answer({id:request.id,answers:{'0':['PNG','HTML']}});
  await until(()=>!app.chats[0].busy);assert.equal(app.chats[0].status,'completed');assert.equal(app.chats[0].items.filter(i=>i.type==='agentMessage').length,1);assert.equal(decisions[1].updatedInput.answers['Choose outputs'],'PNG, HTML');
+ assert.deepEqual(app.chats[0].runtimeOptions,{model:'company-model-id',permissionMode:'default'});
  const opts=calls[0];assert.equal(opts.cwd,workspace);assert.deepEqual(opts.settingSources,['user','project','local']);for(const key of ['model','permissionMode','settings','allowDangerouslySkipPermissions'])assert.equal(opts[key],undefined);
  assert.equal(fs.readFileSync(path.join(workspace,'.claude/settings.json'),'utf8'),settings);
  await app.send({chatId:id,text:'deny'});await until(()=>app.requests.size===1);assert.equal(calls[1].resume,'session-one');app.answer({id:[...app.requests.keys()][0],decision:'decline'});await until(()=>!app.chats[0].busy);assert.equal(decisions.at(-1).behavior,'deny');
@@ -61,6 +62,7 @@ test('chat options are validated, persisted, inherited, cleared, and forwarded t
  const {id}=await app.send({text:'plan',claudeOptions:{model:'company-model',effort:'high',permissionMode:'plan'}});await until(()=>!app.chats[0].busy);
  assert.equal(calls[0].model,'company-model');assert.equal(calls[0].effort,'high');assert.equal(calls[0].permissionMode,'plan');assert.equal(calls[0].allowDangerouslySkipPermissions,undefined);
  await app.send({chatId:id,text:'continue'});await until(()=>!app.chats[0].busy);assert.equal(calls[1].effort,'high');assert.equal(calls[1].resume,'options-session');
+ await app.flushSaves();
  const saved=JSON.parse(fs.readFileSync(path.join(workspace,'.isp/interaction.json'),'utf8'));assert.equal(saved.chats[0].claudeOptions.permissionMode,'plan');
  await app.send({chatId:id,text:'reset',claudeOptions:{}});await until(()=>!app.chats[0].busy);assert.equal(calls[2].model,undefined);assert.equal(calls[2].effort,undefined);assert.equal(calls[2].permissionMode,undefined);
 });

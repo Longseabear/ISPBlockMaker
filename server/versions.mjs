@@ -1,3 +1,4 @@
+import {readGraph,readGraphAt} from './graph-storage.mjs';
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -186,9 +187,7 @@ export async function previewVersion(workspace, target) {
   );
   let graph;
   try {
-    graph = validateGraph(
-      JSON.parse(await git(current.repo, ["show", `${resolved}:${graphPath}`])),
-    );
+    graph = await readGraphAt(file=>git(current.repo,["show",`${resolved}:${file}`]));
   } catch {
     throw new Error(
       "이 버전에 유효한 graph.json이 없습니다. 그래프와 구현이 함께 커밋된 버전을 선택하세요.",
@@ -196,11 +195,7 @@ export async function previewVersion(workspace, target) {
   }
   let previous = null;
   try {
-    previous = validateGraph(
-      JSON.parse(
-        await git(current.repo, ["show", `${current.head.hash}:${graphPath}`]),
-      ),
-    );
+    previous = await readGraphAt(file=>git(current.repo,["show",`${current.head.hash}:${file}`]));
   } catch {}
   const paths = (
     await git(current.repo, [
@@ -321,7 +316,7 @@ export async function commitChanges(workspace, ref) {
   const args=parent?['diff',parent,commit.hash]:['show','--format=','--root',commit.hash];
   const files=(await git(repo,[...args,'--name-only','-z','--'])).split('\0').map(v=>v.trim()).filter(Boolean);
   const patch=await git(repo,[...args,'--no-ext-diff','--no-textconv','--no-color','--unified=3','--']);
-  const readGraph=async(ref)=>{try{return JSON.parse(await git(repo,['show',`${ref}:graph.json`]));}catch{return null;}};
+  const readGraph=async(ref)=>{try{return await readGraphAt(file=>git(repo,['show',`${ref}:${file}`]));}catch{return null;}};
   const before=parent?await readGraph(parent):{blocks:[],edges:[]},after=await readGraph(commit.hash);
   const blocks=[];
   for(const id of new Set((before&&after?[...(before.blocks||[]),...(after.blocks||[])]:[]).map(b=>b.id))){

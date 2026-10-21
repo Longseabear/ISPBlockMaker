@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/siteboon/claudecodeui",
+  "commit": "0ce5630f46c283653359820870df1afd67cb1cf5",
+  "version": "1.37.5",
+  "integration": "Browser chat components only; ISP engine, persistence and permissions adapter."
+}

@@ -10,3 +10,6 @@ __pycache__/
 *.log
 /ISPBlockMaker.exe
 /release/
+
+/output/
+/.playwright-cli/

@@ -1,17 +1,18 @@
 {
   "name": "isp-block-maker",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node server/index.mjs --dev",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-chat.mjs",
     "start": "node server/index.mjs",
     "check:windows": "node scripts/start-local.mjs --check",
     "build:launcher": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher.ps1",
     "build:installer": "npm run build && npm run build:launcher && node scripts/build-installer.mjs",
     "test": "node --test tests/*.test.mjs",
-    "isp": "node scripts/isp.mjs"
+    "isp": "node scripts/isp.mjs",
+    "setup:chat": "npm --prefix vendor/cloudcli ci --ignore-scripts --no-audit --no-fund"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.306",
@@ -25,10 +26,6 @@
     "prismjs": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-markdown": "^10.1.0",
-    "rehype-katex": "^7.0.1",
-    "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
     "ws": "^8.21.3",
     "zod": "^4.6.4"
   },

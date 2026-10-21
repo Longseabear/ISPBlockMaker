@@ -1,3 +1,4 @@
+import {harnessConfig,harnessStep} from './harness-model.mjs';
 import { z } from "zod";
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
@@ -28,6 +29,7 @@ const port = z.object({
   type: z.enum(["image", "mask", "signal"]),
 });
 export const blockSchema = z.object({
+  harnessStep:harnessStep.optional(),
   id,
   diagramId: id.default("main"),
   userRequests: z.array(userRequestSchema).max(200).default([]),
@@ -77,7 +79,7 @@ export const overviewSchema = z.object({
   entryPoint: z.string().max(12000).default(""),
   agentNotes: z.string().max(30000).default(""),
 });
-export const diagramSchema = z.object({id,name:z.string().trim().min(1).max(100),overview:overviewSchema.default(()=>overviewSchema.parse({}))});
+export const diagramSchema = z.object({id,kind:z.enum(['pipeline','harness']).default('pipeline'),harness:harnessConfig, name:z.string().trim().min(1).max(100),overview:overviewSchema.default(()=>overviewSchema.parse({}))});
 export const graphSchema = z.object({
   diagrams:z.array(diagramSchema).min(1).max(50).default(()=>[{id:"main",name:"Main",overview:overviewSchema.parse({})}]),
   overview: overviewSchema.default(() => overviewSchema.parse({})),
@@ -131,7 +133,10 @@ export function validateGraph(input) {
     if (output.type !== inputPort.type)
       throw new Error("입출력 데이터 유형이 맞지 않습니다.");
     const target = `${e.target}:${e.targetHandle}`;
-    if (edgeIds.has(e.id) || targets.has(target))
+    const harness=graph.diagrams.find(d=>d.id===blocks.get(e.source).diagramId)?.kind==='harness';
+    if(harness&&!['pass','fail'].includes(e.sourceHandle))throw Error('Harness edges must use pass/fail outputs');
+    if(harness&&graph.edges.some(other=>other!==e&&other.source===e.source&&other.sourceHandle===e.sourceHandle))throw Error('Only one destination per harness outcome');
+    if (edgeIds.has(e.id) || (!harness&&targets.has(target)))
       throw new Error("한 입력 포트에는 하나의 출력만 연결할 수 있습니다.");
     edgeIds.add(e.id);
     targets.add(target);
@@ -147,7 +152,7 @@ export function validateGraph(input) {
     visiting.delete(node);
     visited.add(node);
   }
-  blocks.forEach((_, key) => visit(key));
+  blocks.forEach((b, key) => {if(graph.diagrams.find(d=>d.id===b.diagramId)?.kind!=='harness')visit(key);});
   return graph;
 }
 
@@ -160,6 +165,7 @@ export function contextFor(state, blockId) {
   const neighbors = new Set(connections.flatMap((e) => [e.source, e.target]));
   return {
     project: state.name,
+    harnessStep:block.harnessStep,
     diagram: state.diagrams?.find(d=>d.id===block.diagramId)||{id:"main",name:"Main"},
     overview: overviewSchema.parse(diagramOverview(state,block.diagramId)),
     revision: state.revision,

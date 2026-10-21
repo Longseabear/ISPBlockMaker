@@ -1,3 +1,4 @@
+import {readGraph} from '../server/graph-storage.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -151,7 +152,7 @@ test("legacy blocks gain agent contracts without losing descriptions and contrac
     assert.equal(context.human.summary, block.description);
     assert.equal(context.human.summary, originalSummary);
     assert.equal(context.human.detail, block.detail);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"graph.json"),"utf8")).blocks.find(b=>b.id===block.id).detail,block.detail);
+    assert.equal(readGraph(path.join(dir,"graph.json")).blocks.find(b=>b.id===block.id).detail,block.detail);
     assert.equal(
       context.agent.contract.validation,
       block.agentContract.validation,

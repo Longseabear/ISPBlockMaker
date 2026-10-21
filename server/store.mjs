@@ -1,3 +1,4 @@
+import {readGraph,writeGraph,planGraph,backupLegacyGraph} from './graph-storage.mjs';
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -39,7 +40,7 @@ export function createStore(
   }
   if (fs.existsSync(journal)) {
     const pending = read(journal);
-    write(graphFile, pending.spec);
+    if(pending.writeGraph!==false)writeGraph(graphFile, pending.spec);
     write(file, pending.local);
     fs.unlinkSync(journal);
   }
@@ -87,7 +88,7 @@ export function createStore(
     };
   }
   function refresh() {
-    const spec = graphSpec(read(graphFile));
+    const spec = graphSpec(readGraph(graphFile));
     const key = fingerprint(spec);
     if (key !== loadedSpec) {
       if (local.graphKey && local.graphKey !== key) local.revision++;
@@ -119,8 +120,10 @@ export function createStore(
       blocks: [...records.values()],
       graphKey: fingerprint(spec),
     };
-    write(journal, { spec, local: nextLocal });
-    write(graphFile, spec);
+    const graphChanged=fingerprint(spec)!==loadedSpec;
+    if(graphChanged){planGraph(graphFile,spec);if(read(graphFile).storageVersion!==3)backupLegacyGraph(graphFile,directory);}
+    write(journal, { spec, local: nextLocal, writeGraph:graphChanged });
+    if(graphChanged)writeGraph(graphFile, spec);
     write(file, nextLocal);
     fs.unlinkSync(journal);
     local = nextLocal;
@@ -131,6 +134,7 @@ export function createStore(
   refresh();
   return {
     get: refresh,
+    migrate(){refresh();if(read(graphFile).storageVersion===3)return state;planGraph(graphFile,state);backupLegacyGraph(graphFile,directory);loadedSpec=null;return persist(state);},
     global(input, revision, overview) {
       refresh();
       if (revision !== state.revision) {

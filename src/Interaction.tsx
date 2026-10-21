@@ -1,70 +1,115 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
-import ReactMarkdown,{defaultUrlTransform,type Components} from 'react-markdown';
-import {ChatImage} from './ChatImage';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import {ArrowUp,Square,Plus,MessageSquare,Terminal,RefreshCw,Trash2,FileText,ChevronRight,X} from 'lucide-react';
+import {mergeInteraction} from './interaction-state';
+import {startTransition,useEffect,useRef,useState} from 'react';
+import {Plus,MessageSquare,RefreshCw,Trash2,FileText,ChevronRight,X} from 'lucide-react';
 import type {Project,Api} from './types';
-import 'katex/dist/katex.min.css';
 import './interaction.css';
 type Item={id:string;type:string;text?:string;command?:string;status?:string;aggregatedOutput?:string;changes?:{path:string;diff:string}[];tool?:string;server?:string;result?:unknown;error?:unknown};
 type ClaudeOptions={model?:string;effort?:string;permissionMode?:string};
-type Chat={claudeOptions?:ClaudeOptions;provider?:'codex'|'claude';id:string;title:string;blockId:string;model?:string;items:Item[];busy:boolean;status:string;error?:string;plan?:{step:string;status:string}[]};
+type Chat={diagramId?:string;harnessRunId?:string;queue?:{id:string;text:string}[];queuePaused?:boolean;notice?:string;runtimeOptions?:{model?:string;permissionMode?:string};phase?:string;claudeOptions?:ClaudeOptions;provider?:'codex'|'claude';id:string;title:string;blockId:string;model?:string;items:Item[];busy:boolean;status:string;error?:string;plan?:{step:string;status:string}[]};
 type Request={id:number|string;method:string;params:{chatId?:string;input?:unknown;threadId?:string;reason?:string;command?:string;cwd?:string;grantRoot?:string;availableDecisions?:unknown[];questions?:{id:string;header:string;question:string;multiSelect?:boolean;options?:{label:string;description:string}[]}[]}};
-type State={claude?:{ready:boolean;sdkVersion:string;engineVersion:string;validated?:boolean}|null;preferredProvider?:'codex'|'claude';connected:boolean;account:{type:string;email?:string}|null;models:{id:string;model:string;name:string;isDefault:boolean}[];chats:Chat[];requests:Request[];error:string;mcp?:{revision:number;names:string[]}};
+type State={declaredSettings?:{source:string;model?:string;permissionMode?:string;effort?:string;error?:string}[];claude?:{ready:boolean;sdkVersion:string;engineVersion:string;validated?:boolean}|null;preferredProvider?:'codex'|'claude';connected:boolean;account:{type:string;email?:string}|null;models:{id:string;model:string;name:string;isDefault:boolean}[];chats:Chat[];requests:Request[];error:string;mcp?:{revision:number;names:string[]}};
 const empty:State={connected:false,account:null,models:[],chats:[],requests:[],error:''};
-function Markdown({text,api}:{text:string;api:Api}){
- // React treats a new renderer function as a new component type. Keep these
- // stable across polling and streamed text so loaded images stay mounted.
- const components=useMemo<Components>(()=>({
-  a:({href,children})=><a href={href} target="_blank" rel="noreferrer">{children}</a>,
-  img:({src,alt})=><ChatImage src={src} alt={alt} api={api}/>
- }),[api]);
- return <ReactMarkdown urlTransform={(url,key)=>key==='src'?url:defaultUrlTransform(url)} remarkPlugins={[remarkGfm,remarkMath]} rehypePlugins={[[rehypeKatex,{trust:false}]]} components={components}>{text}</ReactMarkdown>;
+type InteractionProps={api:Api;token:string;project:Project;workspace:string;blockId:string;onArtifact:(id:string)=>void;panelOpen:boolean;onTogglePanel:()=>void};
+function chatStatus(chat:Chat,requests:Request[]){
+ const waiting=requests.some(r=>r.params.chatId===chat.id || (!!r.params.threadId && r.params.threadId===(chat as Chat&{threadId?:string}).threadId));
+ return waiting?{kind:'waiting',label:'응답 대기'}:chat.busy?{kind:'running',label:chat.phase==='tool'?'도구 실행 중':'실행 중'}:chat.queue?.length?{kind:'waiting',label:chat.queuePaused?'대기 지시 일시정지':`지시 ${chat.queue.length}개 대기`}:chat.status==='failed'||chat.error?{kind:'failed',label:'오류'}:chat.status==='completed'?{kind:'completed',label:'완료'}:chat.status==='interrupted'?{kind:'interrupted',label:'중지됨'}:{kind:'idle',label:'대기'};
 }
-function Approval({request,submit}:{request:Request;submit:(body:unknown)=>Promise<void>}){
- const [answers,setAnswers]=useState<Record<string,string[]>>({}),[custom,setCustom]=useState<Record<string,string>>({}),[busy,setBusy]=useState(false);
- async function send(body:unknown){setBusy(true);try{await submit(body);}finally{setBusy(false);}}
- const questions=request.params.questions;
- const value=(id:string)=>custom[id]?.trim()?[...(answers[id]||[]),custom[id].trim()]:answers[id]||[];
- return <section className="chat-approval"><strong>{questions?'답변이 필요합니다':'작업 승인 요청'}</strong>
- {request.params.reason&&<p>{request.params.reason}</p>}{request.params.command&&<pre>{request.params.command}</pre>}
- {request.params.input!=null&&<pre>{JSON.stringify(request.params.input,null,2)}</pre>}
- {request.params.cwd&&<small>작업 폴더: {request.params.cwd}</small>}{request.params.grantRoot&&<p>변경 경로: {request.params.grantRoot}</p>}
- {questions?.map(q=><fieldset key={q.id}><legend>{q.question}{q.multiSelect?' (복수 선택 가능)':''}</legend>{q.options?.map(o=><button key={o.label} type="button" aria-pressed={answers[q.id]?.includes(o.label)||false} onClick={()=>{if(!q.multiSelect)setCustom(c=>({...c,[q.id]:''}));setAnswers(a=>({...a,[q.id]:q.multiSelect?(a[q.id]?.includes(o.label)?a[q.id].filter(v=>v!==o.label):[...(a[q.id]||[]),o.label]):[o.label]}));}} title={o.description}>{o.label}</button>)}<input aria-label={q.question} placeholder="직접 답변 입력" value={custom[q.id]||''} onChange={e=>{setCustom(c=>({...c,[q.id]:e.target.value}));if(!q.multiSelect)setAnswers(a=>({...a,[q.id]:[]}));}}/></fieldset>)}
- <div>{questions?<><button disabled={busy||questions.some(q=>!value(q.id).length)} onClick={()=>void send({id:request.id,answers:Object.fromEntries(questions.map(q=>[q.id,value(q.id)]))})}>답변 보내기</button>{request.method.startsWith('claude/')&&<button disabled={busy} onClick={()=>void send({id:request.id,decision:'cancel'})}>취소</button>}</>:['accept','decline','cancel'].filter(d=>!request.params.availableDecisions||request.params.availableDecisions.includes(d)).map(d=><button key={d} disabled={busy} onClick={()=>void send({id:request.id,decision:d})}>{d==='accept'?'이번 작업 승인':d==='decline'?'거절':'취소'}</button>)}</div></section>;
+export function Interaction(props:InteractionProps){
+ const {token,workspace}=props;
+ const [state,setState]=useState<State>(empty),[error,setError]=useState('');
+ const [panes,setPanes]=useState<number[]>(()=>{try{const p=JSON.parse(localStorage.getItem('isp-panes:'+workspace)||'[0]');return Array.isArray(p)&&p.length&&p.length<=4&&p.every(n=>Number.isSafeInteger(n)&&n>=0)?[...new Set<number>(p)]:[0];}catch{return [0];}}),[active,setActive]=useState(()=>{try{return Number(localStorage.getItem('isp-active-pane:'+workspace))||0;}catch{return 0;}}),[target,setTarget]=useState<{slot:number;id:string;nonce:number}|null>(null);
+ useEffect(()=>{const open=(e:Event)=>setTarget({slot:active,id:(e as CustomEvent<string>).detail,nonce:Date.now()});window.addEventListener('isp-open-chat',open);return()=>window.removeEventListener('isp-open-chat',open);},[active]);
+ const nextPane=useRef(Math.max(...panes)+1);
+ useEffect(()=>{if(!panes.includes(active))setActive(panes[0]);},[panes,active]);
+ useEffect(()=>{try{localStorage.setItem('isp-panes:'+workspace,JSON.stringify(panes));localStorage.setItem('isp-active-pane:'+workspace,String(active));}catch{}},[panes,active,workspace]);
+ useEffect(()=>{
+  const controller=new AbortController();let retry:ReturnType<typeof setTimeout>;
+  async function connectStream(){
+   try{
+    const response=await fetch('/api/interaction/events',{headers:{Authorization:'Bearer '+token},signal:controller.signal});
+    if(response.status===401)window.dispatchEvent(new Event('isp-session-expired'));
+    if(!response.ok||!response.body)throw Error('대화 스트림 연결 실패 ('+response.status+')');
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',first=true;
+    setError('');
+    while(!controller.signal.aborted){
+     const {value,done}=await reader.read();if(done)throw Error('대화 연결이 끊겨 다시 연결합니다.');
+     buffer+=decoder.decode(value,{stream:true});let end;
+     while((end=buffer.indexOf('\n\n'))>=0){
+      const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);if(!frame.startsWith('data: '))continue;
+      const event=JSON.parse(frame.slice(6)) as {state?:State;updates:{chatId:string;item:Item}[]};const reset=first;first=false;
+      startTransition(()=>setState(previous=>mergeInteraction<State,Item>(previous,event,reset)));
+     }
+    }
+   }catch(e){if(!controller.signal.aborted){setError(String(e));retry=setTimeout(()=>void connectStream(),1500);}}
+  }
+  void connectStream();return()=>{controller.abort();clearTimeout(retry);};
+ },[token,workspace]);
+ return <section className="interaction-workspace">
+  <div className="conversation-toolbar"><strong>대화 {panes.length}</strong><span>{state.chats.filter(c=>c.busy).length} 실행 중 · {state.chats.filter(c=>chatStatus(c,state.requests).kind==='waiting').length} 응답 대기</span><button disabled={panes.length>=4} onClick={()=>{const id=nextPane.current++;setPanes(p=>[...p,id]);setActive(id);}}>＋ 채팅 추가</button></div>
+  <nav className="conversation-status-list" aria-label="대화 실행 상태">{[...state.chats].reverse().map(c=>{const status=chatStatus(c,state.requests);return <button key={c.id} title={c.title} onClick={()=>setTarget({slot:active,id:c.id,nonce:Date.now()})}><span className={`conversation-status ${status.kind}`}>{status.label}</span><span>{c.title}</span></button>;})}{!state.chats.length&&<span>새 대화에서 작업을 시작하세요.</span>}</nav>
+  <div className={`conversation-panes ${panes.length>1?'multiple':''}`}>{panes.map((slot,index)=><div key={slot} className={`conversation-pane ${active===slot?'active':''}`} onFocusCapture={()=>setActive(slot)} onPointerDownCapture={()=>setActive(slot)}>
+   {panes.length>1&&<div className="conversation-pane-label"><button aria-pressed={active===slot} onClick={()=>setActive(slot)}>대화 창 {index+1}</button><button aria-label={`대화 창 ${index+1} 닫기`} title="창만 닫기 · 작업은 계속 실행됩니다" onClick={()=>{setPanes(p=>p.filter(n=>n!==slot));if(active===slot)setActive(panes.find(n=>n!==slot)!);}}>×</button></div>}
+   <InteractionPane {...props} onActivate={()=>setActive(slot)} state={state} streamError={error} slot={slot} target={target?.slot===slot?target:undefined}/>
+  </div>)}</div>
+ </section>;
 }
-
-export function Interaction({api,project,workspace,blockId,onArtifact,panelOpen,onTogglePanel}:{api:Api;project:Project;workspace:string;blockId:string;onArtifact:(id:string)=>void;panelOpen:boolean;onTogglePanel:()=>void}){
- const [state,setState]=useState<State>(empty),[selected,setSelected]=useState(()=>{try{return localStorage.getItem('isp-chat:'+workspace)||'';}catch{return '';}}),[draft,setDraft]=useState(''),[model,setModel]=useState(''),[error,setError]=useState(''),[sending,setSending]=useState(false),[connecting,setConnecting]=useState(false);
- useEffect(()=>{try{localStorage.setItem('isp-chat:'+workspace,selected);}catch{}},[selected,workspace]);
- const [optionDrafts,setOptionDrafts]=useState<Record<string,ClaudeOptions>>({});
+function InteractionPane({api,token,project,workspace,blockId,onArtifact,panelOpen,onTogglePanel,state,streamError,slot,target,onActivate }:InteractionProps&{onActivate:()=>void;state:State;streamError:string;slot:number;target?:{id:string;nonce:number}}){
+ const [selected,setSelected]=useState(()=>{try{return localStorage.getItem('isp-chat:'+workspace+':pane:'+slot)||(slot===0?localStorage.getItem('isp-chat:'+workspace)||'':'');}catch{return '';}}),[error,setError]=useState(''),[sending,setSending]=useState(false),[connecting,setConnecting]=useState(false);
+ useEffect(()=>{try{localStorage.setItem('isp-chat:'+workspace+':pane:'+slot,selected);if(slot===0)localStorage.setItem('isp-chat:'+workspace,selected);}catch{}},[selected,workspace,slot]);
+ useEffect(()=>{if(target){setSelected(target.id);setError('');}},[target]);
+ const frame=useRef<HTMLIFrameElement>(null),[frameReady,setFrameReady]=useState(false),[limit,setLimit]=useState(80);
  const historyDialog=useRef<HTMLDialogElement>(null);
  const [providerChoice,setProvider]=useState<'codex'|'claude'|''>('');
- const scroll=useRef<HTMLDivElement>(null),follow=useRef(true),mounted=useRef(true),chat=state.chats.find(c=>c.id===selected);
+ const chat=state.chats.find(c=>c.id===selected);
  const provider=chat?.provider||(chat?'codex':providerChoice||state.preferredProvider||'claude'),agentName=provider==='claude'?'Claude Code':'Codex';
- const claudeOptions=optionDrafts[selected||'new']??chat?.claudeOptions??{};
- function updateClaudeOptions(patch:ClaudeOptions){setOptionDrafts(v=>({...v,[selected||'new']:{...claudeOptions,...patch}}));}
- async function refresh(){const s=await api<State>('/interaction');if(mounted.current)setState(s);return s;}
- useEffect(()=>{mounted.current=true;let timer:ReturnType<typeof setTimeout>,cancelled=false;async function poll(){try{await refresh();}catch(e){if(!cancelled)setError(String(e));}if(!cancelled)timer=setTimeout(poll,800);}void poll();return()=>{mounted.current=false;cancelled=true;clearTimeout(timer);};},[api]);
- useEffect(()=>{if(follow.current)scroll.current?.scrollTo({top:scroll.current.scrollHeight});},[state,selected]);
- async function action(fn:()=>Promise<unknown>){setError('');try{await fn();await refresh();}catch(e){setError(String(e));}}
+
+
+ async function action(fn:()=>Promise<unknown>){setError('');try{await fn();}catch(e){setError(String(e));}}
  async function connect(){setConnecting(true);await action(()=>api('/interaction/connect',{provider}));setConnecting(false);}
- async function send(){if(!draft.trim()||sending||chat?.busy)return;const text=draft;setSending(true);setError('');try{const result=await api<{id:string}>('/interaction/send',{text,provider,...(provider==='claude'?{claudeOptions}:{}),...(selected?{chatId:selected}:{}),blockId,...(model?{model}:{})});setSelected(result.id);setDraft('');follow.current=true;await refresh();}catch(e){setError(String(e));}finally{setSending(false);}}
- function selectProvider(next:'codex'|'claude'){if(next===provider)return;setProvider(next);setSelected('');setModel('');setError('');follow.current=true;}
- function choose(id:string){if(!id)setOptionDrafts(v=>({...v,new:{}}));historyDialog.current?.close();setSelected(id);setDraft('');follow.current=true;setError('');}
- return <section className="interaction"><dialog ref={historyDialog} className="chat-history-dialog" aria-labelledby="chat-history-title" onClick={e=>{if(e.target===e.currentTarget)historyDialog.current?.close();}}><aside className="chat-history"><div className="chat-history-heading"><strong id="chat-history-title">대화 기록</strong><button aria-label="대화 기록 닫기" onClick={()=>historyDialog.current?.close()}><X size={16}/></button></div><button className="chat-new" onClick={()=>choose('')}><Plus size={16}/> 새 대화</button><small>이 프로젝트의 대화</small><div className="chat-history-list">{[...state.chats].reverse().map(c=><div className={selected===c.id?'selected':''} key={c.id}><button onClick={()=>choose(c.id)}><MessageSquare size={14}/><span>{c.title}</span>{c.busy&&<i/>}</button><button aria-label={`${c.title} 대화 삭제`} disabled={c.busy} onClick={()=>{if(confirm('앱의 대화 목록에서 삭제할까요? Codex 원본 기록과 작업 파일은 유지됩니다.'))void action(async()=>{await api('/interaction/'+c.id,undefined,'DELETE');if(selected===c.id)choose('');});}}><Trash2 size={12}/></button></div>)}</div><footer><strong>프로젝트 결과</strong>{project.artifacts.slice(-4).reverse().map(a=><button key={a.id} onClick={()=>{historyDialog.current?.close();onArtifact(a.id);}}><FileText size={14}/><span>{a.title}</span><ChevronRight size={13}/></button>)}<small>Visualizations에 등록된 결과</small></footer></aside></dialog>
- <div className="chat-main"><header className="chat-header"><button onClick={()=>historyDialog.current?.showModal()} aria-haspopup="dialog"><MessageSquare size={16}/> 대화 기록</button><button onClick={()=>choose('')}><Plus size={16}/> 새 대화</button><div className="chat-header-title"><strong>Interaction</strong><span>{agentName} · {provider==='claude'?(state.claude?.ready?'회사 CLI '+state.claude.engineVersion:'회사 CLI 연결 대기'):state.connected?'연결됨':'연결 대기'}</span></div><div className="chat-provider-switch" role="group" aria-label="실행 엔진 선택">{(['codex','claude'] as const).map(p=><button key={p} type="button" aria-pressed={provider===p} disabled={sending||!!chat?.busy} onClick={()=>selectProvider(p)} title={chat&&provider!==p?'이 엔진으로 새 대화 시작':undefined}>{p==='claude'?'Claude Code':'Codex'}</button>)}</div><button onClick={onTogglePanel} aria-expanded={panelOpen}>{panelOpen?'작업 패널 숨기기':'작업 패널 열기'}</button><button aria-label="에이전트 연결" disabled={connecting||state.chats.some(c=>c.busy)} onClick={()=>void connect()}><RefreshCw size={14}/>{connecting?'연결 중…':provider==='claude'?(state.claude?.ready?'엔진 확인됨':'엔진 확인'):state.connected?'다시 연결':'연결 확인'}</button></header>
- <div className="chat-scroll" ref={scroll} onScroll={e=>{const s=e.currentTarget;follow.current=s.scrollHeight-s.scrollTop-s.clientHeight<100;}}><div className="chat-transcript">{!chat&&<div className="chat-welcome"><div className="chat-mark">✳</div><h1>무엇을 함께 만들까요?</h1><p>프로젝트를 설명하거나, 구현을 바꾸고 결과를 비교해보세요.</p><div>{['현재 프로젝트 구조를 설명해줘','선택한 블록의 구현을 확인해줘','최근 실행 결과를 정리해줘'].map(text=><button key={text} onClick={()=>setDraft(text)}>{text}<ArrowUp size={14}/></button>)}</div></div>}
- {chat?.items.filter(i=>!['reasoning'].includes(i.type)).map(item=>item.type==='userMessage'?<div className="chat-user" key={item.id}>{item.text}</div>:item.type==='agentMessage'?<article className="chat-assistant" key={item.id}><small>{agentName}</small><Markdown text={item.text||''} api={api}/></article>:<details className="chat-tool" key={item.id}><summary><span className={item.status==='inProgress'?'working':''}/>{item.type==='commandExecution'?'명령 실행':item.type==='fileChange'?'파일 변경':item.type==='claudeToolCall'?item.tool||'Claude 도구':item.type==='mcpToolCall'?`${item.server} · ${item.tool}`:item.type}<small>{item.status}</small></summary>{item.command&&<pre>{item.command}</pre>}{item.aggregatedOutput&&<pre>{item.aggregatedOutput}</pre>}{item.changes?.map((c,i)=><div key={i}><strong>{c.path}</strong><pre>{c.diff}</pre></div>)}{item.result!=null&&<pre>{JSON.stringify(item.result,null,2)}</pre>}{item.error!=null&&<pre>{JSON.stringify(item.error,null,2)}</pre>}</details>)}
- {chat?.plan&&<details className="chat-tool"><summary>작업 계획</summary>{chat.plan.map((p,i)=><p key={i}>{p.status==='completed'?'✓':'○'} {p.step}</p>)}</details>}
- {state.requests.filter(r=>r.params.chatId?r.params.chatId===chat?.id:!!chat&&(!r.params.threadId||r.params.threadId===(chat as Chat&{threadId?:string})?.threadId)).map(r=><Approval key={r.id} request={r} submit={body=>action(()=>api('/interaction/answer',body))}/>)}
- {chat?.busy&&<p className="chat-running" role="status">● {agentName}가 작업하고 있습니다…</p>}{chat?.status==='interrupted'&&<p className="chat-status">작업이 중지되었습니다. 메시지를 보내 이어갈 수 있습니다.</p>}{chat?.error&&<p className="chat-error" role="alert">{chat.error}</p>}</div></div>
- <div className="chat-compose-wrap">{provider==='claude'&&state.claude?.ready&&state.claude.validated===false&&<p className="chat-status">이 Claude Code 버전은 아직 앱에서 검증하지 않았습니다. 연결 오류가 발생하면 회사 담당자에게 호환 버전을 확인하세요.</p>}{(error||state.error)&&<p className="chat-error" role="alert">{error||state.error}</p>}{provider==='codex'&&state.account?.type==='signedOut'&&<p>터미널 모드에서 <code>codex login</code>을 실행한 뒤 다시 연결하세요.</p>}<div className="chat-context"><span>{project.name}</span><span>{project.diagrams?.find(d=>d.id===project.selectedDiagramId)?.name||"Main"}</span><span>{chat?chat.blockId||'프로젝트 전체':blockId||'프로젝트 전체'}</span><span>{provider==='claude'?({'plan':'Plan · 계획 수립','acceptEdits':'편집 자동 허용','dontAsk':'승인 요청 자동 거절','auto':'Auto · 자동 판단','bypassPermissions':'권한 확인 생략','default':'기본 승인 모드'}[claudeOptions.permissionMode||'']||'워크스페이스 권한 설정'):'작업 폴더 편집 · 필요 시 승인'}</span>{state.mcp?.names.length? <span>MCP {state.mcp.names.length}개</span>:null}</div><form onSubmit={e=>{e.preventDefault();void send();}} className="chat-composer"><textarea aria-label="에이전트에게 요청" placeholder="작업을 요청하세요. Shift+Enter로 줄바꿈" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/><div>{provider==='codex'?<select aria-label="대화 모델" disabled={!!chat} value={chat?.model||model} onChange={e=>setModel(e.target.value)}><option value="">Codex 기본 모델</option>{state.models.map(m=><option value={m.model} key={m.id}>{m.name}</option>)}</select>:<div className="claude-options">
- <label>Effort<select aria-label="Claude effort" disabled={sending||!!chat?.busy} value={claudeOptions.effort||''} onChange={e=>updateClaudeOptions({effort:e.target.value})}><option value="">워크스페이스 기본</option>{['low','medium','high','xhigh','max'].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
- <label>권한<select aria-label="Claude 권한 모드" disabled={sending||!!chat?.busy} value={claudeOptions.permissionMode||''} onChange={e=>updateClaudeOptions({permissionMode:e.target.value})}><option value="">워크스페이스 기본</option><option value="default">Default · 필요 시 승인</option><option value="acceptEdits">Accept edits · 편집 자동 허용</option><option value="plan">Plan · 계획 수립</option><option value="dontAsk">Don't ask · 승인 요청 거절</option><option value="auto">Auto · 자동 판단</option><option value="bypassPermissions">Bypass · 권한 확인 생략</option></select></label>
- <details className="claude-model-options"><summary>모델 · {claudeOptions.model||'워크스페이스 기본'}</summary><label>모델 이름 / 회사 배포 ID<input aria-label="Claude 모델" disabled={sending||!!chat?.busy} list="claude-model-aliases" value={claudeOptions.model||''} placeholder="비워두면 워크스페이스 설정 사용" maxLength={200} onChange={e=>updateClaudeOptions({model:e.target.value})}/><datalist id="claude-model-aliases"><option value="sonnet"/><option value="opus"/><option value="haiku"/></datalist></label><p>선택은 다음 메시지부터 이 대화에 적용됩니다. 회사 정책과 CLI·모델의 지원 범위를 따릅니다.</p><button type="button" disabled={sending||!!chat?.busy} onClick={()=>updateClaudeOptions({model:'',effort:'',permissionMode:''})}>워크스페이스 기본으로</button></details>
- </div>}<small>Enter 전송</small>{chat?.busy?<button type="button" aria-label="작업 중지" onClick={()=>void action(()=>api('/interaction/interrupt',{id:chat.id}))}><Square size={16}/></button>:<button type="submit" aria-label="메시지 보내기" disabled={sending||!draft.trim()}><ArrowUp size={19}/></button>}</div></form>{provider==='claude'&&claudeOptions.permissionMode==='bypassPermissions'&&<p className="chat-status">권한 확인 생략: 명령·파일 변경의 일반 승인 확인을 건너뜁니다. 회사 관리 정책의 제한은 계속 적용됩니다.</p>}<p className="chat-footnote">{provider==='claude'?'회사 Claude Code 실행 파일 + 앱 내장 SDK · 워크스페이스 설정과 회사 정책 적용 · 승인과 질문은 이 대화에서 처리합니다.':'로컬 Codex CLI의 로그인과 프로젝트 MCP 설정을 사용합니다. 새 대화에서 선택 블록이 고정됩니다.'}</p></div>
+ async function sendMessage(payload:{text:string;options:ClaudeOptions;stopFirst?:boolean;requestId?:string;chatId?:string}){
+  if(sending)throw Error('전송 중입니다.');
+  if((payload.chatId||'')!==selected)throw Error('대화가 변경되었습니다. 현재 대화에서 다시 보내세요.');
+  if(!payload.text?.trim())throw Error('메시지를 입력하세요.');
+  setSending(true);try{
+
+   const result=await api<{id:string}>('/interaction/send',{text:payload.text,requestId:payload.requestId,stopFirst:payload.stopFirst,diagramId:chat?.diagramId||project.selectedDiagramId,provider,...(provider==='claude'?{claudeOptions:payload.options}:{model:payload.options.model??''}),...(chat?{chatId:chat.id}:{}),blockId});
+   setSelected(result.id);return result;
+  }finally{setSending(false);}
+ }
+
+ function selectProvider(next:'codex'|'claude'){if(next===provider)return;setProvider(next);setSelected('');setError('');}
+ function choose(id:string){historyDialog.current?.close();setSelected(id);setError('');}
+
+ const view={selected,workspace,provider,chat:chat?{...chat,items:chat.items.slice(-limit)}:null,total:chat?.items.length||0,requests:state.requests.filter(r=>r.params.chatId?r.params.chatId===chat?.id:!!chat&&(!r.params.threadId||r.params.threadId===(chat as Chat&{threadId?:string})?.threadId)),models:state.models,settings:state.declaredSettings||[],engine:state.claude,error:error||streamError||state.error};
+ const latest=useRef({view,sendMessage,onActivate});latest.current={view,sendMessage,onActivate};
+ useEffect(()=>{if(frameReady)frame.current?.contentWindow?.postMessage({channel:'isp-cloudcli-state',view},location.origin);},[state,selected,provider,error,streamError,limit,frameReady]);
+ useEffect(()=>{
+  const receive=async(event:MessageEvent)=>{
+   if(event.origin!==location.origin||event.source!==frame.current?.contentWindow||event.data?.channel!=='isp-cloudcli')return;
+   const {id,action:kind,payload={}}=event.data;
+   if(kind==='focus'){latest.current.onActivate();return;}
+   if(kind==='ready'){setFrameReady(true);frame.current?.contentWindow?.postMessage({channel:'isp-cloudcli-state',view:latest.current.view},location.origin);return;}
+   try{let value:unknown;const current=latest.current.view;
+    switch(kind){
+     case 'send':value=await latest.current.sendMessage(payload);break;
+     case 'stop':if(current.selected)value=await api('/interaction/interrupt',{id:current.selected});break;
+     case 'queue':value=await api('/interaction/'+current.selected+'/queue',payload);break;
+     case 'answer':value=await api('/interaction/answer',payload);break;
+     case 'recover':value=await api('/interaction/'+current.selected+'/recover-image',{});break;
+     case 'image':value=await api('/interaction/image',{path:payload.path});break;
+     case 'file':value=await api('/interaction/file',{path:payload.path});break;
+     case 'earlier':setLimit(n=>n+80);break;
+     default:throw Error('지원하지 않는 요청입니다.');
+    }
+    frame.current?.contentWindow?.postMessage({channel:'isp-cloudcli-result',id,value},location.origin);
+   }catch(e){frame.current?.contentWindow?.postMessage({channel:'isp-cloudcli-result',id,error:String(e)},location.origin);}
+  };
+  window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive);
+ },[api]);
+ useEffect(()=>setLimit(80),[selected]);
+ return <section className="interaction"><dialog ref={historyDialog} className="chat-history-dialog" aria-labelledby="chat-history-title" onClick={e=>{if(e.target===e.currentTarget)historyDialog.current?.close();}}><aside className="chat-history"><div className="chat-history-heading"><strong id="chat-history-title">대화 기록</strong><button aria-label="대화 기록 닫기" onClick={()=>historyDialog.current?.close()}><X size={16}/></button></div><button className="chat-new" onClick={()=>choose('')}><Plus size={16}/> 새 대화</button><small>이 프로젝트의 대화</small><div className="chat-history-list">{[...state.chats].reverse().map(c=><div className={selected===c.id?'selected':''} key={c.id}><button onClick={()=>choose(c.id)}><MessageSquare size={14}/><span>{c.title}</span><small className={`conversation-status ${chatStatus(c,state.requests).kind}`}>{chatStatus(c,state.requests).label}</small></button><button aria-label={`${c.title} 대화 삭제`} disabled={c.busy} onClick={()=>{if(confirm('앱의 대화 목록에서 삭제할까요? 엔진 원본 기록과 작업 파일은 유지됩니다.'))void action(async()=>{await api('/interaction/'+c.id,undefined,'DELETE');if(selected===c.id)choose('');});}}><Trash2 size={12}/></button></div>)}</div><footer><strong>프로젝트 결과</strong>{project.artifacts.slice(-4).reverse().map(a=><button key={a.id} onClick={()=>{historyDialog.current?.close();onArtifact(a.id);}}><FileText size={14}/><span>{a.title}</span><ChevronRight size={13}/></button>)}<small>Visualizations에 등록된 결과</small></footer></aside></dialog>
+ <div className="chat-main"><header className="chat-header"><button onClick={()=>historyDialog.current?.showModal()} aria-haspopup="dialog"><MessageSquare size={16}/> 대화 기록</button><button onClick={()=>choose('')}><Plus size={16}/> 새 대화</button><div className="chat-header-title"><strong>Interaction</strong><span>{agentName} · {provider==='claude'?(state.claude?.ready?'회사 CLI '+state.claude.engineVersion:'회사 CLI 연결 대기'):state.connected?'연결됨':'연결 대기'}</span></div><div className="chat-provider-switch" role="group" aria-label="실행 엔진 선택">{(['codex','claude'] as const).map(p=><button key={p} type="button" aria-pressed={provider===p} disabled={sending} onClick={()=>selectProvider(p)} title={chat&&provider!==p?'이 엔진으로 새 대화 시작':undefined}>{p==='claude'?'Claude Code':'Codex'}</button>)}</div><button onClick={onTogglePanel} aria-expanded={panelOpen}>{panelOpen?'작업 패널 숨기기':'작업 패널 열기'}</button><button aria-label="에이전트 연결" disabled={connecting||state.chats.some(c=>c.busy)} onClick={()=>void connect()}><RefreshCw size={14}/><span className="sr-only">{connecting?'연결 중':'엔진 확인'}</span></button></header>
+ <div className="current-conversation"><strong title={chat?.blockId||"전체 프로젝트"}>{chat?.title||"새 대화"}{chat?` · ${chat.blockId||"전체 프로젝트"} · ${chat.diagramId||""}${chat.harnessRunId?" · Harness "+chat.harnessRunId.slice(0,8):""}`:""}</strong>{chat&&<span className={`conversation-status ${chatStatus(chat,state.requests).kind}`}>{chatStatus(chat,state.requests).label}</span>}</div>
+ <iframe ref={frame} className="cloudcli-frame" title="Interaction · CloudCLI" src={`/cloudcli/index.html?pane=${slot}`}/>
  </div></section>;
 }

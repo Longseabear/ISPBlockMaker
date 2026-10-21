@@ -1,3 +1,4 @@
+import {readGraph,readGraphAt} from './graph-storage.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -50,7 +51,7 @@ export async function planBundle(folder,options={}){
  if(await fs.stat(path.join(workspace,'.isp/storage-transaction.json')).then(()=>true,()=>false))throw new Error('Pending workspace transaction. Open the workspace before exporting.');
  const source=sourceRoot(workspace),relativeSource=sourceRelative(workspace,source),graphPath=path.join(source,'graph.json');
  if((await fs.lstat(graphPath)).isSymbolicLink())throw new Error('Linked graph files are not bundled');
- await fs.readFile(graphPath,'utf8').then(s=>validateGraph(JSON.parse(s)));
+ readGraph(graphPath);
  const recordsPath=path.join(workspace,'.isp/project.json');
  const records=await fs.readFile(recordsPath,'utf8').then(JSON.parse,error=>{if(error.code==='ENOENT')return null;throw error;});
  const availableArtifacts=(records?.artifacts||[]).map(({id,title,kind,file,blockId})=>({id,title,kind,file,blockId}));
@@ -147,7 +148,7 @@ async function extractValidatedBundle(input,parent){
   for(const f of manifest.files){const bytes=await zip.read(byName.get(f.path));if(sha256(bytes)!==f.sha256)throw new Error('Bundle SHA-256 mismatch: '+f.path);const target=path.join(stage,f.path);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,bytes,{flag:'wx'});}
   const project=sourceRoot(stage);
   if(sourceRelative(stage,project)!==relativeSource)throw new Error('Bundle source root does not match workspace layout');
-  validateGraph(JSON.parse(await fs.readFile(path.join(project,'graph.json'),'utf8')));
+  readGraph(path.join(project,'graph.json'));
   await validateLocalRecords(stage,seen);
   if(manifest.history)await restoreHistory(project,stage,manifest.history,seen);
   success=true;return {stage,manifest};
@@ -202,7 +203,7 @@ export async function previewBundleDestination(folder,{mode='new',protectedPaths
  if(!stat)throw new Error('덮어쓸 기존 ISP workspace 폴더를 선택하세요.');
  const source=sourceRoot(destination),graphFile=path.join(source,'graph.json');
  if((await fs.lstat(graphFile)).isSymbolicLink())throw new Error('Linked graph files cannot be overwritten.');
- const graph=validateGraph(JSON.parse(await fs.readFile(graphFile,'utf8')));
+ const graph=readGraph(graphFile);
  const recordsFile=path.join(destination,'.isp/project.json');
  if((await fs.lstat(recordsFile).catch(()=>null))?.isSymbolicLink())throw new Error('Linked workspace records cannot be overwritten.');
  // A valid graph is required even for legacy workspaces. Arbitrary folders are never replaceable.

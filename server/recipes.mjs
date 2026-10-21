@@ -1,3 +1,4 @@
+import {readGraph} from './graph-storage.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -204,6 +205,7 @@ function sourceIdentity(ctx) {
   try {
     const graph = safePath(ctx.sourceRoot, 'graph.json', 'graph');
     if (fs.statSync(graph).size <= 8 * 1024 * 1024) identity.graphSha256 = digest(fs.readFileSync(graph));
+    try{identity.graphSpecSha256=digest(JSON.stringify(readGraph(graph)));}catch{}
   } catch {}
   return identity;
 }
@@ -300,15 +302,17 @@ function execute(plan, streams = {}) {
     const stdout = tailCollector(), stderr = tailCollector();
     let child, timer, fallback, cleanup = Promise.resolve(null), finished = false, timedOut = false, forcedClose = false, spawnError = null, exitCode = null, signal = null, exitedAt = null;
     const processStartedAt = new Date().toISOString();
+    const abort=()=>{spawnError='Stopped by harness';if(child){cleanup=cleanupTree(child,processStartedAt,exitedAt);fallback=setTimeout(()=>{forcedClose=true;child.stdout.destroy();child.stderr.destroy();finish();},12000);}};
     const finish = async () => {
       if (finished) return;
       finished = true;
-      clearTimeout(timer); clearTimeout(fallback);
+      clearTimeout(timer); clearTimeout(fallback);streams.signal?.removeEventListener('abort',abort);
       const cleanupError = await cleanup || (forcedClose ? 'Process pipes stayed open after cleanup; descendant termination could not be confirmed' : null);
       resolve({exitCode, signal, timedOut, spawnError, cleanupError, stdout: stdout.result(), stderr: stderr.result()});
     };
     try { child = spawn(plan.executable, plan.args, {cwd: plan.cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe']}); }
     catch (error) { spawnError = error.message; finish(); return; }
+    streams.signal?.addEventListener('abort',abort,{once:true});if(streams.signal?.aborted)abort();
     child.stdout.on('data', chunk => { stdout.append(chunk); streams.stdout?.(chunk); });
     child.stderr.on('data', chunk => { stderr.append(chunk); streams.stderr?.(chunk); });
     child.on('error', error => { spawnError = error.message; });

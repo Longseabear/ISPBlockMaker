@@ -27,6 +27,10 @@ Structured contract fields include `dataFormat`, `boundaries`, `numerics`, `step
 
 On authorized edits, move excessive card text into `detail` without losing knowledge and keep all audiences accurate. Do not rewrite unrelated blocks merely to populate empty fields. Preserve useful existing agent knowledge.
 
+## Block folders and longer explanations
+
+Read [block-documents.md](../isp-block-maker/block-documents.md) when creating or updating block explanations, design notes or long technical documentation. Create useful supporting documents autonomously within the requested block scope; do not wait for a separate documentation request when the implementation needs a durable explanation.
+
 ## Graph commands
 
 Write JSON under `tmp/<task-or-job-id>/`, using the inspected revision N:
@@ -44,7 +48,7 @@ mermaid
 
 Set `implementation` relative to the discovered `sourceRoot` and actual `implementationSymbol` (for example `flat_detection` or `Denoiser.process`). The code viewer jumps to this function/class, especially for shared files. Rename/move references with the code; an absent/ambiguous symbol leaves the viewer at the top. The fallback converts block-ID hyphens to underscores, but explicit accurate metadata is preferable.
 
-Connected-node deletion requires `--with-edges` and removes incident edges atomically; use it only when disconnecting is part of the request. Source files and historical artifacts remain. The project must retain at least one node overall; an individual diagram may be empty. Cycles, incompatible port types and multiple drivers for one input are rejected. `mermaid` exports the graph; JSON remains the specification.
+Connected-node deletion requires `--with-edges` and removes incident edges atomically; use it only when disconnecting is part of the request. Source files and historical artifacts remain. The project must retain at least one node overall; an individual diagram may be empty. Pipeline cycles, incompatible port types and multiple drivers for one pipeline input are rejected. Harness diagrams instead use Pass/Fail control connections and bounded cycles; follow the harness workflow guide. `mermaid` exports the graph; JSON remains the specification.
 
 ## Validate and reconcile the change
 

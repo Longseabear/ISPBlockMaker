@@ -1,3 +1,4 @@
+import {readGraph,readGraphAt} from './graph-storage.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -117,7 +118,7 @@ async function inspectSource(workspace) {
     treeHash = (await git(root, ['write-tree'], env)).trim();
     const entries = split(await git(root, ['ls-tree', '-r', '-z', treeHash]));
     if (entries.some(entry => /^(120000|160000) /.test(entry))) throw new Error('Symlinks and submodules are not supported in checkpoints.');
-    validateGraph(JSON.parse(await git(root, ['show', `${treeHash}:graph.json`])));
+    await readGraphAt(file=>git(root,['show',`${treeHash}:${file}`]));
   } finally {
     for (const file of [index, `${index}.lock`]) if (fs.existsSync(file)) fs.unlinkSync(file);
   }
@@ -224,7 +225,7 @@ export async function acceptAttempt(workspace, id) {
   });
 }
 
-async function graphAt(root, ref) { return validateGraph(JSON.parse(await git(root, ['show', `${ref}:graph.json`]))); }
+async function graphAt(root, ref) { return await readGraphAt(file=>git(root,['show',`${ref}:${file}`])); }
 async function differences(root, from, to) {
   const files = split(await git(root, ['diff', '--name-only', '-z', from, to, '--']));
   const stats = await git(root, ['diff', '--stat', from, to, '--']);
