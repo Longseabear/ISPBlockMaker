@@ -1,10 +1,13 @@
+import {DiagramTabs} from './DiagramTabs';
+import {Runs} from './Runs';
+import {Interaction} from './Interaction';
+import {McpServers} from './McpServers';
 import {AppUpdate} from './AppUpdate';
 import {ProjectSkills} from './ProjectSkills';
 import {ReportShare} from './ReportShare';
 import {BundleOpen} from "./BundleOpen";
 import {BundleShare} from "./BundleShare";
 import { Viewer } from "./Viewer";
-import {ReferenceSets} from './ReferenceSets';
 import { terminalClipboardHandler } from "./terminal-clipboard";
 import { Documents } from "./Documents";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -28,12 +31,12 @@ import {
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import {
-  Activity,
   ArrowDownToLine,
   ArrowRight,
   Box,
   Braces,
   BookOpen,
+  Plug,
   Check,
   ChevronDown,
   Circle,
@@ -60,7 +63,6 @@ import {
 } from "lucide-react";
 import type { Api, Artifact, Block, Project, Presentation } from "./types";
 import { JobsBoard } from "./JobsBoard";
-import { GpuSimulator } from "./GpuSimulator";
 import { CodeView } from "./CodeView";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { VersionControl } from "./VersionControl";
@@ -750,6 +752,7 @@ function Inspector({
 type TerminalSession = {sessionId: string; agent: string; blockId: string};
 
 function TerminalPanel(props: {
+  launch?: TerminalSession | null;
   token: string; block: Block; api: Api; onState: (state: Project) => void;
   onPresent: (presentation: Presentation) => void; notify: (s: string) => void;
 }) {
@@ -797,6 +800,7 @@ function TerminalPanel(props: {
     return () => { cancelled = true; };
   }, [props.token, props.api, retry]);
   useEffect(() => { try { if(selectedTab) localStorage.setItem('isp-terminal-active:' + props.token, selectedTab); } catch {} }, [selectedTab, props.token]);
+  useEffect(()=>{if(!props.launch||!loaded)return;const session=props.launch;setTabs(t=>t.some(x=>x.sessionId===session.sessionId)?t:[...t,session]);setSelectedTab(session.sessionId);},[props.launch,loaded]);
   async function closeTab(id: string) {
     setClosing(id);
     try {
@@ -1191,6 +1195,10 @@ function App() {
   const [project, setProject] = useState<Project | null>(null),
     [token, setToken] = useState(""),
     [error, setError] = useState("");
+  useEffect(() => {
+    const name = project?.name?.trim() || workspacePath.split(/[\\/]/).filter(Boolean).at(-1);
+    document.title = name ? `${name} · ISP Block Maker` : "ISP Block Maker";
+  }, [project?.name, workspacePath]);
   const [selected, setSelected] = useState(""),
     [nodes, setNodes] = useState<FlowNode[]>([]);
   const [flowEdges, setFlowEdges] = useState<FlowEdge[]>([]);
@@ -1213,7 +1221,17 @@ function App() {
   const [view, setView] = useState("graph"),
     [artifactId, setArtifactId] = useState(""),
     [demoBusy, setDemoBusy] = useState(false);
-  const compactPreview = view === "artifacts" || view === "viewer";
+  const [workMode,setWorkMode]=useState<'interaction'|'terminal'>('interaction');
+  const [workPanelOpen,setWorkPanelOpen]=useState(()=>{try{return localStorage.getItem('isp-work-panel-open')!=='false';}catch{return true;}});
+  const [workPanelWidth,setWorkPanelWidth]=useState(()=>{try{return Math.max(30,Math.min(70,Number(localStorage.getItem('isp-work-panel-width'))||50));}catch{return 50;}});
+  const [workPanelExpanded,setWorkPanelExpanded]=useState(false);
+  const panelDrag=useRef(false);
+  useEffect(()=>{try{localStorage.setItem('isp-work-panel-open',String(workPanelOpen));localStorage.setItem('isp-work-panel-width',String(workPanelWidth));}catch{}},[workPanelOpen,workPanelWidth]);
+  function changeWorkMode(mode:'interaction'|'terminal'){setWorkMode(mode);setFocus('');setVisualizationExpanded(false);setWorkPanelExpanded(false);if(mode==='terminal')setLayout(l=>({...l,terminal:true}));}
+  const compactPreview = workMode==='terminal'&&(view === "artifacts" || view === "viewer");
+  const [runTerminal,setRunTerminal]=useState<TerminalSession|null>(null);
+  const [mcpVisited,setMcpVisited]=useState(false);
+  useEffect(()=>{if(view==="mcp")setMcpVisited(true);},[view]);
   const [skillsVisited,setSkillsVisited]=useState(false);
   useEffect(()=>{if(view==="skills")setSkillsVisited(true);},[view]);
   const [viewerVisited, setViewerVisited] = useState(false);
@@ -1287,14 +1305,12 @@ function App() {
     } catch {}
   }, [layout]);
   function switchView(next: string) {
+    if(next==='interaction'){changeWorkMode('interaction');return;}
+    setWorkPanelOpen(true);
     setView(next);
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "references"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "mcp", "references"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
-  }
-  function mode(next: string) {
-    switchView(next === "visualize" ? "artifacts" : "graph");
-    setLayout({ inspector: false, terminal: true });
   }
   const [message, setMessage] = useState(""),
     [showContext, setShowContext] = useState(false),
@@ -1308,7 +1324,7 @@ function App() {
       if(!dirty)return;
       const target=e.target as HTMLElement;
       if(target.closest('[data-unsaved-dialog],.artifact-info-trigger'))return;
-      const destination=target.closest('.workspace-sidebar > button,.layout-toolbar > div:first-child button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
+      const destination=target.closest('.diagram-tabs button,.workspace-sidebar > button,.work-panel-tabs button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
       if(!destination)return;
       e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
     };
@@ -1338,6 +1354,12 @@ function App() {
   const accept = useCallback((state: Project) => {
     if (projectRef.current && state.revision < projectRef.current.revision)
       return;
+    if(projectRef.current?.selectedDiagramId!==state.selectedDiagramId){
+      setSelected(state.selectedBlockId);
+      setGlobalOpen(false);
+      setHighlighted([]);setHighlightedEdges([]);
+      setLayout(current=>({...current,inspector:false}));
+    }
     projectRef.current = state;
     setProject(state);
   }, []);
@@ -1381,7 +1403,8 @@ function App() {
   );
   const [viewerRequestId,setViewerRequestId] = useState("");
   const [viewerCommandId,setViewerCommandId] = useState("");
-  function present(result: Presentation) {
+  function present(result: Presentation, explicit = false) {
+    if(workMode==='interaction'&&!explicit){setPendingPresentation(result);notify('새 결과가 준비되었습니다. 결과 보기를 눌러 작업 패널에서 확인하세요.');return;}
     if (dirty) {
       setPendingPresentation(result);
       notify(
@@ -1392,6 +1415,7 @@ function App() {
     setPendingPresentation(null);
     setGlobalOpen(false);
     setFocus("");
+    setWorkPanelOpen(true);
     setView(result.view);
     setHighlighted(result.blockIds);
     setHighlightedEdges(result.edgeIds || []);
@@ -1404,6 +1428,7 @@ function App() {
       if (project?.artifacts.find(a => a.id === result.artifactId)?.metadata?.documentType === "sdd") setView("documents");
       setLayout((current) => ({ ...current, inspector: false }));
     } else if (result.blockIds.length) {
+      void api("/selection",{blockId:result.blockIds[0]}).then(()=>{setSelected(result.blockIds[0]);setLayout(current=>({...current,inspector:result.blockIds.length===1}));}).catch(e=>notify(String(e)));
       setSelected(result.blockIds[0]);
       setLayout((current) => ({
         ...current,
@@ -1430,11 +1455,11 @@ function App() {
   useEffect(() => {
     if (!project) return;
     if (!project.blocks.some((b) => b.id === selected)) {
-      setSelected(project.blocks[0].id);
+      setSelected(project.selectedBlockId);
       setDirty(false);
     }
     setFlowEdges((current) =>
-      project.edges.map((e) => ({
+      project.edges.filter(e=>project.blocks.some(b=>b.id===e.source&&(b.diagramId||"main")===(project.selectedDiagramId||"main"))).map((e) => ({
         ...e,
         type: "smoothstep",
         className: highlightedEdges.includes(e.id)
@@ -1449,7 +1474,7 @@ function App() {
       })),
     );
     setNodes(
-      project.blocks.map((block) => ({
+      project.blocks.filter(b=>(b.diagramId||"main")===(project.selectedDiagramId||"main")).map((block) => ({
         id: block.id,
         type: "block",
         deletable: false,
@@ -1506,6 +1531,7 @@ function App() {
     const id = `block-${crypto.randomUUID().slice(0, 8)}`;
     const block: Block = {
       id,
+      diagramId: projectRef.current?.selectedDiagramId||"main",
       name: "New block",
       description: "블록의 역할을 설명하세요.",
       principle: "",
@@ -1593,7 +1619,7 @@ function App() {
     ? {
         ...block,
         id: "global",
-        name: "전체 그래프 설명 · 요청사항",
+        name: "프로젝트 공통 설명 · 글로벌 JOB",
         description: project.overview?.description || "",
         detail: project.overview?.detail || "",
         implementation: project.overview?.entryPoint || "",
@@ -1624,11 +1650,12 @@ function App() {
   };
   return (
     <div
-      className={`app ${compactPreview ? "compact-preview-view" : ""} ${sidebarPinned ? "sidebar-pinned" : "sidebar-floating"} ${!sidebarExpanded ? "sidebar-collapsed" : "sidebar-expanded"} ${!layout.inspector ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""} ${view === "artifacts" && visualizationExpanded ? "visualization-expanded" : ""}`}
+      className={`app ${workMode === "interaction" ? "interaction-mode" : "terminal-mode"} ${!workPanelOpen ? "work-panel-hidden" : ""} ${workPanelExpanded ? "work-panel-expanded" : ""} ${compactPreview ? "compact-preview-view" : ""} ${sidebarPinned ? "sidebar-pinned" : "sidebar-floating"} ${!sidebarExpanded ? "sidebar-collapsed" : "sidebar-expanded"} ${!layout.inspector || (!selected&&!globalOpen) ? "hide-inspector" : ""} ${!layout.terminal ? "hide-terminal" : ""} ${focus ? `focus-${focus}` : ""} ${view === "artifacts" && (workMode === "interaction" ? workPanelExpanded : visualizationExpanded) ? "visualization-expanded" : ""}`}
       ref={rootRef}
       style={
         {
           "--sidebar-width": `${sidebarWidth}px`,
+          "--work-panel-width": `${workPanelWidth}%`,
           "--inspector-width": `${panelSizes.inspector}px`,
           "--terminal-height": `${panelSizes.terminal}px`,
         } as React.CSSProperties
@@ -1662,18 +1689,28 @@ function App() {
           <ChevronDown size={13} />
         </button>
         <div className="top-actions">
-          <AppUpdate api={api}/>
-          <BundleOpen api={api} token={token} current={workspacePath} dirty={dirty || pending} />
+          <div className="work-mode-switch" role="group" aria-label="작업 모드"><button aria-label="Interaction mode" aria-pressed={workMode==='interaction'} onClick={()=>changeWorkMode('interaction')}>Interaction</button><button aria-label="Terminal mode" aria-pressed={workMode==='terminal'} onClick={()=>changeWorkMode('terminal')}>Terminal</button></div>
+          {workMode==='interaction'&&pendingPresentation&&<button onClick={()=>present(pendingPresentation,true)}>결과 보기</button>}
+          <details className="project-actions-menu" onKeyDown={e=>{if(e.key==='Escape'){e.currentTarget.open=false;e.currentTarget.querySelector('summary')?.focus();}}}>
+            <summary>프로젝트 메뉴 <ChevronDown size={13}/></summary>
+            <div className="project-actions-popover">
+              <AppUpdate api={api}/>
+              <BundleOpen api={api} token={token} current={workspacePath} dirty={dirty || pending} />
+              <details className="project-help-menu"><summary>도움말 · 예제</summary>
+          <button className="run-example-button" title="Run example" aria-label="Run example" onClick={runDemo} disabled={demoBusy}>
+            <FlaskConical size={15} />
+            <span>{demoBusy ? "Running…" : "Run example"}</span>
+          </button>
+              </details>
+            </div>
+          </details>
           <BundleShare api={api} token={token} dirty={dirty || pending} />
           <VersionControl api={api} revision={project.revision} dirty={dirty} />
           <span className="saved">
             <Check size={13} />{" "}
             {pending ? "Saving…" : `Saved · r${project.revision}`}
           </span>
-          <button className="primary run-example-button" title="Run example" aria-label="Run example" onClick={runDemo} disabled={demoBusy}>
-            <FlaskConical size={15} />
-            <span>{demoBusy ? "Running…" : "Run example"}</span>
-          </button>
+
         </div>
       </header>
       <div className="work-area">
@@ -1762,9 +1799,9 @@ function App() {
             {project.artifacts.length > 0 && <i />}
           </button>
           <button className={view === "viewer" ? "active" : ""} title="Image Viewer" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
-          <button className={view === "gpu" ? "active" : ""} title="GPU simulator" aria-label="GPU simulator" aria-current={view === "gpu" ? "page" : undefined} onClick={() => switchView("gpu")}><FlaskConical size={18}/><span>GPU simulator</span></button>
           <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
-          <button className={view === "references" ? "active" : ""} title="Reference I/O" aria-label="Reference I/O" aria-current={view === "references" ? "page" : undefined} onClick={() => switchView("references")}><Braces size={18}/><span>Reference I/O</span></button>
+          <button aria-label="Runs" className={view==="runs"?"active":""} onClick={()=>switchView("runs")}><Play size={18}/><span>Runs</span></button>
+          <button className={view === "mcp" ? "active" : ""} title="MCP Servers" aria-label="MCP Servers" aria-current={view === "mcp" ? "page" : undefined} onClick={() => switchView("mcp")}><Plug size={18}/><span>MCP Servers</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} title="JOB Queue" aria-label="JOB Queue" aria-current={view === "jobs" ? "page" : undefined} onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <button className={view === "documents" ? "active" : ""} title="Documentation" aria-label="Documentation" aria-current={view === "documents" ? "page" : undefined} onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="graph-toolbar">
@@ -1772,7 +1809,7 @@ function App() {
               <span className="eyebrow">IMAGE SIGNAL PROCESSING</span>
               <h1>{project.name}</h1>
             </div>
-            <div className="graph-actions">
+            {view === "graph" && <div className="graph-actions">
               <button onClick={downloadMermaid} title="Export Mermaid">
                 <ArrowDownToLine size={15} />
                 <span>Mermaid</span>
@@ -1780,14 +1817,9 @@ function App() {
               <button onClick={addBlock} disabled={pending}>
                 <Plus size={15} /> Add block
               </button>
-            </div>
+            </div>}
           </div>
-          <div className="layout-toolbar">
-            <div>
-              <button onClick={() => mode("design")}>설계</button>
-              <button onClick={() => mode("implement")}>구현</button>
-              <button onClick={() => mode("visualize")}>시각화</button>
-            </div>
+          {workMode === "terminal" && <div className="layout-toolbar">
             <div>
               <button
                 aria-pressed={layout.inspector}
@@ -1813,53 +1845,43 @@ function App() {
               >
                 터미널 {layout.terminal ? "접기" : "열기"}
               </button>
-              <select
-                aria-label="패널 최대화"
-                value={focus}
-                onChange={(e) => setFocus(e.target.value as typeof focus)}
-              >
-                <option value="">분할 보기</option>
-                <option value="editor">그래프 / 시각화 최대화</option>
-                <option value="inspector">노드 상세 최대화</option>
-                <option value="terminal">터미널 최대화</option>
-              </select>
             </div>
-          </div>
-          <details className="agent-help">
-            <summary>에이전트가 할 수 있는 일</summary>
-            <p>터미널의 에이전트에게 평문으로 요청하세요.</p>
-            <ul>
-              <li>블록·간선 추가, 수정, 삭제 및 구현</li>
-              <li>블록·전체 요청을 JOB으로 나누고 처리</li>
-              <li>설명·계약 갱신, 검증 및 로컬 Git 커밋</li>
-              <li>시각화·SDD 생성, 결과 열기와 변경 강조</li>
-              <li>BMP·RAW를 Viewer에 올리고 CFA 크롭 요청</li>
-            </ul>
-            <p>예: “선택한 블록 설명을 읽고 메모를 구현한 뒤, 변경 효과를 시각화해줘.”</p>
-            <small>클릭한 노드와 터미널 작업 대상은 다를 수 있습니다. “현재 선택한 블록”이라고 요청하면 선택을 읽어 대상을 바꿀 수 있습니다. 스킬 작업 규칙이며 자동 실행은 아닙니다.</small>
-          </details>
+          </div>}
           <div className="rail-bottom">
             {pendingPresentation && (
-              <button title="결과 보기" aria-label="결과 보기" onClick={() => present(pendingPresentation)}>
+              <button title="결과 보기" aria-label="결과 보기" onClick={() => present(pendingPresentation,true)}>
                 <ArrowRight size={18} /><span>결과 보기</span>
               </button>
             )}
-            <span title="Local HTTP bridge">
-              <Activity size={19} />
-            </span>
+
           </div>
         </nav>
         </div>
         <div className="sidebar-resizer" role="separator" aria-label="왼쪽 사이드바 너비 조절" aria-orientation="vertical" aria-valuemin={150} aria-valuemax={420} aria-valuenow={sidebarWidth} tabIndex={0} onDoubleClick={()=>setSidebarWidth(200)} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setSidebarWidth(w=>Math.max(150,Math.min(420,w+(e.key==='ArrowRight'?20:-20))));}}} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();sidebarDrag.current={x:e.clientX,width:e.currentTarget.previousElementSibling!.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}} onPointerMove={e=>{if(sidebarDrag.current)setSidebarWidth(Math.max(150,Math.min(420,sidebarDrag.current.width+e.clientX-sidebarDrag.current.x)));}} onPointerUp={()=>{sidebarDrag.current=null;}} onPointerCancel={()=>{sidebarDrag.current=null;}} onLostPointerCapture={()=>{sidebarDrag.current=null;}}/>
 
         <main className="main-area">
+          <section className="interaction-dock" aria-label="고정 채팅">
+            <Interaction api={api} project={project} workspace={workspacePath} blockId={selected} onArtifact={id=>{setArtifactId(id);switchView('artifacts');}} panelOpen={workPanelOpen} onTogglePanel={()=>setWorkPanelOpen(v=>!v)}/>
+          </section>
+          <div className="work-panel-resizer" role="separator" aria-label="채팅과 작업 패널 너비 조절" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={70} aria-valuenow={workPanelWidth} tabIndex={0}
+            onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setWorkPanelWidth(v=>Math.max(30,Math.min(70,v+(e.key==='ArrowLeft'?5:-5))));}}}
+            onDoubleClick={()=>setWorkPanelWidth(50)} onPointerDown={e=>{if(e.button!==0)return;panelDrag.current=true;e.currentTarget.setPointerCapture(e.pointerId);}}
+            onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(rect.right-e.clientX)/rect.width)));}}
+            onPointerUp={()=>{panelDrag.current=false;}} onPointerCancel={()=>{panelDrag.current=false;}} onLostPointerCapture={()=>{panelDrag.current=false;}}/>
+          <section className="work-panel" aria-label="작업 패널">
+          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({skills:'Project Skills',mcp:'MCP Servers',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
+            {view==='graph'&&<button disabled={!selected} aria-pressed={layout.inspector} onClick={()=>setLayout(l=>({...l,inspector:!l.inspector}))}>블록 상세</button>}
+            <button aria-label={workPanelExpanded?'작업 패널 크기 복원':'작업 패널 최대화'} onClick={()=>setWorkPanelExpanded(v=>!v)}>{workPanelExpanded?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button>
+            <button aria-label="작업 패널 숨기기" onClick={()=>{setWorkPanelOpen(false);setWorkPanelExpanded(false);}}><X size={16}/></button>
+          </header>
           <div className="editor">
             <div className="editor-main">
               {(viewerVisited || view === "viewer") && <div style={{display:view === "viewer" ? "contents" : "none"}}>
                 <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} visible={view==="viewer"} expanded={focus==="editor"} onExpand={()=>setFocus(current=>current==="editor"?"":"editor")}/>
               </div>}
               {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
-              {view === "viewer" || view === "skills" ? null : view === "references" ? <ReferenceSets api={api} token={token} project={project}/> : view === "documents" ? (
+              {(mcpVisited||view==="mcp")&&<div style={{display:view==="mcp"?"contents":"none"}}><McpServers api={api}/></div>}
+              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "skills" || view === "mcp" ? null : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {
@@ -1868,14 +1890,14 @@ function App() {
                   if (id) { selectBlock(id); setRequestTarget({id, nonce: Date.now()}); }
                   else {setGlobalOpen(true);setLayout(current => ({...current, inspector:true}));}
                 }}/>
-              ) : view === "gpu" ? (
-                <GpuSimulator api={api} project={project} dirty={dirty} onSaved={id=>{setArtifactId(id);switchView("artifacts");}}/>
               ) : view === "code" ? (
                 <CodeView project={project} initialId={selected} api={api} />
               ) : view === "graph" ? (
                 <div className="graph-area">
+                  <DiagramTabs project={project} api={api} disabled={dirty||pending}/>
                   <div className="flow-wrap">
                     <ReactFlow<FlowNode>
+                      key={project.selectedDiagramId}
                       onInit={(instance) => {
                         flowRef.current = instance;
                       }}
@@ -1933,8 +1955,8 @@ function App() {
                       >
                         <button
                           className="nodrag nopan"
-                          title="전체 그래프 설명 및 요청사항"
-                          aria-label="전체 그래프 설명 및 요청사항"
+                          title="프로젝트 공통 설명 및 글로벌 JOB"
+                          aria-label="프로젝트 공통 설명 및 글로벌 JOB"
                           aria-pressed={globalOpen && layout.inspector}
                           onClick={() => {
                             if (dirty && !globalOpen)
@@ -1973,7 +1995,7 @@ function App() {
                       disconnect
                     </span>
                     <button
-                      disabled={project.blocks.length <= 1 || pending || dirty}
+                      disabled={project.blocks.length <= 1 || !selected || pending || dirty}
                       onClick={() =>
                         mutate((p) => ({
                           ...p,
@@ -1993,12 +2015,12 @@ function App() {
                 <div className="artifact-area">
                   <button
                     className="visualization-expand-float"
-                    title={visualizationExpanded ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
-                    aria-label={visualizationExpanded ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
-                    aria-pressed={visualizationExpanded}
-                    onClick={() => setVisualizationExpanded(current => !current)}
+                    title={(workMode==="interaction"?workPanelExpanded:visualizationExpanded) ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
+                    aria-label={(workMode==="interaction"?workPanelExpanded:visualizationExpanded) ? "이전 배치로 돌아가기" : "시각화 넓게 보기"}
+                    aria-pressed={workMode==="interaction"?workPanelExpanded:visualizationExpanded}
+                    onClick={() => workMode==='interaction'?setWorkPanelExpanded(v=>!v):setVisualizationExpanded(current => !current)}
                   >
-                    {visualizationExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    {(workMode==="interaction"?workPanelExpanded:visualizationExpanded) ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                   </button>
                   <div className="artifact-toolbar">
                     {artifact ? <>
@@ -2025,18 +2047,18 @@ function App() {
                   </div>
                   {artifact ? (
                     <>
-                      <div className="artifact-preview">
+                      <div className={`artifact-preview ${artifact.kind==='html'?'artifact-html':''}`}>
                         {artifact.kind === "html" ? (
                           <iframe
                             key={artifact.id}
                             title={artifact.title}
-                            src={`/artifacts/${artifact.file}`}
+                            src={`/artifacts/${encodeURIComponent(artifact.file)}`}
                             sandbox="allow-scripts"
                           />
                         ) : (
                           <img
                             alt={artifact.title}
-                            src={`/artifacts/${artifact.file}`}
+                            src={`/artifacts/${encodeURIComponent(artifact.file)}`}
                           />
                         )}
                       </div>
@@ -2097,30 +2119,28 @@ function App() {
               }}
             />
           </div>
+          </section>
           <div
             className="splitter bottom"
             onPointerDown={(e) => resize(e, "bottom")}
           />
-          <TerminalPanel
+          <TerminalPanel launch={runTerminal}
             key={token}
             api={api}
             token={token}
             block={block}
             onState={accept}
-            onPresent={present}
+            onPresent={result=>present(result)}
             notify={notify}
           />
         </main>
       </div>
       <footer className="statusbar">
-        <span>
-          <span className="connection-dot online" /> Local workspace{" "}
-          <span className="status-divider">|</span> HTTP + WebSocket
-        </span>
+
         <button
           onClick={async () => {
             try {
-              const context = await api(`/context?blockId=${block.id}`);
+              const context = await api(selected?`/context?blockId=${selected}`:"/context");
               setContextText(JSON.stringify(context, null, 2));
               setShowContext(true);
             } catch (e) {
@@ -2128,11 +2148,11 @@ function App() {
             }
           }}
         >
-          <Braces size={12} /> Agent context · {block.id}
+          <Braces size={12} /> Agent context · {selected||project.diagrams.find(d=>d.id===project.selectedDiagramId)?.name}
         </button>
         <span>
-          {project.blocks.length} blocks{" "}
-          <span className="status-divider">/</span> {project.edges.length}{" "}
+          {project.blocks.filter(b=>(b.diagramId||"main")===project.selectedDiagramId).length} blocks{" "}
+          <span className="status-divider">/</span> {flowEdges.length}{" "}
           connections
         </span>
       </footer>

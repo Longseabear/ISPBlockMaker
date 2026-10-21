@@ -1,3 +1,6 @@
+import {listRecipes,saveRecipe,deleteRecipe,planRecipeRun} from './recipes.mjs';
+import {installInteraction} from './interaction.mjs';
+import {installMcpSettings,prepareMcpLaunch} from './mcp-settings.mjs';
 import {installAppUpdates} from './app-updates.mjs';
 import { graphCheck } from "./graph-check.mjs";
 import {listWorkspaces} from './workspace-registry.mjs';
@@ -23,15 +26,13 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
 import { z } from "zod";
-import { contextFor, toMermaid } from "./model.mjs";
+import { contextFor, toMermaid, diagramView } from "./model.mjs";
 import { readImplementation } from "./source.mjs";
 import { recordActivity, readActivity, summarySchema } from "./activity.mjs";
-import { gpuExtensions } from "./gpu.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion, commitChanges } from "./versions.mjs";
 import { sourceRoot } from "./project-layout.mjs";
 import {installProjectSkills,listProjectSkills} from './project-skills.mjs';
-import {installReferenceSets} from './reference-sets.mjs';
 import { listTracking, createAttempt, updateAttempt, acceptAttempt, createCheckpoint, previewRestore, restoreCheckpoint, compareCheckpoints } from "./tracking.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,6 +52,7 @@ app.disable("x-powered-by");
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const sessions = new Map();
+let interaction;
 let vite;
 let versionChanging = false;
 let workspaceReplacing = false;
@@ -60,9 +62,10 @@ function workspaceInfo() {
   return {workspace, sourceRoot: source, graphFile: path.join(source, "graph.json"), dataDir, tmpDir: path.join(workspace, "tmp"), layoutVersion: source === workspace ? 0 : 1};
 }
 function stopTerminals() {
+  interaction?.close();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
-    try { session.pty.kill(); } catch {}
+    try { session.pty.kill();session.mcpCleanup?.(); } catch {}
   }
   sessions.clear();
 }
@@ -172,8 +175,29 @@ installBundleImport(app,{
     } finally {workspaceReplacing=false;versionChanging=false;}
   },
 });
+
+app.get('/api/recipes', (req,res)=>res.json(listRecipes(workspace)));
+app.post('/api/recipes', (req,res)=>res.json(saveRecipe(workspace,req.body.recipe,{expectedHash:req.body.expectedHash})));
+app.delete('/api/recipes/:id', (req,res)=>res.json(deleteRecipe(workspace,req.params.id,{expectedHash:req.body.expectedHash})));
+app.post('/api/recipes/:id/launch', (req,res)=>{
+  if(process.platform!=='win32')throw Error('Runs terminal requires Windows');
+  const plan=planRecipeRun(workspace,req.params.id,{parameters:req.body.parameters,expectedHash:req.body.expectedHash});
+  const sessionId=crypto.randomUUID();
+  const directory=path.join(dataDir,'recipe-requests');
+  fs.mkdirSync(directory,{recursive:true});
+  const requestPath=path.join(directory,sessionId+'.json');
+  fs.writeFileSync(requestPath,JSON.stringify({id:plan.recipeId,parameters:req.body.parameters,expectedHash:plan.recipeHash}),{flag:'wx'});
+  const blockId=store.get().blocks[0]?.id;
+  const dummy={readyState:WebSocket.CLOSED};
+  try {
+    startTerminal(dummy,{sessionId,agent:'shell',blockId},requestPath);
+    sessions.get(sessionId).sockets.delete(dummy);
+  } catch(error) { fs.unlinkSync(requestPath);throw error; }
+  res.json({sessionId,agent:'shell',blockId});
+});
+installMcpSettings(app,()=>workspace,sessions);
+interaction=installInteraction(app,()=>({workspace,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_CLI:cliPath,ISP_WORKSPACE:workspace,ISP_SOURCE_ROOT:sourceRoot(workspace)}}));
 installAppUpdates(app,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
-installReferenceSets(app,{current:()=>({workspace})});
 installProjectSkills(app,{current:()=>({workspace}),root});
 const bundleOptions=z.object({excludedData:z.array(z.string().min(1).max(2000)).max(10000).optional(),includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
 app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({...(typeof req.query.excludedData==='string'?{excludedData:JSON.parse(req.query.excludedData)}:{}),includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
@@ -213,6 +237,13 @@ app.post("/api/shutdown", (req,res) => {
   res.json({stopping:true});
   setTimeout(() => shutdown().then(() => process.exit(0)), 100);
 });
+
+app.get('/api/graph',(req,res)=>res.json(diagramView(store.get(),req.query.diagramId||undefined)));
+app.get('/api/diagrams',(req,res)=>{const p=store.get();res.json({revision:p.revision,selectedDiagramId:p.selectedDiagramId,diagrams:p.diagrams.map(d=>({...d,blockCount:p.blocks.filter(b=>b.diagramId===d.id).length}))});});
+app.post('/api/diagrams',(req,res)=>{const state=store.diagram('create',req.body.diagram,req.body.revision);broadcast();res.json(state);});
+app.patch('/api/diagrams/:id',(req,res)=>{const state=store.diagram('update',{...req.body.patch,id:req.params.id},req.body.revision);broadcast();res.json(state);});
+app.delete('/api/diagrams/:id',(req,res)=>{const state=store.diagram('delete',{id:req.params.id},req.body.revision);broadcast();res.json(state);});
+app.post('/api/diagrams/:id/select',(req,res)=>{const state=store.diagram('select',{id:req.params.id});broadcast();res.json(state);});
 app.get("/api/project", (req, res) => res.json(store.get()));
 app.get("/api/terminals", (req, res) => res.json(
   [...sessions].map(([sessionId, session]) => ({sessionId, agent: session.agent, blockId: session.blockId})),
@@ -221,7 +252,7 @@ app.delete("/api/terminals/:id", (req, res) => {
   if (versionChanging) throw new Error("버전 전환 중에는 터미널을 종료할 수 없습니다.");
   const id = z.string().uuid().parse(req.params.id);
   const session = sessions.get(id);
-  if (session) session.pty.kill();
+  if (session) stopTerminalSession(session);
   res.json({ok: true});
 });
 app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
@@ -252,7 +283,6 @@ app.post("/api/checkpoints/:id/restore", (req, res) => {
     return result;
   });
 });
-app.get("/api/gpu/extensions", async (req, res) => res.json(await gpuExtensions(workspace)));
 app.get("/api/versions", async (req, res) =>
   res.json(await versionStatus(workspace, req.query.history === "1")),
 );
@@ -330,6 +360,7 @@ app.post("/api/workspace", (req, res) => {
     clearTimeout(session.timer);
     try {
       session.pty.kill();
+      session.mcpCleanup?.();
     } catch {}
   }
   sessions.clear();
@@ -700,6 +731,7 @@ app.post("/api/present", (req, res) => {
     presentation.blockIds.some((id) => !state.blocks.some((b) => b.id === id))
   )
     throw new Error("표시할 블록을 찾을 수 없습니다.");
+  if(new Set(presentation.blockIds.map(id=>state.blocks.find(b=>b.id===id)?.diagramId)).size>1)throw Error('Present one diagram at a time');
   if (
     presentation.view === "artifacts" &&
     !state.artifacts.some((a) => a.id === presentation.artifactId)
@@ -733,11 +765,11 @@ app.post("/api/selection", (req, res) => {
 });
 app.get("/api/context", (req, res) =>
   res.json(
-    {...contextFor(store.get(), req.query.blockId || store.get().selectedBlockId), paths: workspaceInfo(), projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
+    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
   ),
 );
 app.get("/api/mermaid", (req, res) =>
-  res.type("text/plain").send(toMermaid(store.get())),
+  res.type("text/plain").send(toMermaid(diagramView(store.get(),req.query.diagramId||undefined))),
 );
 app.patch("/api/blocks/:id", (req, res) => {
   const current = store.get();
@@ -854,7 +886,12 @@ const send = (socket, message) => {
   if (socket.readyState === WebSocket.OPEN)
     socket.send(JSON.stringify(message));
 };
-function startTerminal(socket, message) {
+function stopTerminalSession(session) {
+  if(session.recipeRequest && process.platform==='win32') {
+    execFile('taskkill.exe',['/PID',String(session.pty.pid),'/T','/F'],{windowsHide:true,timeout:5000},()=>{try{session.pty.kill();}catch{}});
+  } else session.pty.kill();
+}
+function startTerminal(socket, message, recipeRequest) {
   const { sessionId, agent, blockId } = z
     .object({
       sessionId: z.string().uuid(),
@@ -878,9 +915,10 @@ function startTerminal(socket, message) {
       PATH: `${path.dirname(cliPath)}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
       TERM: "xterm-256color",
     };
+    if(recipeRequest)Object.assign(env,{ISP_RECIPE_REQUEST:recipeRequest,ISP_RECIPE_RUNNER:path.join(root,"scripts","recipe-terminal.mjs"),ISP_NODE:process.execPath,PYTHONUNBUFFERED:"1"});
     const windows = process.platform === "win32";
     const command = windows ? "cmd.exe" : process.env.SHELL || "/bin/bash";
-    const args = windows
+    const args = windows && recipeRequest ? '/d /s /k ""%ISP_NODE%" "%ISP_RECIPE_RUNNER%""' : windows
       ? [
           "/d",
           "/k",
@@ -889,15 +927,19 @@ function startTerminal(socket, message) {
             : agent,
         ]
       : ["-i"];
-    const processPty = pty.spawn(command, args, {
+    const mcp=agent==='shell'?null:prepareMcpLaunch(workspace,agent,sessionId,env);
+    let processPty;
+    try { processPty = pty.spawn(mcp?.launch?.command||command, mcp?.launch?.args||args, {
       name: "xterm-256color",
       cols: 100,
       rows: 24,
       cwd: workspace,
       env,
-    });
+    }); } catch(error) { mcp?.cleanup();throw error; }
     session = {
       pty: processPty,
+      recipeRequest,
+      mcpRevision:mcp?.revision??0,mcpNames:mcp?.names||[],mcpCleanup:mcp?.cleanup,
       sockets: new Set(),
       buffer: "",
       blockId,
@@ -916,11 +958,13 @@ function startTerminal(socket, message) {
     });
     processPty.onExit(({ exitCode }) => {
       clearTimeout(terminal.timer);
+      terminal.mcpCleanup?.();
+      if(terminal.recipeRequest)fs.unlink(terminal.recipeRequest,()=>{});
       sessions.delete(sessionId);
       for (const client of terminal.sockets)
         send(client, { type: "exit", exitCode });
     });
-    if (!windows)
+    if (!windows && !mcp?.launch)
       processPty.write(
         `function isp() { node "$ISP_CLI" "$@"; }\n${agent === "shell" ? "" : agent + "\n"}`,
       );
@@ -983,7 +1027,7 @@ wss.on("connection", (socket) => {
           z.number().int().min(2).max(500).parse(message.cols),
           z.number().int().min(2).max(300).parse(message.rows),
         );
-      else if (message.type === "stop") session.pty.kill();
+      else if (message.type === "stop") stopTerminalSession(session);
     } catch (error) {
       console.error("Terminal request failed:", error.message);
       send(socket, { type: "error", error: error.message });
@@ -1036,6 +1080,7 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
 async function shutdown() {
+  interaction?.close();
   await reportSharing.stop();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
@@ -1044,6 +1089,7 @@ async function shutdown() {
     }
     try {
       session.pty.kill();
+      session.mcpCleanup?.();
     } catch {}
   }
   for (const socket of wss.clients) socket.terminate();

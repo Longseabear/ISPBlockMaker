@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {execFileSync} from 'node:child_process';
-import {listRecipes, readRecipe, saveRecipe, planRecipeRun, runRecipe} from '../server/recipes.mjs';
+import {listRecipes, readRecipe, saveRecipe, deleteRecipe, planRecipeRun, runRecipe} from '../server/recipes.mjs';
 
 function fixture({legacy = false} = {}) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'isp-recipe-test-'));
@@ -258,4 +258,20 @@ test('Source identity records tracked changes made during a command', async () =
     assert.equal(result.sourceIdentity.gitDirty, false); assert.equal(result.sourceIdentityAfter.gitDirty, true);
     assert.notEqual(result.sourceIdentity.graphSha256, result.sourceIdentityAfter.graphSha256);
   } finally { f.cleanup(); }
+});
+
+
+test('delete checks observed hash, retains script; run streams literal parameter values', async()=>{
+ const f=fixture();
+ try{
+  fs.writeFileSync(path.join(f.source,'check.mjs'),'console.log(process.argv[2]); console.error("stderr-live");');
+  const saved=create(f.workspace,recipe({args:['check.mjs','{{value}}'],parameters:{value:{required:true,description:'Literal input'}}}));
+  assert.throws(()=>deleteRecipe(f.workspace,saved.recipe.id,{expectedHash:'0'.repeat(64)}),/changed/);
+  let stdout='',stderr='';
+  const value='a & echo INJECTED | %PATH% " 한글';
+  const run=await runRecipe(f.workspace,saved.recipe.id,{expectedHash:saved.hash,parameters:{value}},{stdout:c=>stdout+=c,stderr:c=>stderr+=c});
+  assert.equal(run.status,'succeeded');assert.equal(stdout.trim(),value);assert.match(stderr,/stderr-live/);
+  deleteRecipe(f.workspace,saved.recipe.id,{expectedHash:saved.hash});
+  assert.deepEqual(listRecipes(f.workspace),[]);assert.ok(fs.existsSync(path.join(f.source,'check.mjs')));
+ }finally{f.cleanup();}
 });

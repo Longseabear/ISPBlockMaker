@@ -230,12 +230,11 @@ test('Oversized data remains visible in preview and can be excluded before expor
  }finally{await clean(f.temp);}
 });
 
-test('Reference payload selection excludes complete sets and shows individual file sizes',async()=>{
+test('Retired reference state is preserved locally but excluded from new bundles',async()=>{
  const f=await fixture();try{
-  const id='11111111-1111-4111-8111-111111111111',prefix='.isp/reference-sets/'+id+'/';
-  await f.write(prefix+'manifest.json',JSON.stringify({title:'Camera dataset'}));await f.write(prefix+'files/sample.bin',Buffer.alloc(13));
-  const plan=await planBundle(f.workspace);const item=plan.dataItems.find(x=>x.id===prefix);assert.equal(item.label,'Reference I/O · Camera dataset');assert.equal(item.fileCount,2);assert.equal(item.files.find(x=>x.path.endsWith('sample.bin')).size,13);
-  const selected=await planBundle(f.workspace,{excludedData:[prefix]});assert.ok(!selected.files.some(x=>x.path.startsWith(prefix)));assert.equal(selected.dataItems.find(x=>x.id===prefix).included,false);
-  const output=path.join(f.temp,'no-reference.bundle');await packBundle(f.workspace,output,{excludedData:[prefix]});await unpackBundle(output,path.join(f.temp,'restored'));await assert.rejects(()=>fs.stat(path.join(f.temp,'restored',prefix)));
+  const prefix='.isp/reference-sets/11111111-1111-4111-8111-111111111111/';
+  await f.write(prefix+'files/sample.bin',Buffer.alloc(13));
+  const plan=await planBundle(f.workspace);assert.ok(!plan.files.some(x=>x.path.startsWith(prefix)));
+  assert.equal((await fs.readFile(path.join(f.workspace,prefix,'files/sample.bin'))).length,13);
  }finally{await clean(f.temp);}
 });

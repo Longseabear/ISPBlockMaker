@@ -21,14 +21,6 @@ Read [common.md](common.md) once. Use [job management](../isp-job-management/SKI
 - Register visual results with `artifact` and `--run ATTEMPT_ID`; include tested checkpoint/source hash, input/seed and parameters in available provenance. Link actual artifact IDs to the attempt. Keep outputs at workspace level outside the source repository.
 - Finish each attempt with the explicit tested `resultCheckpointId`. If a candidate is rejected, preserve its snapshot/result and describe the outcome. Do not reset/stash unrelated work or automatically restore to an older candidate. When the JOB's acceptance criteria are satisfied, re-read it and call `complete-job` with evidence and attempt/checkpoint IDs. An analysis-only completed JOB does not require an artificial code edit or normal Git commit.
 
-## GPU simulator extensions
-
-The GPU simulator loads `extensions/gpu/*.json` relative to `sourceRoot`. Each JSON has version 1, unique id, name, description, optional result blockId, a GLSL ES 3.00 fragment string and a parameters array. Each parameter defines a float uniform name, label, min/max/step/default and optionally blockId + parameter for explicit graph binding. The fixed vertex shader draws a full-screen triangle; use `gl_FragCoord` with `u_resolution` and sampler2D `u_image`. Declare an output vec4. Texture edges use clamp-to-edge; use explicit coordinate clamps for texelFetch.
-
-GPU previews use RGBA8 input/output, with images bounded to 1024px. They are not automatic Python execution, RAW fidelity, or proof of CPU/GPU parity. Implement a corresponding shader only when its meaning is clear, label approximations, and compare representative inputs against the CPU reference with an explicit tolerance. Store the extension JSON alongside project code in Git. Do not modify framework sources to add a project algorithm.
-
-Sliders only change preview values. Apply to the graph explicitly after evaluating the candidate; graph revision conflicts must be re-read rather than overwritten. Save useful GPU outputs to Visualizations with provenance. Report unsupported graph operations instead of silently omitting them.
-
 ## Finish and present
 
 Stop when the request/JOB scope is exhausted, the target is met, or a bound is reached. Report rounds attempted, best measured candidate, any user-accepted candidate, baseline delta, failed/unfinished JOBs and exact attempt/checkpoint/artifact references. Distinguish currently applied source from the result being shown. Follow [completion.md](completion.md): for visual experiments present the result artifact; for structural edits highlight modified blocks and edges. Do not consume unresolved JOBs to make the queue look empty.

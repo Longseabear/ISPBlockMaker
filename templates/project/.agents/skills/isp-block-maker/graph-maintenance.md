@@ -1,10 +1,10 @@
 # Graph knowledge maintenance
 
-The graph should let a new reader understand and reproduce the current pipeline without reconstructing the conversation. Inspect the actual implementation and relevant evidence first. Treat graph metadata as a maintained specification, not proof that code is correct.
+The graph is a big-picture map: a reader should understand the major stages, data flow and relevant implementation locations without reconstructing the conversation. It is not an exhaustive execution specification, a required workflow gate or a test dashboard. Inspect the actual implementation and relevant evidence first. Treat graph metadata as a maintained specification, not proof that code is correct.
 
 ## When to reconcile
 
-Read the overview and affected block contracts at task entry. Use [change-impact.md](change-impact.md) at relevant implementation/validation milestones and handoff/completion to select the affected records and checks. Reconcile verified in-scope facts only; report unrelated discrepancies without silently changing them.
+Consult the overview or block details when they help with the task. When a change affects major stages, connections, meaningful behavior descriptions or source locations, use [change-impact.md](change-impact.md) to reconcile only those affected records. No mandatory board-reading step, periodic reconciliation or routine metadata rewrite is required for unrelated tasks or internal implementation changes. Reconcile verified in-scope facts only; report unrelated discrepancies without silently changing them.
 
 ## Where knowledge belongs
 
@@ -21,7 +21,7 @@ Read the overview and affected block contracts at task entry. Use [change-impact
 | Reusable how-to procedure spanning future tasks | Project Skills; reference its name from graph notes if relevant |
 | Run-specific measurements, attempts and historical results | Activity/attempt/artifact records; link IDs from relevant notes only when useful |
 
-Start with I/O: what each port carries, producer/consumer, shape, dtype, layout, unit/range, valid regions and state. For ISP, add CFA order/group, bit depth/container/alignment, black/white level handling, boundary policy, precision, rounding and clipping only where relevant and verified. Describe a transformation in enough detail to distinguish it from plausible alternatives. Explain shared implementations and non-1:1 C-model mappings explicitly. Do not add meaningless fields to every node.
+Start with I/O: what each port carries, producer/consumer, shape, dtype, layout, unit/range, valid regions and state. For ISP, add CFA order/group, bit depth/container/alignment, black/white level handling, boundary policy, precision, rounding and clipping only where relevant and verified. Keep the visible board concise. Put additional domain detail in block details/contracts only when useful; empty optional fields do not need to be filled for completeness. Explain shared implementations and non-1:1 C-model mappings explicitly. Do not add meaningless fields to every node.
 
 Keep edges and ports consistent with real stage flow; annotate coordinate conversions, scale changes, state dependencies or domain transitions in affected contracts. Do not add processing nodes for reports, JOBs or ordinary helper functions. Do not change topology merely to enrich documentation.
 

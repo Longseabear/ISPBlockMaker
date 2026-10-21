@@ -15,7 +15,6 @@ Read [shared rules](../isp-block-maker/common.md) once and the relevant section 
 
 RAW uses a 16-bit little-endian container with known valid bit depth/alignment. Named patterns are RGGB/GRBG/GBRG/BGGR; group 1/2/4 means Bayer/Tetra/TetraSquare. Preserve complete CFA cells and phase for every crop; period is 2/4/8 source pixels respectively. Read confirmed coordinates/specs rather than assuming a drag retained its exact rectangle.
 
-When the user wants crops preserved as reference inputs or exchanged with C-model work, use optional [reference I/O sets](../isp-block-maker/reference-io.md). Import the exact delivery ID without consuming it; retain every grouped region and its RAW spec. This does not require a matching C++ node or a reference set for ordinary viewing/WB tasks.
 
 The agent may read requested image files outside the workspace by absolute path; imports copy them and never modify their originals. Preview PNGs are 8-bit display evidence, not numerical RAW samples. Simple ISP provides group binning, bilinear demosaic and gamma, without white balance/color matrix; do not present it as production ISP or RAW fidelity.
 

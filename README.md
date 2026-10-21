@@ -239,26 +239,6 @@ isp checkpoint-compare BASELINE_ID RESULT_ID
 
 `isp attempt-accept ID`는 완료된 시도의 채택 표시만 변경합니다. 현재 구현과 화면에서 보고 있는 결과는 별도로 유지되며, 채택만으로 복원하거나 태그를 만들지 않습니다. 스킬은 큰 구현 작업의 시도/체크포인트를 기록하되, 단순 JOB 등록·조회·이미지 표시에는 불필요한 실험을 만들지 않도록 안내합니다.
 
-## GPU simulator extensions
-
-왼쪽 **GPU simulator**에서 WebGL2로 이미지의 파라미터 변화를 봅니다. 기본 이미지 조정과 소스 루트의 `extensions/gpu/*.json` 확장을 선택할 수 있습니다. 이미지 업로드(20MB 이하, 긴 변 최대 1024px), 고정 seed 합성 입력, 슬라이더, 비교 결과 고정, 명시적인 그래프 파라미터 적용, PNG 시각화 저장을 지원합니다. 저장 후 Visualizations로 이동합니다. 기존 그래프를 자동으로 GPU로 변환하지는 않습니다.
-
-확장은 아래 형태입니다. `fragment`에는 GLSL ES 3.00 전체 소스를 넣습니다. `u_image`는 sampler2D, `u_resolution`은 vec2이며, 매니페스트의 각 파라미터는 float uniform입니다. 정점 셰이더는 프레임워크가 제공합니다. `blockId`와 `parameter`를 함께 지정하면 그래프의 해당 숫자 파라미터에 연결됩니다. 결과용 최상위 `blockId`는 선택 사항입니다.
-
-```json
-{
-  "version": 1,
-  "id": "my-filter",
-  "name": "My filter",
-  "description": "GPU implementation and its approximations",
-  "blockId": "filter",
-  "fragment": "#version 300 es\nprecision highp float;\nuniform sampler2D u_image;\nuniform float gain;\nout vec4 color;\nvoid main(){color=vec4(texelFetch(u_image,ivec2(gl_FragCoord.xy),0).rgb*gain,1.0);}",
-  "parameters": [{"name":"gain","label":"Gain","min":0,"max":2,"step":0.01,"default":1,"blockId":"filter","parameter":"gain"}]
-}
-```
-
-미리보기는 RGBA8이며 RAW/float 파이프라인 정밀도를 보장하지 않습니다. 표시되는 RMSE는 **입력과 출력의 차이**이고 품질 점수가 아닙니다. 시간은 셰이더 준비·실행·GPU 읽기를 포함한 벽시계 시간입니다. GPU 동등성을 주장하려면 프로젝트의 CPU 참조와 허용오차 검증을 별도로 수행하세요. WebGL2 지원과 실제 장치/드라이버에 따라 하드웨어 가속 여부가 달라질 수 있습니다. 규격 참고: [WebGL2 API](https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext).
-
 ## 활동 기록과 편집 단축키
 
 JOB Queue의 **활동 기록** 탭에서 최근 API 변경·오류, JOB 완료, 시각화와 프로젝트 Git 커밋을 확인합니다. 새 API 활동은 프로젝트 `.isp/activity.json`에 최대 1,000개 보관하고 화면에는 최근 300개를 표시합니다. 도입 이전의 모든 작업/터미널 출력을 복원하는 기능은 아니며, 기존 JOB 완료·시각화·Git 기록을 함께 조회합니다.
@@ -316,16 +296,6 @@ isp viewer-wait REQUEST_ID
 터미널 도구가 실행 중 핸들을 반환하면 에이전트는 같은 프로세스를 계속 기다려야 합니다. 프로세스가 살아 있는 동안 새 요청을 만들거나 최종 답변으로 작업을 종료하지 않도록 스킬에 명시했습니다. 도구가 실행을 강제 종료하거나 에이전트 자체가 중단된 경우에는 자동 실행하지 않으며 `viewer-wait REQUEST_ID`로 이어갑니다. 서버 재시작 후에도 요청과 전달은 남습니다.
 
 작업 터미널 밖에서는 workspace에서 `node .isp/tools/isp.mjs viewer-wait REQUEST_ID`로 실행할 수 있습니다.
-
-## Reference I/O · 선택적 참조 입출력
-
-왼쪽 **Reference I/O**에서 원하는 블록·여러 블록 구간의 입력과 출력을 모읍니다. 연결 블록은 없어도 되고 여러 개여도 됩니다. Python 블록과 C-model 함수의 1:1 대응, 입력/출력 파일 개수, 필수 규격은 강제하지 않습니다.
-
-세트를 만든 뒤 파일을 올리거나, 생성 시 Workspace 파일 경로를 지정합니다. **최근 전달 크롭으로 만들기**는 Viewer에서 전달한 여러 ROI를 각각의 원본 바이트와 규격으로 복사합니다. 전달을 자동 소비하지 않습니다. 파일별 역할(입력/출력/기타), 설명, 자유 JSON 규격과 세트별 실행 조건·선택적 체크포인트를 기록할 수 있습니다. 사본은 `.isp/reference-sets/`에 보관하며 원본은 변경하지 않습니다.
-
-**입출력 세트 ZIP**으로 manifest와 파일을 내보내거나 프로젝트 `.bundle`에 함께 담습니다. Viewer·data/를 제외한 번들에서도 등록된 참조 사본은 유지됩니다. 등록 시 Git HEAD·dirty 여부·그래프 해시를 기록하지만, 파일을 그 구현으로 실행했다는 증명은 아닙니다. 생성 당시 실제 체크포인트와 조건을 명시하세요.
-
-`isp reference-sets`, `reference-create FILE.json`, `reference-show SET_ID`, `reference-add SET_ID FILE.json`을 에이전트도 사용할 수 있습니다. `reference-compare SET_ID EXPECTED_FILE_ID ACTUAL_FILE_ID`와 UI의 **바이트 비교**는 직접 고른 두 파일의 완전 일치 여부·차이 개수·첫 차이 위치를 확인합니다. 현재 비교는 바이트 기준이며 dtype 변환·수치 허용오차·픽셀 좌표 비교는 자동 적용하지 않습니다. 파일당 256 MiB, 세트당 64개·512 MiB까지 지원합니다.
 
 ## 작업 프로젝트 공유 (.bundle)
 
@@ -386,7 +356,7 @@ workspace의 `AGENTS.md`에는 작업 시작·구현/검증 단계·완료 시 �
 
 ### 에이전트용 개발 도구
 
-반복 지침을 실제 점검·실행·표시 도구로 연결합니다. 수치 허용오차 비교기는 추가하지 않으며 기존 Reference I/O의 바이트 비교는 그대로 유지합니다.
+반복 지침을 실제 점검·실행·표시 도구로 연결합니다. 수치 허용오차 비교기는 추가하지 않으며 입력과 결과는 작업 폴더와 Visualizations에서 보관합니다.
 
 | 명령 | 역할 |
 | --- | --- |
@@ -399,7 +369,7 @@ workspace의 `AGENTS.md`에는 작업 시작·구현/검증 단계·완료 시 �
 
 실행 정의는 `project/.isp-recipes/`에서 소스와 함께 관리하며 전체 프로젝트 번들에 포함됩니다. 하나의 실행이 여러 블록을 다루거나 여러 실행이 한 블록을 검증해도 됩니다. 명령은 실행 파일과 인자 배열로 구분하고 쉘 문자열로 재해석하지 않습니다. 쉘 스크립트가 필요하면 인터프리터와 인자를 명시합니다. 비밀번호나 토큰을 정의·파라미터·로그에 넣지 마세요. 가져온 정의는 먼저 읽고 미리보기한 뒤 작업 범위에 맞을 때 실행합니다.
 
-실행별 기록과 로그는 `tmp/recipe-runs/`의 독립 디렉터리에 생성됩니다. 장기 보존할 결과는 등록된 시각화나 Reference I/O 등으로 보관하고 해당 기록의 경로·실행 ID를 활동/시도에 연결하세요. 성공적인 프로세스 종료와 출력 존재는 알고리즘의 정확성을 인증하지 않습니다. 실행 도구가 임의로 JOB 완료·후보 채택·태그 생성 등을 수행하지 않습니다.
+실행별 기록과 로그는 `tmp/recipe-runs/`의 독립 디렉터리에 생성됩니다. 장기 보존할 결과는 등록된 시각화나 보관 데이터 등으로 보관하고 해당 기록의 경로·실행 ID를 활동/시도에 연결하세요. 성공적인 프로세스 종료와 출력 존재는 알고리즘의 정확성을 인증하지 않습니다. 실행 도구가 임의로 JOB 완료·후보 채택·태그 생성 등을 수행하지 않습니다.
 
 `graph-check`의 구조/경로 검사와 에이전트의 의미 검토는 구분됩니다. 자연어 I/O 계약이 실제 알고리즘과 일치한다고 자동 증명하지 않으며 누락된 설명은 검토 제안입니다. `--changed` 경로는 소스 루트 기준이며 자동 수정하지 않습니다.
 
@@ -440,6 +410,54 @@ Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` def
 
 내장 Windows 터미널은 cmd.exe입니다. PowerShell에서는 `node $env:ISP_CLI context` 또는 워크스페이스에서 `node .isp/tools/isp.mjs context`를 사용하세요. cmd 전용 명령이 실패하면 같은 폴더에서 `cmd /d`를 실행한 뒤 다시 입력하세요.
 
-번들 미리보기는 데이터 파일 및 Reference I/O 세트별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Reference I/O는 메타데이터와 파일을 세트 단위로 제외합니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
+번들 미리보기는 데이터 파일별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
 
-GPU simulator는 sourceRoot/extensions/gpu의 GLSL 확장을 실행합니다. Python 자동 변환기가 아닙니다. 확장의 ui.layout과 파라미터별 group/control/options로 배치와 컨트롤을 지정할 수 있습니다. 자세한 절차는 공급 스킬의 gpu-simulator.md를 참고하세요.
+
+## 프로젝트 MCP 서버
+
+사이드바의 Project Skills 아래 **MCP Servers**에서 **MCP 추가**를 누릅니다. 이름, 연결 방식(STDIO/Streamable HTTP), 실행 명령과 JSON 인수 또는 URL·헤더, 적용할 에이전트(Codex/Claude Code)를 입력하고 **저장 및 적용**을 누르세요. 여러 서버를 등록하고 각각 비활성화하거나 삭제할 수 있습니다. STDIO 명령은 에이전트를 시작한 워크스페이스에서 실행됩니다. 서버 실행 도구와 패키지는 별도로 준비하세요.
+
+활성 설정은 이 앱에서 다음에 시작하는 에이전트 세션에 전달됩니다. 기존 세션에는 설정 버전 차이가 표시되며 Stop → Start 후 적용됩니다. Codex에는 `-c mcp_servers.<name>=...` 인수, Claude에는 `--mcp-config` 세션 파일을 전달합니다. 기존 전역 설정과 로그인 정보는 변경하지 않습니다. 같은 이름의 활성 항목은 이번 실행에서 우선 전달하며, 비활성화·삭제는 앱 설정 전달만 중지하므로 전역의 동명 서버는 남을 수 있습니다. 실제 서버 연결과 OAuth 인증은 에이전트의 `/mcp`에서 확인하세요. 저장 성공이 연결 성공을 뜻하지는 않습니다.
+
+설정은 워크스페이스 `.isp/mcp-settings.json`에 로컬 저장되고 Git 및 프로젝트 번들에서 제외됩니다. Claude의 세션 파일은 종료 시 제거됩니다. 다른 창에서 변경한 설정을 오래된 화면이 덮어쓰는 저장은 거부합니다. Windows에서는 공식 Codex/Claude Code npm 설치 또는 네이티브 실행 파일을 지원하며, 사용자 정의 `.cmd` 래퍼는 MCP 적용 실행 대상으로 사용하지 않습니다.
+
+설정 형식 참고: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp), [Claude Code MCP](https://code.claude.com/docs/en/mcp).
+
+
+## 인터랙션 모드
+
+기본 화면에서 Codex와 대화하며 프로젝트를 수정할 수 있습니다. 설치된 공식 Codex CLI의 app-server(stdio) 프로토콜을 사용합니다. 기존 CLI 로그인과 프로젝트 MCP 설정이 적용되며, API 키를 웹 화면에 입력할 필요는 없습니다. 로그인이 없다면 터미널에서 `codex login` 후 연결하세요.
+
+- 새 대화, 모델 선택, 연속 대화, 응답 표시, 명령/파일 변경 카드, 작업 중지
+- 명령·파일 승인과 사용자 질문을 웹에서 처리. 지원하지 않는 추가 권한·외부 앱 요청은 자동 승인하지 않음
+- 대화는 `.isp/interaction.json`에 저장하며 번들에서 제외. Codex 원본 대화도 CLI 저장소에 남음
+- 대화마다 처음 선택한 블록을 고정. 서버 재시작 후 같은 Codex 대화를 이어감
+- 상단 **터미널 모드**로 기존 터미널 전환. **인터랙션** 메뉴로 복귀
+- 작업 폴더 쓰기 샌드박스와 요청 시 승인 정책 사용. Windows 샌드박스 설치/정책 오류는 화면에 표시
+
+GPU simulator와 Reference I/O 기능·API·CLI는 제거했습니다. 기존 데이터 파일은 삭제하지 않지만 폐기된 Reference I/O 상태는 신규 번들에서 제외됩니다. 기존 데이터를 공유하려면 필요한 파일을 일반 데이터 폴더로 옮겨 포함하세요.
+
+UI는 [Chatbox](https://github.com/chatboxai/chatbox)의 대화 구성과 Markdown 표시 방식을 참고해 기존 React 앱에 새로 구현했습니다. 연결은 [Codex app-server](https://learn.chatgpt.com/docs/app-server)를 사용합니다. 이 앱에서 생성한 대화만 관리하며 Codex 데스크톱 앱 전체 대화의 동기화 기능은 아닙니다.
+
+### Claude Code 워크스페이스 설정과 채팅 이미지
+
+새 대화 기본 엔진은 Claude Code입니다. 앱은 Agent SDK 0.3.306을 포함하며 사용자에게 별도 SDK 설치를 요구하지 않습니다. **Claude Code 실행 파일은 포함하지 않습니다.** Windows에 회사가 설치한 `claude.exe`를 사용합니다. `ISP_CLAUDE_PATH` 환경 변수로 실행 파일 절대 경로를 지정할 수 있으며, 생략하면 서버 PATH에서 찾습니다. SDK 내장 실행 파일로 대체하거나 회사 CLI를 자동 업데이트하지 않습니다. 경로 변경 후 앱 서버를 다시 시작하세요.
+
+워크스페이스를 cwd로 사용하고 `settingSources: ['user','project','local']`로 기존 설정, CLAUDE.md, 스킬을 로드합니다. 모델·접속 주소·권한을 앱이 덮어쓰지 않으며 회사 관리 정책은 Claude가 처리합니다. 회사 인증/API 게이트웨이 설정이 필요하며 실제 인증 성공은 해당 환경에서 확인해야 합니다.
+
+SDK canUseTool 콜백으로 승인·거절·추가 질문·복수 선택을 웹에서 처리합니다. 회사 정책상 거절하거나 자동 허용한 작업은 그 정책을 따릅니다. 중지/서버 종료 시 대기 중인 승인을 취소하며 스트리밍, 세션 재개를 지원합니다. 개발 환경에서 SDK 0.3.306 + 설치된 CLI 2.1.219의 초기화를 확인했습니다. 모든 CLI 버전 호환성을 보장하지 않으며 회사 API 호출은 별도 확인이 필요합니다. Git Bash 등 회사 CLI가 요구하는 Windows 실행 환경은 회사 설치를 따릅니다.
+
+Windows 설치 패키지는 SDK JavaScript를 포함하고 `claude-agent-sdk-win32-*` 실행 파일 패키지를 제외합니다. 설치 패키지 빌드 시 이 조건을 검사합니다.
+
+채팅 Markdown 이미지는 등록된 아티팩트, 워크스페이스 내부 로컬 이미지(20MB 이하 PNG/JPEG/GIF/WebP/BMP), HTTP(S) 이미지 주소를 표시합니다. 로컬 경로는 인증된 API에서 실제 경로 포함 여부를 확인하며 밖으로 연결된 심볼릭 링크도 차단합니다. 파일 첨부를 모델 입력으로 전달하는 기능은 아직 없습니다.
+
+Interaction의 Claude 입력창에서 effort(low/medium/high/xhigh/max), 권한 모드(default/acceptEdits/plan/dontAsk/auto/bypassPermissions), 모델 이름 또는 회사 배포 ID를 선택할 수 있습니다. 기본값은 워크스페이스 설정이며 명시적으로 선택한 값만 SDK에 전달합니다. 대화별로 저장하고 다음 메시지에 적용하며, 실행 중에는 변경할 수 없습니다. 실제 지원은 회사 CLI 버전·모델·관리 정책에 따라 다릅니다. 워크스페이스 설정 파일 자체는 변경하지 않습니다.
+
+
+### Named block diagrams
+
+Board supports named diagram tabs (for example C-model and Floating model). Use + Diagram to create an empty diagram, rename it in the tab bar, and add blocks within the selected tab. Each diagram has independent topology and overview; cross-diagram connections are rejected. Existing single-graph projects appear as Main with their block IDs preserved. JOB Queue remains project-wide across diagrams.
+
+Graph registration supports diagramId on blocks and diagrams metadata in graph.json. Block/edge IDs remain unique across the project so existing job, artifact and source references stay unambiguous. The selected diagram is local workspace state, not a source revision. Only empty diagrams can be removed; the last diagram and the project's final block are retained.
+
+Agent CLI: diagrams; diagram-add FILE.json --revision N; diagram-select ID; diagram-update ID FILE.json --revision N; diagram-delete ID --revision N. project, graph-info, mermaid default to the selected diagram; --diagram ID pins an explicit target, and project --all-diagrams returns the full project. add-block/delete-block/connect/disconnect also support --diagram ID. See the bundled isp-block-development skill for registration and global JOB guidance.

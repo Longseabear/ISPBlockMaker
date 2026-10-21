@@ -128,6 +128,13 @@ export function installWorkspaceSkills(folder, root) {
       }
     }
   }
+  // Retire only unchanged framework-owned guidance; keep customized user copies.
+  for (const prefix of ['.agents/skills','.claude/skills']) for (const name of ['gpu-simulator.md','reference-io.md']) {
+    const relative = `${prefix}/isp-block-maker/${name}`, file = targetPath(workspace,relative);
+    if (fs.existsSync(file) && previous[relative] === hash(fs.readFileSync(file,'utf8'))) {
+      fs.unlinkSync(file); delete next[relative]; result.updated.push(relative);
+    }
+  }
   writeAtomic(manifestFile, JSON.stringify({ version: 1, files: next }, null, 2) + "\n");
   return result;
 }

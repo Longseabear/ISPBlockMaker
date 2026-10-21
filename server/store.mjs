@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import {
   initialProject,
   validateGraph,
+  diagramSchema,
   userRequestSchema,
   jobSchema,
 } from "./model.mjs";
@@ -13,6 +14,7 @@ export function graphSpec(input) {
   const graph = validateGraph(input);
   return {
     name: graph.name,
+    diagrams: graph.diagrams,
     overview: graph.overview,
     blocks: graph.blocks.map(({ userRequests, jobs, ...block }) => block),
     edges: graph.edges,
@@ -63,12 +65,15 @@ export function createStore(
   }
   let state, loadedSpec;
   function combine(spec) {
+    const selectedDiagramId=spec.diagrams.some(d=>d.id===local.selectedDiagramId)?local.selectedDiagramId:spec.diagrams[0].id;
+    const diagramBlocks=spec.blocks.filter(b=>b.diagramId===selectedDiagramId);
     return {
+      selectedDiagramId,
       ...spec,
       revision: local.revision,
-      selectedBlockId: spec.blocks.some((b) => b.id === local.selectedBlockId)
+      selectedBlockId: diagramBlocks.some((b) => b.id === local.selectedBlockId)
         ? local.selectedBlockId
-        : spec.blocks[0].id,
+        : diagramBlocks[0]?.id||'',
       artifacts: local.artifacts,
       globalWork: local.globalWork || { userRequests: [], jobs: [] },
       blocks: spec.blocks.map((b) => {
@@ -108,6 +113,7 @@ export function createStore(
       storageVersion: 2,
       revision: next.revision,
       selectedBlockId: next.selectedBlockId,
+      selectedDiagramId:next.selectedDiagramId,
       artifacts: next.artifacts,
       globalWork: next.globalWork || { userRequests: [], jobs: [] },
       blocks: [...records.values()],
@@ -159,7 +165,15 @@ export function createStore(
         error.status = 409;
         throw error;
       }
-      const graph = validateGraph({...input, overview: input.overview ?? state.overview});
+
+      if(input.diagramId){
+        const diagram=state.diagrams.find(d=>d.id===input.diagramId);
+        if(!diagram)throw Error('Diagram not found');
+        const kept=state.blocks.filter(b=>b.diagramId!==diagram.id),ids=new Set(kept.map(b=>b.id));
+        if(input.blocks.some(b=>ids.has(b.id)||b.diagramId&&b.diagramId!==diagram.id))throw Error('Block belongs to another diagram');
+        input={...state,blocks:[...kept,...input.blocks.map(b=>({...b,diagramId:diagram.id}))],edges:[...state.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)),...input.edges],diagrams:state.diagrams.map(d=>d.id===diagram.id?{...d,overview:input.overview??d.overview}:d)};
+      }
+      const graph = validateGraph({...input, diagrams:input.diagrams??state.diagrams, blocks:input.blocks.map(b=>({...b,diagramId:b.diagramId||state.blocks.find(old=>old.id===b.id)?.diagramId||state.selectedDiagramId})), overview: input.overview ?? state.overview});
       return persist({
         ...state,
         ...graph,
@@ -175,7 +189,30 @@ export function createStore(
       refresh();
       if (!state.blocks.some((b) => b.id === id))
         throw new Error("블록을 찾을 수 없습니다.");
-      return persist({ ...state, selectedBlockId: id });
+      return persist({ ...state, selectedBlockId: id, selectedDiagramId:state.blocks.find(b=>b.id===id).diagramId });
+    },
+
+    diagram(action, input, revision) {
+      refresh();
+      if(action!=='select' && revision!==state.revision)throw Object.assign(Error('revision conflict: reload diagrams'),{status:409});
+      if(action==='select'){
+        if(!state.diagrams.some(d=>d.id===input.id))throw Error('Diagram not found');
+        return persist({...state,selectedDiagramId:input.id,selectedBlockId:state.blocks.find(b=>b.diagramId===input.id)?.id||''});
+      }
+      if(action==='create'){
+        const diagram=diagramSchema.parse(input);
+        if(state.diagrams.some(d=>d.id===diagram.id))throw Error('Diagram ID already exists');
+        return persist({...state,diagrams:[...state.diagrams,diagram],selectedDiagramId:diagram.id,selectedBlockId:'',revision:state.revision+1});
+      }
+      const current=state.diagrams.find(d=>d.id===input.id);
+      if(!current)throw Error('Diagram not found');
+      if(action==='delete'){
+        if(state.diagrams.length===1)throw Error('Cannot remove the last diagram');
+        if(state.blocks.some(b=>b.diagramId===input.id))throw Error('Only empty diagrams can be removed; move or remove blocks first');
+        return persist({...state,diagrams:state.diagrams.filter(d=>d.id!==input.id),revision:state.revision+1});
+      }
+      const diagram=diagramSchema.parse({...current,...input});
+      return persist({...state,diagrams:state.diagrams.map(d=>d.id===input.id?diagram:d),revision:state.revision+1});
     },
     artifact(artifact) {
       refresh();

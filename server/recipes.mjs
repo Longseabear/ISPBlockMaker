@@ -157,6 +157,18 @@ export function saveRecipe(workspace, input, options = {}) {
   }
 }
 
+export function deleteRecipe(workspace, recipeId, options = {}) {
+  const ctx = context(workspace), file = recipeFile(ctx, recipeId);
+  const lock = safePath(ctx.sourceRoot, `.isp-recipes/.${id(recipeId)}.lock`, 'recipe lock');
+  const handle = fs.openSync(lock, 'wx');
+  try {
+    const saved = readRecipe(workspace, recipeId);
+    if (saved.hash !== options.expectedHash) throw Error('Recipe changed; read it again before deleting');
+    fs.unlinkSync(file);
+    return {id: recipeId, deleted: true};
+  } finally { fs.closeSync(handle); fs.unlinkSync(lock); }
+}
+
 function substitute(value, values) {
   return value.replace(/\{\{([A-Za-z][A-Za-z0-9_]*)\}\}/g, (_, name) => {
     if (!own(values, name)) throw Error(`Missing parameter: ${name}`);
@@ -283,7 +295,7 @@ function cleanupTree(child, startedAt, exitedAt) {
     });
   });
 }
-function execute(plan) {
+function execute(plan, streams = {}) {
   return new Promise(resolve => {
     const stdout = tailCollector(), stderr = tailCollector();
     let child, timer, fallback, cleanup = Promise.resolve(null), finished = false, timedOut = false, forcedClose = false, spawnError = null, exitCode = null, signal = null, exitedAt = null;
@@ -297,8 +309,8 @@ function execute(plan) {
     };
     try { child = spawn(plan.executable, plan.args, {cwd: plan.cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe']}); }
     catch (error) { spawnError = error.message; finish(); return; }
-    child.stdout.on('data', chunk => stdout.append(chunk));
-    child.stderr.on('data', chunk => stderr.append(chunk));
+    child.stdout.on('data', chunk => { stdout.append(chunk); streams.stdout?.(chunk); });
+    child.stderr.on('data', chunk => { stderr.append(chunk); streams.stderr?.(chunk); });
     child.on('error', error => { spawnError = error.message; });
     child.on('exit', (code, value) => { exitCode = code; signal = value; exitedAt = new Date().toISOString(); });
     child.on('close', finish);
@@ -317,7 +329,7 @@ function writeRunFile(plan, name, contents, exclusive = false) {
   return file;
 }
 
-export async function runRecipe(workspace, recipeId, options = {}) {
+export async function runRecipe(workspace, recipeId, options = {}, streams = {}) {
   const plan = planRecipeRun(workspace, recipeId, options), ctx = {workspace: plan.workspace, sourceRoot: plan.sourceRoot};
   const before = await Promise.all(plan.expectedOutputs.map(item => outputRecord(ctx, item)));
   const identity = sourceIdentity(ctx), startedAt = new Date().toISOString(), start = performance.now();
@@ -329,7 +341,7 @@ export async function runRecipe(workspace, recipeId, options = {}) {
   writeRunFile(plan, 'manifest.json', JSON.stringify(initial, null, 2) + '\n', true);
   writeRunFile(plan, 'stdout.log', '', true);
   writeRunFile(plan, 'stderr.log', '', true);
-  const execution = await execute(plan), endedAt = new Date().toISOString(), durationMs = Math.round(performance.now() - start);
+  const execution = await execute(plan, streams), endedAt = new Date().toISOString(), durationMs = Math.round(performance.now() - start);
   const outputs = await Promise.all(plan.expectedOutputs.map(async (item, index) => {
     const record = await outputRecord(ctx, item), prior = before[index];
     const changed = record.valid && (!prior.exists || (prior.valid && prior.sha256 !== record.sha256));

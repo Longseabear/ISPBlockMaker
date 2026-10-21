@@ -21,6 +21,5 @@ Use this when changing processing behavior, checking a block contract or evaluat
 
 These are selection aids, not required contract fields or tests for every node. Do not invent a quality target when the task provides none. A smaller input/output difference alone does not establish better ISP quality. Use [visualization methodology](visualization-method.md) when a plot/image helps evaluate the claim; preserve the exact data separately from previews.
 
-For optional boundary dumps or private-model exchange, use [reference I/O](reference-io.md). Its existing comparison checks exact bytes only. This method does not add a numerical comparator, infer private APIs, require a C-model, or force one-to-one block/function mappings.
 
 Record measured results and limits in the attempt/activity; update lasting guarantees only when evidence justifies them. Follow [change-impact.md](change-impact.md) for source identity and affected metadata.

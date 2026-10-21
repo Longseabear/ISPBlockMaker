@@ -46,3 +46,16 @@ Use the manifest's actual invocation, parameters, source identity and output rec
 The manifest does not certify numerical behavior or automatically create an attempt, checkpoint or registered artifact. When producing attempt evidence, retain the manifest reference and link the actually tested checkpoint through [attempt tracking](../isp-version-sharing/work-tracking.md). For long-lived evidence, promote needed files from scratch before registration following [temporary-files.md](temporary-files.md).
 
 Keep reusable execution mechanics in the recipe, the verified graph entry point in the overview, and domain interpretation/prerequisites in a [project skill](project-skills.md) when useful. Avoid duplicating the same command in several authoritative places.
+
+
+## Runs tab: register scripts for user-controlled reruns
+
+Use this workflow when the user asks to save a Python/run/check script for rerunning, expose its main parameters, or register/update/remove an item in Runs. Inspect the actual script and CLI arguments first. Choose only meaningful user-facing inputs (image path, threshold, strength, output destination, etc.). Give every parameter a clear description, a valid default when appropriate, and required=true only when needed. Do not expose implementation internals or credentials.
+
+1. Read existing recipes. Reuse the same ID when updating the same task.
+2. Save the complete recipe using recipe-save and the observed hash (null for new). Use explicit interpreter + script argv and {{parameter}} placeholders; cwd is relative to sourceRoot. Set timeoutMs to the expected workload.
+3. Run recipe-plan with representative parameters to verify resolution. Registering does not execute the script. Only run when requested; distinguish a checked plan from an executed validation.
+4. The user opens Runs, selects the script, edits exposed values, and clicks 터미널에서 실행. The app opens a new cmd terminal, switches to Terminal mode, and streams stdout/stderr. It executes argv without shell interpolation and writes the usual recipe-run manifest/logs. The terminal remains after completion; repeated clicks intentionally start separate runs.
+5. To remove a registration: recipe-delete ID --hash OBSERVED_HASH. This retains the script and previous run outputs. A stale hash fails; re-read instead of overwriting concurrent changes.
+
+Runs also provides a JSON registration editor for manual registration/modification and a removal action. Refresh Runs after agent-side edits. Recipe definitions live in sourceRoot/.isp-recipes and are included with project source; scripts and interpreter dependencies must exist in the destination workspace. This UI runner is for noninteractive scripts (stdin is closed); use a normal terminal for interactive prompts. Use Ctrl+C/Stop only with awareness of child processes; timeoutMs bounds recipe execution. Saving parameters does not install Python or dependencies.

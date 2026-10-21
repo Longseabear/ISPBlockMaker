@@ -148,11 +148,12 @@ export async function main() {
     result={...result,revision:project.revision,stale:current.revision!==project.revision};
     if(!result.ok)process.exitCode=1;
   }
-  else if (['recipes','recipe-show','recipe-save','recipe-plan','recipe-run'].includes(command)) {
+  else if (['recipes','recipe-show','recipe-save','recipe-delete','recipe-plan','recipe-run'].includes(command)) {
     const {workspace}=await request('/workspace-info');
     const recipes=await import('../server/recipes.mjs');
     if(command==='recipes')result=await recipes.listRecipes(workspace);
     else if(command==='recipe-show')result=await recipes.readRecipe(workspace,decodeURIComponent(requiredId(args[0])));
+    else if(command==='recipe-delete')result=recipes.deleteRecipe(workspace,requiredId(args[0]),{expectedHash:option('hash')});
     else if(command==='recipe-save'){
       const input=jsonFile(args[0]);
       result=await recipes.saveRecipe(workspace,input.recipe,{expectedHash:input.expectedHash});
@@ -184,12 +185,6 @@ export async function main() {
     result=await request(command==='skill-import'?'/skills/import':'/skills/import/preview',{method:'POST',headers:{'Content-Type':'application/octet-stream',...(choices?{'X-Skill-Choices':encodeURIComponent(JSON.stringify(choices))}:{})},body:fs.readFileSync(file)});
   }
   else if (command === "skill-delete") result=await request(`/skills/item/${requiredId(args[0])}`,{method:'DELETE',body:JSON.stringify({version:option('version')})});
-  else if (command === "reference-sets") result = await request('/reference-sets');
-  else if (command === "reference-show") result = await request(`/reference-sets/${requiredId(args[0])}`);
-  else if (command === "reference-create") result = await request('/reference-sets',{method:'POST',body:JSON.stringify(jsonFile(args[0]))});
-  else if (command === "reference-add") result = await request(`/reference-sets/${requiredId(args[0])}/files/import`,{method:'POST',body:JSON.stringify(jsonFile(args[1]))});
-  else if (command === "reference-update") result = await request(`/reference-sets/${requiredId(args[0])}`,{method:'PATCH',body:JSON.stringify(jsonFile(args[1]))});
-  else if (command === "reference-compare") result = await request(`/reference-sets/${requiredId(args[0])}/compare`,{method:'POST',body:JSON.stringify({expectedId:args[1],actualId:args[2]})});
   else if (command === "attempts") result = await request('/tracking');
   else if (command === "attempt-start") result = await request('/attempts', {method:'POST', body:JSON.stringify(jsonFile(args[0]))});
   else if (command === "attempt-update") result = await request(`/attempts/${requiredId(args[0])}`, {method:'PATCH', body:JSON.stringify(jsonFile(args[1]))});
@@ -295,17 +290,23 @@ export async function main() {
     result = await request(
       `/context${!args.includes("--selection") && blockId ? `?blockId=${encodeURIComponent(blockId)}` : ""}`,
     );
+  else if(command==='diagrams')result=await request('/diagrams');
+  else if(command==='diagram-add')result=await request('/diagrams',{method:'POST',body:JSON.stringify({revision:Number(option('revision')),diagram:jsonFile(args[0])})});
+  else if(command==='diagram-select')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0]))+'/select',{method:'POST',body:'{}'});
+  else if(command==='diagram-update')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0])),{method:'PATCH',body:JSON.stringify({revision:Number(option('revision')),patch:jsonFile(args[1])})});
+  else if(command==='diagram-delete')result=await request('/diagrams/'+encodeURIComponent(requiredId(args[0])),{method:'DELETE',body:JSON.stringify({revision:Number(option('revision'))})});
   else if (command === "graph-info") {
     if (!args[0] || args[0].startsWith("--")) {
-      const state = await request("/project");
-      result = {name:state.name, revision:state.revision, overview:state.overview};
+      const state = await request("/graph"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
+      result = {name:state.name,diagram:state.diagram, revision:state.revision, overview:state.overview};
     } else {
       if (!option("revision")) throw new Error("Usage: isp graph-info patch.json --revision N");
       const overview = JSON.parse(fs.readFileSync(args[0], "utf8"));
-      result = await request("/global", {method:"PATCH", body:JSON.stringify({revision:Number(option("revision")), patch:{overview}})});
+      const state=await request("/graph"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
+      result = await request("/diagrams/"+state.diagramId, {method:"PATCH", body:JSON.stringify({revision:Number(option("revision")), patch:{overview}})});
     }
   }
-  else if (command === "project") result = await request("/project");
+  else if (command === "project") result = await request(args.includes("--all-diagrams")?"/project":"/graph"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
   else if (command === "requests") {
     const query = new URLSearchParams({
       status: args.includes("--all") ? "all" : "pending",
@@ -401,7 +402,7 @@ export async function main() {
         body: JSON.stringify({ revision, resolution: option("note") }),
       },
     );
-  } else if (command === "mermaid") result = await request("/mermaid");
+  } else if (command === "mermaid") result = await request("/mermaid"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
   else if (command === "present") {
     const artifactId = option("artifact");
     const ids = option("blocks") || option("block");
@@ -428,7 +429,7 @@ export async function main() {
     const revision = Number(option("revision"));
     if (!Number.isSafeInteger(revision) || revision < 1)
       throw new Error("--revision N에 조회한 프로젝트 revision을 지정하세요.");
-    const state = await request("/project");
+    const state = await request("/graph"+(option("diagram")?"?diagramId="+encodeURIComponent(option("diagram")):""));
     if (state.revision !== revision)
       throw new Error(
         "revision 충돌: isp project로 다시 읽고 변경 내용을 재검토하세요.",
@@ -438,6 +439,7 @@ export async function main() {
         throw new Error("사용법: isp add-block block.json --revision N");
       const spec = JSON.parse(fs.readFileSync(args[0], "utf8"));
       const block = blockSchema.parse({
+        diagramId: state.diagramId,
         description: "",
         principle: "",
         implementation: "",
@@ -457,8 +459,7 @@ export async function main() {
         throw new Error(
           "사용법: isp delete-block ID --revision N (존재하는 ID 필요)",
         );
-      if (state.blocks.length === 1)
-        throw new Error("마지막 블록은 삭제할 수 없습니다.");
+
       const edges = state.edges.filter(
         (e) => e.source === id || e.target === id,
       );
@@ -560,7 +561,13 @@ isp complete-job ID --block BLOCK_ID --revision N --note "Implementation and val
 isp reopen-job ID --block BLOCK_ID --revision N --note "Remaining work"
 isp consume-request ID --block BLOCK_ID --revision N --note "Implemented and validated"
 isp context --block ID           Read a specific block
-isp graph-info                  Read whole-graph purpose, entry point and agent notes
+isp diagrams                    List named diagrams and the selected ID
+isp diagram-add FILE.json --revision N   Create {id,name,overview?} and select it
+isp diagram-select ID           Select the default graph for reads/registration
+isp diagram-update ID FILE.json --revision N  Rename or update overview
+isp diagram-delete ID --revision N      Remove an empty diagram
+isp project [--diagram ID|--all-diagrams] Read selected diagram or full project
+isp graph-info [--diagram ID]    Read selected diagram purpose, entry point and notes
 isp graph-info patch.json --revision N  Update supplied overview fields
 isp project                     Read the whole project
 isp add-block block.json --revision N
@@ -587,6 +594,7 @@ isp viewer-image [current|VIEW_ID] [--vision]  Display metadata / PNG path, neve
 isp graph-check [--block ID] [--changed FILE,FILE]  Read-only evidence and review items
 isp recipes                      List reusable project execution recipes
 isp recipe-show ID               Read recipe and content hash
+isp recipe-delete ID --hash HASH Remove a recipe registration (keeps scripts)
 isp recipe-save FILE.json        Save {recipe,expectedHash:null|HASH}; does not execute
 isp recipe-plan ID [--params FILE.json] [--hash HASH]   Preview executable/argv/cwd/outputs
 isp recipe-run ID [--params FILE.json] [--hash HASH]    Execute locally and write a bounded run manifest
@@ -598,12 +606,6 @@ isp skill-delete NAME --version HASH   Archive a project skill
 isp skill-export NAME,NAME --out FILE.bundle
 isp skill-import-preview FILE.bundle
 isp skill-import FILE.bundle --choices FILE.json   [{name,version}] from inspected preview
-isp reference-sets                       List optional reference I/O sets
-isp reference-show SET_ID                Read metadata and local binary paths
-isp reference-create FILE.json           Register files or a crop delivery as a set
-isp reference-add SET_ID FILE.json       Copy another workspace file into a set
-isp reference-update SET_ID FILE.json    Edit notes/links with current updatedAt
-isp reference-compare SET_ID EXPECTED_FILE_ID ACTUAL_FILE_ID  Exact byte comparison
 isp viewer-import image.raw --spec image.json
 isp viewer-wait REQUEST_ID [--wait SECONDS]  # default: keep long polling until Send/cancel
 isp viewer-request IMAGE_ID --message "Select a neutral patch" [--no-wait | --wait SECONDS] [--block ID] [--purpose analysis|white_balance|input]

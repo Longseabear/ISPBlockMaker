@@ -4,6 +4,7 @@ export type Port = {
   type: "image" | "mask" | "signal";
 };
 export type Block = {
+  diagramId?: string;
   id: string;
   userRequests?: {
     id: string;
@@ -70,6 +71,8 @@ export type Artifact = {
   metadata?: Record<string, unknown>;
 };
 export type Project = {
+  diagrams: {id:string;name:string;overview?:Project["overview"]}[];
+  selectedDiagramId:string;
   overview?: {description: string; detail: string; entryPoint: string; agentNotes: string};
   globalWork?: {
     userRequests: NonNullable<Block["userRequests"]>;

@@ -1,6 +1,6 @@
 # Change impact and evidence
 
-Use this reference for graph-related implementation or analysis at meaningful milestones and completion. Inspect actual code and evidence before changing claims. Update only information affected by the authorized task; unchanged metadata needs no write. A read-only explanation, queue edit or failed experiment does not authorize graph redesign.
+Use this reference when a task changes information actually represented on the board, or when checking consistency is useful. It is not a mandatory checklist for every coding task. Inspect actual code and evidence before changing claims. Update only information affected by the authorized task; unchanged metadata needs no write. A read-only explanation, queue edit or failed experiment does not authorize graph redesign.
 
 | Change | Reconcile | Useful verification |
 | --- | --- | --- |

@@ -29,6 +29,7 @@ const port = z.object({
 });
 export const blockSchema = z.object({
   id,
+  diagramId: id.default("main"),
   userRequests: z.array(userRequestSchema).max(200).default([]),
   jobs: z.array(jobSchema).max(1000).default([]),
   name: z.string().min(1).max(100),
@@ -76,7 +77,9 @@ export const overviewSchema = z.object({
   entryPoint: z.string().max(12000).default(""),
   agentNotes: z.string().max(30000).default(""),
 });
+export const diagramSchema = z.object({id,name:z.string().trim().min(1).max(100),overview:overviewSchema.default(()=>overviewSchema.parse({}))});
 export const graphSchema = z.object({
+  diagrams:z.array(diagramSchema).min(1).max(50).default(()=>[{id:"main",name:"Main",overview:overviewSchema.parse({})}]),
   overview: overviewSchema.default(() => overviewSchema.parse({})),
   name: z.string().min(1).max(100),
   blocks: z.array(blockSchema).min(1).max(200),
@@ -95,6 +98,10 @@ export const graphSchema = z.object({
 
 export function validateGraph(input) {
   const graph = graphSchema.parse(input);
+  if(!input.diagrams)graph.diagrams[0].overview=graph.overview;
+  const diagrams=new Set(graph.diagrams.map(d=>d.id));
+  if(diagrams.size!==graph.diagrams.length)throw Error("Duplicate diagram ID");
+  if(graph.blocks.some(b=>!diagrams.has(b.diagramId)))throw Error("Unknown block diagramId");
   const blocks = new Map(graph.blocks.map((b) => [b.id, b]));
   if (blocks.size !== graph.blocks.length)
     throw new Error("블록 ID가 중복되었습니다.");
@@ -120,6 +127,7 @@ export function validateGraph(input) {
       ?.inputs.find((p) => p.id === e.targetHandle);
     if (!output || !inputPort)
       throw new Error("연결할 블록 또는 포트가 없습니다.");
+    if(blocks.get(e.source).diagramId!==blocks.get(e.target).diagramId)throw Error("Connections cannot cross diagrams");
     if (output.type !== inputPort.type)
       throw new Error("입출력 데이터 유형이 맞지 않습니다.");
     const target = `${e.target}:${e.targetHandle}`;
@@ -152,7 +160,8 @@ export function contextFor(state, blockId) {
   const neighbors = new Set(connections.flatMap((e) => [e.source, e.target]));
   return {
     project: state.name,
-    overview: overviewSchema.parse(state.overview || {}),
+    diagram: state.diagrams?.find(d=>d.id===block.diagramId)||{id:"main",name:"Main"},
+    overview: overviewSchema.parse(diagramOverview(state,block.diagramId)),
     revision: state.revision,
     block,
     human: { summary: block.description, detail: block.detail || "", status: block.status },
@@ -178,6 +187,17 @@ export function contextFor(state, blockId) {
     connections,
     artifacts: state.artifacts.filter((a) => a.blockId === blockId),
   };
+}
+
+function diagramOverview(state,id) {
+  const overview=state.diagrams?.find(d=>d.id===id)?.overview;
+  return overview && (id!=='main'||Object.values(overview).some(Boolean))?overview:state.overview||{};
+}
+export function diagramView(state, diagramId=state.selectedDiagramId||'main') {
+  const diagram=state.diagrams?.find(d=>d.id===diagramId);
+  if(!diagram)throw Error('Diagram not found');
+  const blocks=state.blocks.filter(b=>b.diagramId===diagramId),ids=new Set(blocks.map(b=>b.id));
+  return {...state,diagramId,diagram,overview:diagramOverview(state,diagramId),blocks,edges:state.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)),selectedBlockId:ids.has(state.selectedBlockId)?state.selectedBlockId:blocks[0]?.id||''};
 }
 
 export function toMermaid(state) {

@@ -5,21 +5,22 @@ description: Orient work in an ISP Block Maker project and choose the relevant l
 
 # ISP Block Maker
 
+The board is a big-picture map of major processing stages and data flow. Consult it when useful for the task; reading or updating it is not a gate for every request. Keep affected structure, meaningful descriptions and source references consistent when they change. Do not turn helper functions or incidental implementation details into nodes.
+
 Read [common.md](common.md) once for this project. These skills apply to the workspace containing this file and its subdirectories; they are not global instructions.
 
 Choose the workflow from the user's intended outcome. Read only the relevant skill and references; do not load the whole collection.
 
 | Request | Workflow |
 | --- | --- |
-| GPU simulator, GPU 미리보기, shader 확장 | [gpu-simulator.md](gpu-simulator.md) |
-| Implement/change blocks, wiring, descriptions, contracts, graph overview, or check graph/source consistency | [isp-block-development](../isp-block-development/SKILL.md) |
+| Create/name/select block-diagram tabs, implement/change blocks, wiring, descriptions, contracts, graph overview, or check graph/source consistency | [isp-block-development](../isp-block-development/SKILL.md) |
 | “JOB 등록해”, split/merge work, implement block memos, process queued work | [isp-job-management](../isp-job-management/SKILL.md) |
 | “리포트 발행해”, “시각화해”, compare or explain measured results | [isp-visualizations](../isp-visualizations/SKILL.md) → Visualizations |
 | “뷰어에 띄워”, show RAW/BMP, inspect current view, zoom/pan/highlight, select crops | [isp-image-viewer](../isp-image-viewer/SKILL.md) → Image Viewer |
 | Explicit Documentation / SDD / Software Development Document | [isp-documentation](../isp-documentation/SKILL.md) → Documentation |
 | Create/update reusable project-specific skills or share skills alone | [project-skills.md](project-skills.md) → Project Skills |
 | Track attempts, compare/restore checkpoints, inspect branches/tags/commits, share/open a `.bundle` | [isp-version-sharing](../isp-version-sharing/SKILL.md) |
-| Inspect, reuse or save a parameterized project command | [execution-recipes.md](execution-recipes.md) |
+| Runs 탭 실행 등록/수정/제거, expose script parameters, or reuse a project command | [execution-recipes.md](execution-recipes.md) |
 
 An explicit destination overrides the defaults. A generic report is not automatically an SDD. “발행” here means a local registered report, not external publishing. An HTML report belongs in Visualizations because Image Viewer cannot display HTML. If both source inspection and a report are requested, use both tools and leave the user's last requested view in front.
 

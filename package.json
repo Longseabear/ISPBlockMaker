@@ -1,6 +1,6 @@
 {
   "name": "isp-block-maker",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "isp": "node scripts/isp.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.306",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.11.6",
@@ -24,6 +25,10 @@
     "prismjs": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "ws": "^8.21.3",
     "zod": "^4.6.4"
   },
@@ -36,5 +41,8 @@
   },
   "allowScripts": {
     "node-pty@1.1.0": true
+  },
+  "overrides": {
+    "katex": "$katex"
   }
 }

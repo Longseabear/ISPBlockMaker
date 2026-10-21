@@ -16,7 +16,7 @@ export function installWorkspaceGuidance(workspace, root) {
     const marker=name==='AGENTS.md'?'<!-- ISP Block Maker working agreement v1 -->':'<!-- ISP Block Maker shared agreement -->';
     if(text.includes(marker))continue;
     const addition=name==='AGENTS.md'?guidance:
-      '<!-- ISP Block Maker shared agreement -->\nRead and follow `AGENTS.md` in this workspace for the shared working agreement, including graph reconciliation at implementation/validation milestones. Resolve that path relative to this file. This applies to this workspace and its subdirectories.\n';
+      '<!-- ISP Block Maker shared agreement -->\nRead and follow `AGENTS.md` in this workspace for the shared working agreement, including optional board use and consistency when the task changes the big-picture structure. Resolve that path relative to this file. This applies to this workspace and its subdirectories.\n';
     fs.appendFileSync(file,'\n'+addition+'\n');changed.push(name);
   }
   return changed;

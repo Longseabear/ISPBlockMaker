@@ -8,6 +8,7 @@ import {
   validateGraph,
   contextFor,
   toMermaid,
+  diagramView,
 } from "../server/model.mjs";
 import { createStore } from "../server/store.mjs";
 
@@ -185,4 +186,43 @@ test("graph overview persists independently of local JOBs, reaches context and s
     assert.throws(()=>store.global(initial.globalWork,store.get().revision,{detail:"x".repeat(30001)}));
     assert.deepEqual(store.get().overview, overview);
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('named diagrams isolate topology and scoped saves, preserve global work and survive reload',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'isp-diagrams-'));
+ try{
+  let store=createStore(dir),state=store.get();
+  assert.equal(state.selectedDiagramId,'main');
+  assert.ok(state.blocks.every(b=>b.diagramId==='main'));
+  state=store.global({userRequests:[],jobs:[{id:'global-job',title:'Compare models',status:'pending',createdAt:new Date().toISOString(),resolution:''}]},state.revision);
+  const mainBlocks=structuredClone(state.blocks),mainEdges=structuredClone(state.edges);
+  state=store.diagram('create',{id:'floating',name:'Floating model'},state.revision);
+  assert.equal(state.selectedDiagramId,'floating');assert.equal(state.selectedBlockId,'');
+  assert.equal(diagramView(state).blocks.length,0);
+  const view=diagramView(state);
+  view.blocks=[{...mainBlocks[0],id:'float-input',diagramId:'floating',name:'Float input'}];
+  state=store.graph(view,view.revision);
+  assert.deepEqual(state.blocks.filter(b=>b.diagramId==='main'),mainBlocks);
+  assert.deepEqual(state.edges,mainEdges);
+  assert.equal(diagramView(state).blocks[0].id,'float-input');
+  assert.equal(state.globalWork.jobs[0].id,'global-job');
+  assert.throws(()=>store.graph({...diagramView(state),blocks:[mainBlocks[0]]},state.revision),/another diagram/);
+  assert.throws(()=>store.graph({...state,edges:[...state.edges,{id:'cross',source:'float-input',sourceHandle:'image',target:'flat-detection',targetHandle:'image'}]},state.revision),/cross diagrams/);
+  assert.throws(()=>store.diagram('update',{id:'floating',name:'stale'},state.revision-1),/revision/);
+  state=store.diagram('update',{id:'floating',name:'Float model',overview:{description:'Floating reference'}},state.revision);
+  assert.equal(contextFor(state,'float-input').overview.description,'Floating reference');
+  assert.ok(!toMermaid(diagramView(state)).includes('Flat detection'));
+  store=createStore(dir);state=store.get();
+  assert.equal(state.selectedDiagramId,'floating');
+  assert.equal(state.diagrams.find(d=>d.id==='floating').name,'Float model');
+  state=store.diagram('select',{id:'main'});
+  assert.equal(diagramView(state).blocks.length,mainBlocks.length);
+  assert.equal(state.globalWork.jobs[0].id,'global-job');
+  assert.throws(()=>store.diagram('delete',{id:'floating'},state.revision),/empty/);
+  const float=diagramView(state,'floating');float.blocks=[];float.edges=[];
+  state=store.graph(float,state.revision);
+  state=store.diagram('delete',{id:'floating'},state.revision);
+  assert.equal(state.diagrams.length,1);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

@@ -17,7 +17,7 @@ for(const name of ["dist","server","templates","package.json","ISPBlockMaker.exe
   fs.cpSync(path.join(root,name),path.join(app,name),{recursive:true});
 }
 fs.mkdirSync(path.join(app,"scripts"));
-for(const name of ["isp.mjs","start-local.mjs","workspace-cli.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
+for(const name of ["isp.mjs","start-local.mjs","workspace-cli.mjs","recipe-terminal.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
 fs.copyFileSync(process.execPath,path.join(app,"node.exe"));
 const lock=JSON.parse(fs.readFileSync(path.join(root,"package-lock.json"),"utf8"));
 const required = new Set();
@@ -35,13 +35,16 @@ function visit(name, parent = "") {
   required.add(relative);
   for(const dependency of Object.keys(lock.packages[relative].dependencies || {}))visit(dependency,relative);
 }
-for(const name of ["express","ws","zod","node-pty","prismjs","katex"])visit(name);
+for(const name of ["express","ws","zod","node-pty","prismjs","katex","@anthropic-ai/claude-agent-sdk"])visit(name);
 for(const relative of required) {
   const pkg=lock.packages[relative];
   const source=path.join(root,relative);
   if(!fs.existsSync(source)) {if(pkg.optional)continue;throw new Error(`Missing dependency ${relative}`);}
   fs.cpSync(source,path.join(app,relative),{recursive:true});
 }
+// Do not distribute any SDK-owned Claude executable: use the company installation.
+for(const name of fs.readdirSync(path.join(app,"node_modules","@anthropic-ai")))
+  if(name.startsWith("claude-agent-sdk-win32-"))throw new Error("Company CLI mode must not package a Claude executable");
 // The Node runtime's license also includes bundled third-party notices.
 const license=path.join(release,`node-${process.version}-LICENSE.txt`);
 if(!fs.existsSync(license)) {
@@ -52,7 +55,7 @@ if(!fs.existsSync(license)) {
 fs.copyFileSync(license,path.join(app,"NODE-LICENSE.txt"));
 fs.writeFileSync(path.join(app,"THIRD-PARTY-NOTICES.txt"),"Node notices: NODE-LICENSE.txt\nDependency licenses are preserved in node_modules/<package>/LICENSE or the corresponding license file.\n");
 for(const name of ["install.ps1","uninstall.ps1"])fs.copyFileSync(path.join(root,"scripts",name),path.join(stage,name));
-fs.writeFileSync(path.join(stage,"distribution.json"),JSON.stringify({version,app:appRelative,architecture:process.arch,node:process.version}));
+fs.writeFileSync(path.join(stage,"distribution.json"),JSON.stringify({version,app:appRelative,architecture:process.arch,node:process.version,claudeSdk:lock.packages["node_modules/@anthropic-ai/claude-agent-sdk"].version,claudeEngine:"company-installed"}));
 function files(dir,prefix="") {return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?files(path.join(dir,e.name),prefix+e.name+"/"):[prefix+e.name]);}
 fs.writeFileSync(path.join(stage,"package-files.json"),JSON.stringify([...files(stage),"package-files.json","bin/isp-block-maker.cmd","installed-files.json"]));
 const zip=path.join(release,`ISPBlockMaker-${buildId}-${process.arch}.zip`);

@@ -6,7 +6,6 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {validateGraph} from './model.mjs';
 import {sourceRoot,normalizeWorkspaceFolder} from './project-layout.mjs';
-import {referenceManifest} from './reference-sets.mjs';
 import {dataGroup,bundleCategory} from './bundle-data.mjs';
 import {writeZip,openZip,sha256,safeName,MAX_FILE,MAX_TOTAL,MAX_FILES} from './bundle-zip.mjs';
 const exec=promisify(execFile),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -27,7 +26,6 @@ export function excluded(name,{includeImages=true,includeVisualizations=true,inc
  if(parts[0]==='project'&&parts[1]==='.isp')return true;
  if(parts[0]==='project'&&['.agents','.claude'].includes(parts[1])&&parts[2]!=='skills')return true;
  if(parts[0]==='.isp'){
-  if(parts[1]==='reference-sets')return parts.slice(2).some(p=>p.startsWith('.'));
   if(['project.json','activity.json','workspace.json','tracking.json'].includes(parts[1])&&parts.length===2)return false;
   if(parts[1]==='artifacts')return !includeVisualizations;
   if(parts[1]!=='viewer')return true;
@@ -78,7 +76,6 @@ export async function planBundle(folder,options={}){
   }
  }
  await walk();for(const file of selectedFiles)if(!files.some(f=>f.path===file))throw new Error('Missing selected visualization file: '+file);const history=options.includeGit?await gitInfo(source):null;
- for(const item of dataItems.values()){if(item.id.startsWith('.isp/reference-sets/')){try{const meta=path.join(workspace,item.id,'manifest.json');if((await fs.stat(meta)).size<4*1024*1024){const value=JSON.parse(await fs.readFile(meta,'utf8'));if(typeof value.title==='string')item.label='Reference I/O · '+value.title;}}catch{ /* Retain path label for damaged metadata; import validation remains authoritative. */ }}}
  const problems=files.filter(f=>f.size>MAX_FILE).map(f=>'File exceeds 256 MiB: '+f.path);
  if(bytes>MAX_TOTAL||files.length>MAX_FILES)problems.push('Bundle limit: 2 GiB / 10,000 files');
  const categories={};for(const f of files){const key=bundleCategory(f.path);categories[key]=(categories[key]||0)+f.size;}
@@ -100,11 +97,6 @@ export async function packBundle(folder,output,options={}){
  }finally{await fs.rm(partial,{force:true});await fs.rm(temp,{recursive:true,force:true});}
 }
 async function validateLocalRecords(stage,files){
- for(const file of files){if(!file.startsWith('.isp/reference-sets/'))continue;
-  if(!/^\.isp\/reference-sets\/[a-f0-9-]{36}\/(manifest\.json|files\/[a-f0-9-]{36}\.bin)$/.test(file))throw new Error('Invalid reference set path');
-  if(!files.has(file.split('/').slice(0,3).join('/')+'/manifest.json'))throw new Error('Reference manifest missing');
-  if(file.endsWith('/manifest.json')){const set=referenceManifest.parse(JSON.parse(await fs.readFile(path.join(stage,file),'utf8')));if(file!==`.isp/reference-sets/${set.id}/manifest.json`)throw new Error('Reference set ID mismatch');for(const item of set.files){const expected=`.isp/reference-sets/${set.id}/files/${item.id}.bin`;if(item.file!==`files/${item.id}.bin`||!files.has(expected))throw new Error('Missing reference data');const bytes=await fs.readFile(path.join(stage,expected));if(bytes.length!==item.size||sha256(bytes)!==item.sha256)throw new Error('Reference data checksum mismatch');}}
- }
  const json=async name=>files.has(name.toLowerCase())?JSON.parse(await fs.readFile(path.join(stage,name),'utf8')):null;
  const local=await json('.isp/project.json');
  if(local){if(local.storageVersion!==2||!Array.isArray(local.blocks)||!Array.isArray(local.artifacts))throw new Error('Invalid project records');for(const a of local.artifacts){safeName(a.file);if(a.file.includes('/')||!files.has(('.isp/artifacts/'+a.file).toLowerCase()))throw new Error('Missing or unsafe artifact file');}}
