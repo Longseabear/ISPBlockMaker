@@ -73,3 +73,7 @@ A project can contain several independent diagrams. Run `diagrams` to discover I
 Canonical graph.json stores diagrams {id,name,overview} and blocks with diagramId; edges remain between block IDs and cannot cross diagrams. Block and edge IDs are project-global: prefix model-specific blocks (e.g. c-input, float-input) to avoid ambiguity in jobs/artifacts/source references. Existing single graphs load as Main without regenerating IDs. Empty diagrams are valid, but the project retains at least one block overall.
 
 JOBs and requests remain in the project-wide queue, not inside diagram definitions. Use --global for cross-model work; existing block-linked JOBs remain visible in the global queue across tabs. Switching diagrams does not create or complete JOBs. Present one diagram's blocks/edges at a time. Source code and artifacts remain shared project resources.
+
+## Role-specific working files
+
+Organize block explanations, small reusable role-specific helper scripts and fixtures alongside the block in its diagram folder when useful. Keep product development in the existing source/test layout; do not move all work into the board. Follow [block-documents.md](../isp-block-maker/block-documents.md) and discover the actual directory through block context.

@@ -51,3 +51,7 @@ Current algorithms, entry points and decisions belong in graph overview/block me
 For per-block metadata storage and long explanations, follow [block-documents.md](block-documents.md). Agents may create relevant supporting Markdown documents in the block folder when needed.
 
 For development Harness diagrams, execution, retries, run status and portable definitions, read [harness-workflows.md](harness-workflows.md). A Harness is an opt-in development procedure, separate from the target Pipeline.
+
+## Role-specific working files
+
+Organize block explanations, small reusable role-specific helper scripts and fixtures alongside the block in its diagram folder when useful. Keep product development in the existing source/test layout; do not move all work into the board. Follow [block-documents.md](block-documents.md) and discover the actual directory through block context.

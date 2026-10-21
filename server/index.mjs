@@ -1,5 +1,5 @@
 import {installHarness} from './harness.mjs';
-import {blockDirectory,blockDocuments,safeGraphPath} from './graph-storage.mjs';
+import {blockStorageDirectory,blockDocuments,safeGraphPath} from './graph-storage.mjs';
 import {listRecipes,saveRecipe,deleteRecipe,planRecipeRun} from './recipes.mjs';
 import {installInteraction} from './interaction.mjs';
 import {installMcpSettings,prepareMcpLaunch} from './mcp-settings.mjs';
@@ -400,7 +400,7 @@ app.get('/api/blocks/:id/documents',(req,res)=>{
  if(!store.get().blocks.some(b=>b.id===req.params.id))return res.status(404).json({error:'Block not found'});
  const graphFile=workspaceInfo().graphFile,documents=blockDocuments(graphFile,req.params.id);
  if(req.query.path){const doc=documents.find(d=>d.path===req.query.path);if(!doc)return res.status(404).json({error:'Document not found'});const file=safeGraphPath(sourceRoot(workspace),doc.path);if(fs.statSync(file).size>1024*1024)return res.status(413).json({error:'Document exceeds 1MB'});return res.json({...doc,content:fs.readFileSync(file,'utf8')});}
- res.json({directory:blockDirectory(req.params.id),documents});
+ res.json({directory:blockStorageDirectory(graphFile,req.params.id),documents});
 });
 app.get("/api/blocks/:id/source", async (req, res) => {
   const block = store.get().blocks.find((b) => b.id === req.params.id);
@@ -781,7 +781,7 @@ app.post("/api/selection", (req, res) => {
 });
 app.get("/api/context", (req, res) =>
   res.json(
-    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), blockDocumentation:(req.query.blockId||store.get().selectedBlockId)?{directory:blockDirectory(req.query.blockId||store.get().selectedBlockId),documents:blockDocuments(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId)}:null, projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
+    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), blockDocumentation:(req.query.blockId||store.get().selectedBlockId)?{directory:blockStorageDirectory(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId),documents:blockDocuments(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId)}:null, projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
   ),
 );
 app.get("/api/mermaid", (req, res) =>

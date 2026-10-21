@@ -181,12 +181,12 @@ HTTP와 WebSocket도 TCP 위에서 동작합니다. Raw TCP를 직접 구현하�
 - `server/`: HTTP/WebSocket/PTY 및 revision 검증·파일 저장.
 - `scripts/isp.mjs`: 에이전트가 호출하는 HTTP CLI.
 - `workspace/`: IP 구현 코드와 에이전트 지침.
-- `workspace/<프로젝트>/project/graph.json`: 소스 Git으로 구현 코드와 함께 관리할 그래프 원본. 블록 ID·설명·계약·포트·파라미터·위치·구현 경로·상태와 간선을 저장합니다. 구현 경로는 `sourceRoot` 기준이며 Mermaid는 이 명세에서 생성합니다.
+- `workspace/<프로젝트>/project/graph.json`: 소스 Git으로 구현 코드와 함께 관리할 그래프 원본. 다이어그램 파일을 참조하는 인덱스입니다. 설명·계약·포트·파라미터·위치·구현 경로·상태·간선은 diagrams/ 아래의 참조 파일에 저장합니다. 구현 경로는 `sourceRoot` 기준이며 Mermaid는 이 명세에서 생성합니다.
 - `.isp/project.json`: 로컬 요청·JOB·시각화 목록·선택 노드·동시 편집 revision. Git에서 제외됩니다. 결과물 사본과 연결 정보도 `.isp/`에 유지합니다.
 
 기존 통합 데이터는 최초 실행 시 자동 분리하며 `.isp/project.legacy.json`에 원본을 보관합니다. API는 두 저장소를 합친 기존 프로젝트 형식을 유지합니다. 요청 작성, JOB 처리, 시각화 등록, 노드 선택만으로 그래프 파일은 변경되지 않습니다.
 
-버전이나 체크포인트로 `project/graph.json`과 구현 코드를 함께 복원한 뒤 최신 화면과 컨텍스트를 확인하세요. 서버는 명세를 다시 읽고 revision을 갱신하여 오래된 저장을 거부합니다. 그래프에서 사라진 노드의 로컬 기록은 ID별로 보관하고 해당 ID가 돌아오면 다시 연결합니다. ID를 다른 의미의 노드에 재사용하지 마세요. 명세 파일이 없거나 잘못된 JSON이면 자동 덮어쓰기 없이 오류를 반환합니다. 이전 결과물은 유지하며 시도 기록에서 실행 조건·검증·결과 체크포인트를 연결할 수 있습니다.
+버전이나 체크포인트로 `project/graph.json`, 참조된 `project/diagrams/` 파일과 구현 코드를 함께 복원한 뒤 최신 화면과 컨텍스트를 확인하세요. 서버는 명세를 다시 읽고 revision을 갱신하여 오래된 저장을 거부합니다. 그래프에서 사라진 노드의 로컬 기록은 ID별로 보관하고 해당 ID가 돌아오면 다시 연결합니다. ID를 다른 의미의 노드에 재사용하지 마세요. 명세 파일이 없거나 잘못된 JSON이면 자동 덮어쓰기 없이 오류를 반환합니다. 이전 결과물은 유지하며 시도 기록에서 실행 조건·검증·결과 체크포인트를 연결할 수 있습니다.
 
 ```sh
 npm test
@@ -195,7 +195,7 @@ npm run build
 
 테스트는 그래프 타입/순환 검증, 저장 충돌·재로딩, 참조 모델 불변성, API 접근 검사, HTML 격리 헤더, 실제 WebSocket → PTY → HTTP context 조회를 확인합니다.
 
-현재 범위는 단일 프로젝트, 평면 블록 그래프, 탭당 한 개의 활성 터미널입니다. 설명은 블록 JSON에 저장하며 구현 코드는 파일 경로로 참조합니다. 배치 변경도 revision을 증가시킵니다. 결과물은 블록 ID·revision·생성 시간과 선택적 실행 ID/metadata를 기록합니다. 예제는 입력 규격·난수 seed·파라미터·RMSE·코드 해시를 포함합니다.
+현재 범위는 단일 프로젝트, 평면 블록 그래프, 탭당 한 개의 활성 터미널입니다. 설명은 다이어그램/블록 README에 저장하며 구현 코드는 파일 경로로 참조합니다. 배치 변경도 revision을 증가시킵니다. 결과물은 블록 ID·revision·생성 시간과 선택적 실행 ID/metadata를 기록합니다. 예제는 입력 규격·난수 seed·파라미터·RMSE·코드 해시를 포함합니다.
 
 터미널 연결이 끊기면 60초간 유지하며 같은 화면에서 네트워크 재연결 시 복원합니다. 페이지를 새로고침하면 새 cmd 터미널이 자동으로 시작됩니다. 하위 그래프, 블록 정의 재사용, 임의 그래프 자동 실행, RTL 도구 연동은 아직 구현하지 않았습니다. 생성 HTML의 격리는 로컬 CLI 자체를 sandbox하는 기능은 아닙니다.
 
@@ -323,7 +323,7 @@ UI의 **번들 열기**에서는 내용을 확인한 뒤 **새 폴더 만들기 
 
 - 상단 **번들 열기**에서 `.bundle`을 확인한 뒤 새 폴더 복원 또는 백업 후 덮어쓰기를 선택하고 해당 프로젝트를 엽니다.
 - 왼쪽 사이드바 경계를 드래그하여 너비를 조절할 수 있습니다. 방향키로도 조절하며 더블클릭하면 초기 너비로 돌아갑니다.
-- 그래프 왼쪽 위 **전체 그래프 설명 및 요청사항 → 사용자 설명**에서 목적, 상세 흐름, 실행 진입점, 자유 형식 에이전트 메모를 기록합니다. `graph.json`의 `overview`에 저장하며 에이전트는 `isp graph-info`로 조회하고 `isp graph-info patch.json --revision N`으로 수정합니다.
+- 그래프 왼쪽 위 **전체 그래프 설명 및 요청사항 → 사용자 설명**에서 목적, 상세 흐름, 실행 진입점, 자유 형식 에이전트 메모를 기록합니다. 다이어그램 정의의 `overview`와 README에 저장하며 에이전트는 `isp graph-info`로 조회하고 `isp graph-info patch.json --revision N`으로 수정합니다.
 - 중간 산출물은 workspace의 `tmp/<task-or-job-id>/`에 작성하도록 프로젝트 스킬이 안내합니다. 루트 `tmp/`는 Git 및 번들에서 제외되므로 최종 구현/등록 결과물은 영구 경로로 옮기세요.
 - Viewer에서 Esc, 취소 아이콘 또는 드래그 없는 클릭으로 현재 크롭 선택을 해제할 수 있습니다. 저장된 크롭은 유지됩니다.
 
@@ -461,3 +461,27 @@ Board supports named diagram tabs (for example C-model and Floating model). Use 
 Graph registration supports diagramId on blocks and diagrams metadata in graph.json. Block/edge IDs remain unique across the project so existing job, artifact and source references stay unambiguous. The selected diagram is local workspace state, not a source revision. Only empty diagrams can be removed; the last diagram and the project's final block are retained.
 
 Agent CLI: diagrams; diagram-add FILE.json --revision N; diagram-select ID; diagram-update ID FILE.json --revision N; diagram-delete ID --revision N. project, graph-info, mermaid default to the selected diagram; --diagram ID pins an explicit target, and project --all-diagrams returns the full project. add-block/delete-block/connect/disconnect also support --diagram ID. See the bundled isp-block-development skill for registration and global JOB guidance.
+
+
+## 다이어그램별 문서·보조 도구 저장 (storage v4)
+
+Pipeline과 Harness 모두 `project/diagrams/d-<다이어그램 ID>/`를 사용합니다.
+`graph.json`은 인덱스, `diagram.json`은 다이어그램 설정·블록 참조·연결,
+다이어그램 `README.md`는 개요 상세입니다. 블록은 `blocks/b-<블록 ID>/`의
+`block.json`과 `README.md`에 저장합니다. ID는 이름 변경에도 유지됩니다.
+
+블록 역할에 필요한 긴 설명은 `docs/`, 재사용할 작은 검증/실행 보조 도구는
+`scripts/`, 작은 기준 입력은 `fixtures/`에 필요할 때 작성합니다.
+여러 블록에 공통인 자료는 다이어그램 폴더에 둘 수 있습니다.
+제품 구현·라이브러리·C/floating model·일반 테스트는 기존 project 소스 구조에
+유지합니다. 모든 개발 작업을 다이어그램 폴더에 넣거나 공유 코드를 복제하지 않습니다.
+대용량 데이터, 임시 작업, 실행 로그는 각각 기존 데이터·tmp·실행 기록 위치에 둡니다.
+
+기존 inline/v3 형식은 읽기 호환되며 명세 저장 또는 `graph-migrate --revision N`으로
+변환됩니다. 원래 인덱스는 .isp의 migration 백업에 보존하고 기존 블록 폴더도
+남겨둡니다. 보조 파일을 새 폴더에 복사하되 충돌 시 덮어쓰지 않습니다.
+스크립트 내부 경로·Runs 명령은 추측하여 바꾸지 않으므로 새 경로로 전환할 때
+명시적으로 확인하고 검증해야 합니다. graph.json과 diagrams/를 함께 버전 관리하세요.
+하네스 실행 상태는 `.isp/harness-runs/`에 계속 별도로 저장됩니다.
+하네스 정의 내보내기는 보조 파일을 포함하지 않으며, 소스를 함께 공유하려면
+프로젝트 bundle을 사용합니다.
