@@ -38,6 +38,10 @@ test('unified hub adopts existing servers, preserves isolated projects, serializ
   for(let i=0;i<50;i++){await new Promise(r=>setTimeout(r,100));listing=(await api('/projects')).data;if(!listing.projects.find(p=>p.id===target.id).running)break;}
   assert.equal(listing.projects.find(p=>p.id===target.id).running,false);assert.equal(listing.projects.find(p=>p.path===a).running,true);
   await hub.close();hub=await createHub({stateRoot,port:0});listing=(await api('/projects')).data;assert.equal(listing.projects.length,2);assert.equal(listing.projects.find(p=>p.path===a).url,existing.url);
+  const agent=(await api('/agent-settings',{action:'enable',workspace_ids:[target.id]})).data.token;
+  const before=(await api('/projects')).data.selection;
+  const started=await fetch(hub.url+'/api/agent/v1/workspaces/'+target.id+'/start',{method:'POST',headers:{Authorization:'Bearer '+agent,'Content-Type':'application/json'},body:'{}'});assert.equal(started.status,200);assert.equal((await started.json()).workspace.status,'online');
+  assert.equal((await api('/projects')).data.selection,before);
   const restart=(await api('/open',{path:b})).data;running.set(b,restart.url);assert.equal(restart.id,target.id);assert.notEqual((await fetch(restart.url+'/health').then(r=>r.json())).instance,target.instance);
   listing=(await api('/projects')).data;
   const identity=await fetch(hub.url+'/health').then(r=>r.json());

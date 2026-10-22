@@ -12,11 +12,11 @@ export class HubAgentAccess {
  constructor(folder){this.file=path.join(folder,'agent-api.json');this.listeners=new Set();}
  read(){if(!fs.existsSync(this.file))return {enabled:false,workspace_ids:[]};if(fs.lstatSync(this.file).isSymbolicLink())fail(400,'Linked agent settings are unsupported');return read(this.file);}
  authorized(req){const c=this.read(),s=req.headers.authorization||'';return c.enabled&&s.startsWith('Bearer ')&&hash(s.slice(7))===c.tokenHash;}
- update(action,workspaceIds,projects){
-  const previous=this.read();const ids=workspaceIds===undefined?previous.workspace_ids:[...new Set(z.array(z.string().uuid()).max(100).parse(workspaceIds))];
-  if(action!=='disable'&&(ids.length===0||ids.some(id=>!projects.some(p=>p.id===id))))fail(400,'Select at least one registered workspace');
+ update(action,workspaceIds,projects,manageWorkspaces){
+  const previous=this.read();const manage=manageWorkspaces??!!previous.manage_workspaces;const ids=workspaceIds===undefined?previous.workspace_ids:[...new Set(z.array(z.string().uuid()).max(100).parse(workspaceIds))];
+  if(action!=='disable'&&((!manage&&ids.length===0)||ids.some(id=>!projects.some(p=>p.id===id))))fail(400,'Select at least one registered workspace');
   const token=['enable','rotate'].includes(action)?crypto.randomBytes(32).toString('hex'):null;
-  const config={enabled:action==='disable'?false:action==='scope'?!!previous.enabled:true,workspace_ids:ids,tokenHash:action==='disable'?null:token?hash(token):previous.tokenHash};
+  const config={manage_workspaces:manage,enabled:action==='disable'?false:action==='scope'?!!previous.enabled:true,workspace_ids:ids,tokenHash:action==='disable'?null:token?hash(token):previous.tokenHash};
   const temp=this.file+'.'+crypto.randomUUID()+'.tmp';try{fs.writeFileSync(temp,JSON.stringify(config),{flag:'wx',mode:0o600});fs.renameSync(temp,this.file);}finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}
   for(const listener of this.listeners)listener();return token;
  }
@@ -33,17 +33,31 @@ export async function hubWorkerTarget(project){
  return {origin:url.origin,token:record.token,instance:health.instance,workerId:agentWorkspaceId(health.workspace)};
 }
 
-export function installHubAgentApi(app,{stateRoot,list,url,resolveTarget=hubWorkerTarget}){
+export function installHubAgentApi(app,{stateRoot,list,url,register,start,resolveTarget=hubWorkerTarget}){
  const access=new HubAgentAccess(stateRoot),streams=new Set();
- const settings=()=>{const c=access.read();return {enabled:!!c.enabled,workspace_ids:c.workspace_ids,base_url:url()+'/api/agent/v1',access:'localhost'};};
+ const settings=()=>{const c=access.read();return {enabled:!!c.enabled,manage_workspaces:!!c.manage_workspaces,workspace_ids:c.workspace_ids,base_url:url()+'/api/agent/v1',access:'localhost'};};
  app.get('/api/agent-settings',async(_req,res)=>res.json({...settings(),workspaces:(await list()).map(({id,name,running})=>({id,name,running}))}));
- app.post('/api/agent-settings',async(req,res)=>{const {action,workspace_ids}=z.object({action:z.enum(['enable','rotate','scope','disable']),workspace_ids:z.array(z.string().uuid()).optional()}).strict().parse(req.body);const token=access.update(action,workspace_ids,await list());res.json({...settings(),...(token?{token}:{})});});
+ app.post('/api/agent-settings',async(req,res)=>{const {action,workspace_ids,manage_workspaces}=z.object({action:z.enum(['enable','rotate','scope','disable']),workspace_ids:z.array(z.string().uuid()).optional(),manage_workspaces:z.boolean().optional()}).strict().parse(req.body);const token=access.update(action,workspace_ids,await list(),manage_workspaces);res.json({...settings(),...(token?{token}:{})});});
  const base='/api/agent/v1';
  app.use(base,(req,res,next)=>access.authorized(req)?next():res.status(401).json({error:'Central Agent API is disabled or token is invalid'}));
- const allowed=async()=>{const ids=access.read().workspace_ids;return (await list()).filter(p=>ids.includes(p.id));};
- const select=async(req)=>{const project=(await allowed()).find(p=>p.id===req.params.workspaceId);if(!project)fail(404,'Workspace is not registered or is not allowed for this API');if(!access.authorized(req))fail(401,'Agent credential changed');return project;};
+ const allowed=async()=>{const c=access.read();return (await list()).filter(p=>c.manage_workspaces||c.workspace_ids.includes(p.id));};
+ const select=async(req)=>{const project=(await allowed()).find(p=>p.id===req.params.workspaceId);if(!project)fail(404,'Workspace is not registered or is not allowed for this API');if(!access.authorized(req))fail(401,'Agent credential changed');const current=access.read();if(!current.manage_workspaces&&!current.workspace_ids.includes(project.id))fail(404,'Workspace access was revoked');return project;};
  app.get(base+'/workspaces',async(_req,res)=>res.json({workspaces:(await allowed()).map(({id,name,running})=>({id,name,status:running?'online':'offline'}))}));
  app.get(base+'/workspaces/current',(_req,res)=>res.status(409).json({error:'Use /workspaces and explicitly select workspace_id. UI selection is not an API target.'}));
+ // Registration is path-idempotent; starting reuses the existing worker and never selects a UI tab.
+ app.post(base+'/workspaces',async(req,res)=>{
+  const input=z.object({path:z.string().min(1).max(4096)}).strict().parse(req.body);
+  if(!access.read().manage_workspaces)fail(403,'Workspace management permission is required');
+  if(!register)fail(503,'Workspace registration unavailable');
+  const item=register(input.path);res.json({workspace:{id:item.id,name:path.basename(item.path),path:item.path}});
+ });
+ app.post(base+'/workspaces/:workspaceId/start',async(req,res)=>{
+  z.object({}).strict().parse(req.body);const item=await select(req);
+  if(!start)fail(503,'Workspace startup unavailable');
+  await start(item.path);
+  if(!access.authorized(req))fail(401,'Agent credential changed; query workspace status');
+  const current=await select(req);res.json({workspace:{id:current.id,name:current.name,status:current.running?'online':'offline'}});
+ });
  const workerFetch=async(project,suffix,{method='GET',headers={},body,signal}={})=>{
   const target=await resolveTarget(project);signal?.throwIfAborted();let response;
   try{response=await fetch(`${target.origin}/api/internal/agent/v1/workspaces/${target.workerId}${suffix}`,{method,headers:{Authorization:`Bearer ${target.token}`,'Content-Type':'application/json',...headers},body,redirect:'error',signal:signal||AbortSignal.timeout(15000)});}catch{fail(503,'Workspace server connection failed; query the run before retrying a mutation');}
@@ -62,7 +76,7 @@ export function installHubAgentApi(app,{stateRoot,list,url,resolveTarget=hubWork
   if(suffix==='events'&&req.headers['last-event-id']&&!query.has('after'))query.set('after',z.string().max(20).regex(/^\d+$/).parse(req.headers['last-event-id']));
   const controller=new AbortController();const abort=()=>controller.abort();streams.add(controller);
   res.on('close',abort);let watchdog,bodyTimer;
-  const check=()=>{if(!access.authorized(req)||!access.read().workspace_ids.includes(project.id))abort();};access.listeners.add(check);
+  const check=()=>{if(!access.authorized(req)||!(access.read().manage_workspaces||access.read().workspace_ids.includes(project.id)))abort();};access.listeners.add(check);
   try{
    check();if(controller.signal.aborted)fail(401,'Agent access changed');
    const headers={};if(req.headers['idempotency-key'])headers['Idempotency-Key']=z.string().min(1).max(200).regex(/^[\x21-\x7e]+$/).parse(req.headers['idempotency-key']);
@@ -93,7 +107,8 @@ function agentOpenApi(origin){
  const paths={};const add=(route,method,description,body)=>{const parameters=[...route.matchAll(/\{(\w+)\}/g)].map(m=>({name:m[1],in:'path',required:true,schema:{type:'string',format:'uuid'}}));if(body)parameters.push({name:'Idempotency-Key',in:'header',required:route.endsWith('/sessions')||route.endsWith('/messages'),schema:{type:'string',minLength:1,maxLength:200}});
   (paths[route]||={})[method]={description,parameters,...(body?{requestBody:{required:true,content:{'application/json':{schema:body}}}}:{}),responses:{[method==='post'&&route.endsWith('/messages')?'202':method==='post'&&route.endsWith('/sessions')?'201':'200']:{description:'Successful response'},'401':{description:'Token invalid or API disabled'},'404':{description:'Unknown or disallowed target'},'409':{description:'State or idempotency conflict'},'503':{description:'Workspace server offline'}}};};
  add('/workspaces','get','List allowed workspace IDs and online/offline status.');add('/sessions','get','Group current sessions by workspace. Unavailable workers are reported explicitly.');add('/runs','get','Group the latest 50 runs per workspace; use scoped pagination for more.');
- const w='/workspaces/{workspaceId}';add(w+'/sessions','get','List sessions belonging to this workspace.');add(w+'/sessions','post','Create a session without executing a prompt.',{type:'object',additionalProperties:false,properties:{title:{type:'string',maxLength:100},provider:{enum:['claude','codex'],default:'claude'},diagram_id:{type:'string'},block_id:{type:'string'}}});add(w+'/sessions/{sessionId}/messages','post','Queue a prompt and return run_id. Reuse the same idempotency key on retry.',{type:'object',required:['text'],additionalProperties:false,properties:{text:{type:'string',minLength:1,maxLength:30000},delivery:{enum:['queue']},external_ref:{type:'string',maxLength:200}}});
+ add('/workspaces','post','Register an existing absolute local folder. Requires manage_workspaces. Does not initialize, migrate or start it; repeated paths return the same ID.',{type:'object',required:['path'],additionalProperties:false,properties:{path:{type:'string',minLength:1,maxLength:4096}}});
+ const w='/workspaces/{workspaceId}';add(w+'/start','post','Start or reuse an allowed initialized workspace without opening the browser. Empty object body; safe to retry.',{type:'object',additionalProperties:false});add(w+'/sessions','get','List sessions belonging to this workspace.');add(w+'/sessions','post','Create a session without executing a prompt.',{type:'object',additionalProperties:false,properties:{title:{type:'string',maxLength:100},provider:{enum:['claude','codex'],default:'claude'},diagram_id:{type:'string'},block_id:{type:'string'}}});add(w+'/sessions/{sessionId}/messages','post','Queue a prompt and return run_id. Reuse the same idempotency key on retry.',{type:'object',required:['text'],additionalProperties:false,properties:{text:{type:'string',minLength:1,maxLength:30000},delivery:{enum:['queue']},external_ref:{type:'string',maxLength:200}}});
  add(w+'/runs','get','List runs with limit (1–100) and offset query parameters; includes event_cursor.');add(w+'/runs/{runId}','get','Read status, output, errors and pending questions.');add(w+'/runs/{runId}/cancel','post','Cancel queued work or request interruption.',{type:'object'});add(w+'/runs/{runId}/answers','post','Answer a pending question owned by this run.',{type:'object',required:['request_id'],properties:{request_id:{type:['string','number']},decision:{enum:['accept','decline','cancel']},answers:{type:'object',additionalProperties:{type:'array',items:{type:'string'}}}}});add(w+'/events','get','SSE stream. Resume with after query or Last-Event-ID. Cursor is scoped to this workspace.');add(w+'/artifacts','get','List workspace artifacts; does not infer run ownership.');add(w+'/artifacts/{artifactId}','get','Download a registered artifact.');
  return {openapi:'3.1.0',info:{title:'ISP Block Maker Central Agent API',version:'1.0.0'},servers:[{url:origin+'/api/agent/v1'}],security:[{bearer:[]}],components:{securitySchemes:{bearer:{type:'http',scheme:'bearer'}}},paths};
 }

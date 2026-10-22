@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {openWorkspaceServer,findWorkspaceServer} from './workspace-open.mjs';
-import {normalizeWorkspaceFolder} from './project-layout.mjs';
+import {normalizeWorkspaceFolder,planProjectLayout} from './project-layout.mjs';
 import {installHubAgentApi} from './hub-agent-api.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -37,7 +37,7 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
   let address=null,info=null;try{address=await findWorkspaceServer(item.path);if(address)info=await health(address);}catch{}
   return {...item,name:path.basename(item.path),running:!!info,url:info?address:null,instance:info?.instance||null};
  }));}
- async function open(folder){openingCount++;try{const item=remember(folder);const result=await openWorkspaceServer(frameworkRoot,item.path);item.lastOpened=new Date().toISOString();persist();selected=item.id;selection++;return {...result,id:item.id,selection};}finally{openingCount--;}}
+ async function open(folder,show=true){openingCount++;try{const item=remember(folder);const result=await openWorkspaceServer(frameworkRoot,item.path);item.lastOpened=new Date().toISOString();persist();if(show){selected=item.id;selection++;}return {...result,id:item.id,selection};}finally{openingCount--;}}
  const closeHub=()=>{agentApi.close();if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);server.close();server.closeAllConnections();};
  app.disable('x-powered-by');
  app.use((req,res,next)=>{
@@ -50,7 +50,10 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  app.use('/api',(req,res,next)=>(req.path.startsWith('/agent/v1/')?agentApi.access.authorized(req):req.headers.authorization===`Bearer ${token}`)?next():res.status(401).json({error:'Missing or invalid hub credential'}));
  app.use('/api',express.json({limit:'128kb'}));
  app.use('/api',(req,res,next)=>stopping&&req.method!=='GET'?res.status(409).json({error:'전체 서버 종료 중입니다. 완료 후 다시 실행하세요.'}):next());
- agentApi=installHubAgentApi(app,{stateRoot,list,url:()=>url});
+ agentApi=installHubAgentApi(app,{stateRoot,list,url:()=>url,
+  register:folder=>{if(!path.isAbsolute(folder))throw Error('Use an absolute workspace folder');const canonical=normalizeWorkspaceFolder(folder);if(!fs.statSync(canonical).isDirectory())throw Error('Choose an existing directory');return remember(canonical);},
+  start:async folder=>{const plan=planProjectLayout(folder);if(!['ready','adopt'].includes(plan.kind))throw Object.assign(Error('Initialize this workspace explicitly with isp-block-maker init before starting it through the API'),{status:409});return open(folder,false);}
+ });
  app.get('/api/projects',async(req,res)=>res.json({projects:await list(),selected,selection}));
  app.post('/api/shutdown',(req,res)=>{
   if(req.body.instance!==instance)return res.status(409).json({error:'Hub instance changed'});

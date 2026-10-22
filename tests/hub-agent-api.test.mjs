@@ -65,3 +65,22 @@ test('central API routes two workspaces with one token, isolates sessions and re
  a.changeIdentity(b.folder);assert.equal((await call(pa+'/sessions')).status,409);a.changeIdentity(a.folder);
  await call('/agent-settings',{action:'disable'},undefined,true);assert.equal((await call(pa+'/sessions')).status,401);
 });
+
+
+test('workspace management is opt-in, registers idempotently without modifying files and persists',async t=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-register-')),folder=path.join(temp,'source');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'keep.txt'),'unchanged');
+ const stateRoot=path.join(temp,'state');let hub=await createHub({stateRoot,port:0}),token;
+ t.after(async()=>{await hub.close();fs.rmSync(temp,{recursive:true,force:true});});
+ const call=async(route,body,admin=false)=>{const r=await fetch(hub.url+'/api'+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+(admin?hub.token:token),'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
+ token=(await call('/agent-settings',{action:'enable',workspace_ids:[],manage_workspaces:true},true)).data.token;assert.ok(token);
+ assert.equal((await call('/agent/v1/workspaces',{path:'.'})).status,400);
+ const registered=await call('/agent/v1/workspaces',{path:folder});assert.equal(registered.status,200);const id=registered.data.workspace.id;
+ assert.equal((await call('/agent/v1/workspaces',{path:folder})).data.workspace.id,id);
+ assert.equal((await call('/agent/v1/workspaces')).data.workspaces.length,1);
+ assert.equal((await call('/agent/v1/workspaces/'+id+'/start',{})).status,409);
+ assert.deepEqual(fs.readdirSync(folder),['keep.txt']);assert.equal(fs.readFileSync(path.join(folder,'keep.txt'),'utf8'),'unchanged');
+ assert.equal((await call('/projects',undefined,true)).data.selected,null);
+ await hub.close();hub=await createHub({stateRoot,port:0});assert.equal((await call('/agent/v1/workspaces')).data.workspaces[0].id,id);
+ await call('/agent-settings',{action:'scope',workspace_ids:[id],manage_workspaces:false},true);
+ assert.equal((await call('/agent/v1/workspaces',{path:folder})).status,403);
+});
