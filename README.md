@@ -413,6 +413,10 @@ Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` def
 번들 미리보기는 데이터 파일별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
 
 
+## 외부 브릿지 연결 (개발 버전)
+
+Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 브릿지용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [API 사용법과 Python 예제](docs/personal-agent-api.md)를 참고하세요.
+
 ## 프로젝트 MCP 서버
 
 사이드바의 Project Skills 아래 **MCP Servers**에서 **MCP 추가**를 누릅니다. 이름, 연결 방식(STDIO/Streamable HTTP), 실행 명령과 JSON 인수 또는 URL·헤더, 적용할 에이전트(Codex/Claude Code)를 입력하고 **저장 및 적용**을 누르세요. 여러 서버를 등록하고 각각 비활성화하거나 삭제할 수 있습니다. STDIO 명령은 에이전트를 시작한 워크스페이스에서 실행됩니다. 서버 실행 도구와 패키지는 별도로 준비하세요.
