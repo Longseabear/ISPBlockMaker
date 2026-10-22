@@ -7,9 +7,9 @@ import {pipeline} from 'node:stream/promises';
 import {createWriteStream} from 'node:fs';
 import {packBundle,unpackBundle,planBundle} from '../server/bundles.mjs';
 import {openWorkspace} from '../server/workspaces.mjs';
-import {normalizeWorkspaceFolder} from '../server/project-layout.mjs';
+import {normalizeWorkspaceFolder,requireLayoutConsent,planProjectLayout,ensureProjectLayout} from '../server/project-layout.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-export function parseArgs(args){const flags=new Set(['--without-images','--without-visualizations','--without-viewer','--without-data','--with-git','--dry-run','--no-open','--overwrite','--help']),values=new Set(['-o','--into','--visualizations']);const positional=[],options={};for(let i=0;i<args.length;i++){const a=args[i];if(flags.has(a)){options[a]=true;}else if(values.has(a)){if(!args[i+1]||args[i+1].startsWith('--'))throw new Error('Missing value for '+a);options[a]=args[++i];}else if(a.startsWith('-'))throw new Error('Unknown option: '+a);else positional.push(a);}return {positional,options};}
+export function parseArgs(args){const flags=new Set(['--hub','--migrate-layout','--without-images','--without-visualizations','--without-viewer','--without-data','--with-git','--dry-run','--no-open','--overwrite','--help']),values=new Set(['-o','--into','--visualizations']);const positional=[],options={};for(let i=0;i<args.length;i++){const a=args[i];if(flags.has(a)){options[a]=true;}else if(values.has(a)){if(!args[i+1]||args[i+1].startsWith('--'))throw new Error('Missing value for '+a);options[a]=args[++i];}else if(a.startsWith('-'))throw new Error('Unknown option: '+a);else positional.push(a);}return {positional,options};}
 async function launch(folder){const executable=path.join(root,'ISPBlockMaker.exe');await fs.access(executable);const child=spawn(executable,folder?[folder]:[],{cwd:process.cwd(),detached:true,stdio:'ignore',windowsHide:false});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();}
 async function exportFromRunning(workspace,output,options){
  let c;try{c=JSON.parse(await fs.readFile(path.join(workspace,'.isp/connection.json'),'utf8'));}catch{return false;}
@@ -18,7 +18,31 @@ async function exportFromRunning(workspace,output,options){
  const response=await fetch(new URL('/api/bundle/export',url),{method:'POST',headers:{Authorization:'Bearer '+c.token,'Content-Type':'application/json'},body:JSON.stringify(options),redirect:'error',signal:AbortSignal.timeout(180000)});if(!response.ok)throw new Error((await response.json()).error||'Bundle export failed');let created=false;const out=createWriteStream(output,{flags:'wx'});out.once('open',()=>created=true);try{await pipeline(Readable.fromWeb(response.body),out);}catch(e){if(created)await fs.rm(output,{force:true});throw e;}return true;
 }
 export async function main(args=process.argv.slice(2)){
- const {positional:p,options:o}=parseArgs(args);if(o['--help']){console.log('isp-block-maker [folder]\nisp-block-maker pack [folder] -o project.bundle [--without-images] [--without-viewer] [--without-data] [--without-visualizations | --visualizations ID,ID] [--with-git] [--dry-run]\nisp-block-maker open project.bundle --into FOLDER [--overwrite] [--no-open]\n--overwrite replaces an existing workspace after preserving a sibling backup. Stop its server first.');return;}
+ const {positional:p,options:o}=parseArgs(args);if(o['--help']){console.log('isp-block-maker [folder]\nisp-block-maker init [folder] [--dry-run | --migrate-layout]\nisp-block-maker serve [folder] | serve --hub\nisp-block-maker pack [folder] -o project.bundle [--without-images] [--without-viewer] [--without-data] [--without-visualizations | --visualizations ID,ID] [--with-git] [--dry-run]\nisp-block-maker open project.bundle --into FOLDER [--overwrite] [--no-open]\n--overwrite replaces an existing workspace after preserving a sibling backup. Stop its server first.');return;}
+ if(p[0]==='init'){
+  if(p.length>2||Object.keys(o).some(k=>!['--dry-run','--migrate-layout'].includes(k)))throw Error('Use init [folder] [--dry-run | --migrate-layout]');
+  const folder=normalizeWorkspaceFolder(p[1]||'.');
+  if([root,path.join(root,'workspace'),path.join(root,'templates')].includes(folder))throw Error('Choose a project folder, not the framework or workspace container.');
+  if(o['--dry-run']){console.log(JSON.stringify(planProjectLayout(folder),null,2));return;}
+  const {findWorkspaceServer}=await import('../server/workspace-open.mjs');if(await findWorkspaceServer(folder))throw Error('Stop this workspace server before initialization.');
+  if(!o['--migrate-layout'])requireLayoutConsent(folder);
+  ensureProjectLayout(folder);openWorkspace(folder,root);console.log('Workspace initialized: '+folder);return;
+ }
+ if(p[0]==='serve'){
+  if(p.length>2||Object.keys(o).some(k=>k!=='--hub')||(o['--hub']&&p.length>1))throw Error('Use serve [folder] or serve --hub');
+  if(o['--hub']){
+   const {createHub,hubStateRoot}=await import('../server/hub.mjs');
+   const discovery=path.join(hubStateRoot(),'hub.json');
+   let record;try{record=JSON.parse(await fs.readFile(discovery,'utf8'));}catch{}
+   if(record){const u=new URL(record.url);if(u.protocol==='http:'&&u.hostname==='127.0.0.1'){const h=await fetch(u.origin+'/health',{signal:AbortSignal.timeout(1500)}).then(r=>r.json()).catch(()=>null);if(h?.app==='ISPBlockMakerHub'&&h.instance===record.instance){console.log('Central server already running: '+u.origin);return;}}}
+   const hub=await createHub({port:Number(process.env.ISP_HUB_PORT||4309)});console.log('Central server: '+hub.url+' (Ctrl+C to stop; no workspace opened)');
+   for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>hub.close().then(()=>process.exit(0)));return;
+  }
+  const folder=normalizeWorkspaceFolder(p[1]||'.');const plan=requireLayoutConsent(folder);
+  if(plan.kind!=='ready'&&plan.kind!=='adopt')throw Error('Initialize this workspace first: isp-block-maker init .');
+  process.env.ISP_WORKSPACE=folder;await import('../server/index.mjs');return;
+ }
+ if(o['--hub']||o['--migrate-layout'])throw Error('--hub is only for serve; --migrate-layout is only for init.');
  if(p[0]==='pack'){
   if(p.length>2||o['--into']||o['--no-open']||o['--overwrite']||o['--without-visualizations']&&o['--visualizations'])throw new Error('Use pack [folder] -o file.bundle');const workspace=normalizeWorkspaceFolder(p[1]||'.'),options={includeImages:!o['--without-images'],includeGit:!!o['--with-git'],includeVisualizations:!o['--without-visualizations'],includeViewer:!o['--without-viewer'],includeData:!o['--without-data'],...(o['--visualizations']?{artifactIds:o['--visualizations'].split(',').map(s=>s.trim()).filter(Boolean)}:{})};
   if(o['--dry-run']){const {files,...plan}=await planBundle(workspace,options);console.log(JSON.stringify({...plan,files:files.map(({path,size})=>({path,size}))},null,2));return;}
@@ -27,6 +51,6 @@ export async function main(args=process.argv.slice(2)){
  if(p[0]==='open'||p[0]?.toLowerCase().endsWith('.bundle')){
   const file=p[0]==='open'?p[1]:p[0];if(!file||p.length>(p[0]==='open'?2:1)||!o['--into']||Object.keys(o).some(key=>!['--into','--no-open','--overwrite'].includes(key)))throw new Error('Use open file.bundle --into FOLDER [--overwrite] [--no-open]');const result=await unpackBundle(path.resolve(file),o['--into'],{overwrite:!!o['--overwrite'],prepare:stage=>openWorkspace(stage,root),finalize:destination=>openWorkspace(destination,root)});console.log('Bundle restored: '+result.workspace);if(result.backupPath)console.log('Original workspace backup: '+result.backupPath);if(!result.manifest.includeImages)console.log('Viewer originals omitted; existing crops remain available.');if(!o['--no-open'])await launch(result.workspace);return;
  }
- if(p.length>1||Object.keys(o).length)throw new Error('Unknown command or option. Run --help.');await launch(normalizeWorkspaceFolder(p[0]||'.'));
+ if(p.length>1||Object.keys(o).length)throw new Error('Unknown command or option. Run --help.');if(p.length===0){await launch(null);return;}const folder=normalizeWorkspaceFolder(p[0]);requireLayoutConsent(folder);await launch(folder);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e.message);process.exitCode=1;});

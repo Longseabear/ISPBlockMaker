@@ -33,7 +33,8 @@ class ServerManager : Form {
     public static Dictionary<string,object> SendOpen(string root,string folder) {
         string node=Path.Combine(root,"node.exe");if(!File.Exists(node))node="node.exe";
         var info=new ProcessStartInfo(node,"\""+Path.Combine(root,"server","hub.mjs")+"\" --open") {WorkingDirectory=root,UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8,StandardErrorEncoding=Encoding.UTF8};
-        info.EnvironmentVariables["ISP_MANAGER_FOLDER"]=folder;
+        info.EnvironmentVariables["ISP_MANAGER_FOLDER"]=folder??"";
+        info.EnvironmentVariables["ISP_MANAGER_ONLY"]=folder==null?"1":"0";
         using(var child=Process.Start(info)) {
             var errors=child.StandardError.ReadToEndAsync();
             string output=child.StandardOutput.ReadToEnd();
@@ -128,6 +129,7 @@ class ServerManager : Form {
             projects.BeginUpdate();projects.Items.Clear();
             foreach(object row in rows){var p=(Dictionary<string,object>)row;bool live=Convert.ToBoolean(p["running"]);if(live)running++;var item=new ListViewItem(new[]{Convert.ToString(p["name"]),live?"실행 중":"종료됨",Convert.ToString(p["url"]),Convert.ToString(p["path"])});item.Tag=p;projects.Items.Add(item);string id=Convert.ToString(p["id"]);if(id==(next!=selection?target:keep))item.Selected=true;if(id==target&&live)requested=p;}
             projects.EndUpdate();status.Text=running+"개 실행 중 · 전체 "+rows.Count+"개  |  X: 관리 창만 닫기 · 서버/작업 유지\n완전히 종료하려면 ‘전체 서버 종료’ · 다시 열기: isp-block-maker .";
+            if(next!=selection&&String.IsNullOrEmpty(target)){selection=next;if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;Activate();}
             if(next!=selection&&requested!=null){var address=new Uri(Convert.ToString(requested["url"]));if(address.Scheme!="http"||address.Host!="127.0.0.1")throw new Exception("Invalid server URL");if(Environment.GetEnvironmentVariable("ISP_MANAGER_NO_BROWSER")!="1")Process.Start(new ProcessStartInfo(address.AbsoluteUri){UseShellExecute=true});selection=next;if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;Activate();}
         }catch(Exception e){if(!IsDisposed)status.Text=e.Message;}finally{polling=false;}
     }

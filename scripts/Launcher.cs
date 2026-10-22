@@ -174,15 +174,16 @@ class Launcher : Form {
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
         string root=AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         int port; if(!Int32.TryParse(Environment.GetEnvironmentVariable("PORT") ?? "4310",out port) || port<1 || port>65535) { MessageBox.Show("PORT must be 1–65535"); return; }
-        string workspace;
+        string workspace=null;
         try {
             string argument=Array.Find(args,a=>!a.StartsWith("--"));
-            if(argument==null) {
+            if(argument==null && Array.IndexOf(args,"--self-test")>=0) {
                 using(var picker=new FolderBrowserDialog {Description="ISP 작업 폴더를 선택하세요",ShowNewFolderButton=true}) {
                     if(picker.ShowDialog()!=DialogResult.OK) return;
                     argument=picker.SelectedPath;
                 }
             }
+            if(argument!=null){
             workspace=Path.GetFullPath(argument);
             if(!Directory.Exists(workspace)) throw new Exception("작업 폴더가 없습니다: "+workspace);
             // Resolve junctions through bundled Node before deriving workspace identity.
@@ -190,6 +191,7 @@ class Launcher : Form {
             var resolve=new ProcessStartInfo(node,"-e \"process.stdout.write(require('fs').realpathSync(process.env.ISP_CANONICAL_FOLDER))\"") {UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8};
             resolve.EnvironmentVariables["ISP_CANONICAL_FOLDER"]=workspace;
             using(var canonical=Process.Start(resolve)) { string output=canonical.StandardOutput.ReadToEnd(); canonical.WaitForExit(); if(canonical.ExitCode!=0) throw new Exception("작업 폴더 경로를 확인할 수 없습니다."); workspace=output; }
+            }
         } catch(Exception e) { Environment.ExitCode=1; MessageBox.Show(e.Message,"ISP Block Maker"); return; }
         if(Array.IndexOf(args,"--self-test")<0) {
             try {

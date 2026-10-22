@@ -6,6 +6,7 @@ import path from "node:path";
 import net from "node:net";
 import {spawn} from "node:child_process";
 import {once} from "node:events";
+import {ensureProjectLayout} from '../server/project-layout.mjs';
 
 test("folder servers keep separate context and refuse in-place workspace switching",{timeout:60000},async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),"isp-multi-"));const running=[];
@@ -31,9 +32,13 @@ test("folder servers keep separate context and refuse in-place workspace switchi
   assert.equal((await connect(b.workspace)).url,b.url);
   assert.equal((await connect(a.workspace)).url,a.url);
   const existing=path.join(temp,'기존 프로젝트');fs.mkdirSync(existing);
-  // Keep the destination in the old root layout to exercise migration on open.
+  // Opening must refuse relocation until the user explicitly initializes the layout.
   fs.copyFileSync(path.join(b.workspace,'project/graph.json'),path.join(existing,'graph.json'));
   fs.writeFileSync(path.join(existing,'AGENTS.md'),'Preserve this project guide.');
+  const refused=await fetch(a.url+'/api/workspace/open',{method:'POST',headers:a.headers,body:JSON.stringify({path:existing})});
+  assert.equal(refused.status,400);assert.match((await refused.json()).error,/자동 이동하지 않았습니다/);
+  assert.equal(fs.existsSync(path.join(existing,'graph.json')),true);assert.equal(fs.existsSync(path.join(existing,'project')),false);
+  ensureProjectLayout(existing);
   const opened=await Promise.all([connect(existing),connect(existing)]);
   assert.equal(opened[0].url,opened[1].url);
   const target=opened[0].url,health=await fetch(target+'/health').then(r=>r.json()),boot=await fetch(target+'/api/bootstrap').then(r=>r.json());

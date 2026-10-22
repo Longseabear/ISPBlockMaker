@@ -1,5 +1,23 @@
 # Windows offline installation
 
+## Safe opening and server-only commands (v0.1.29+)
+
+`isp-block-maker` with no arguments opens only the Windows server manager and central server. It does not select, initialize or open the current folder. The Start menu shortcut behaves the same way. `isp-block-maker .` explicitly opens the current workspace in the manager and browser.
+
+Normal opening refuses a layout that would move existing entries into `project/`. It prints an explicit initialization command instead. Empty folders can be initialized normally; already initialized workspaces keep their layout. Linked repositories and unsupported layouts still require manual handling.
+
+```powershell
+isp-block-maker init . --dry-run
+isp-block-maker init . --migrate-layout
+isp-block-maker .
+```
+
+The first command only previews the move/copy plan. The second explicitly authorizes it and initializes workspace guidance/state without opening a server. Existing files and Git may move under `project/`; this is not an in-place source-root mode. Do not run migration unless that layout change is intended.
+
+For an initialized workspace, `isp-block-maker serve .` starts only its server in the current terminal, without a manager window or browser. Ctrl+C stops it. It still maintains normal workspace runtime records and managed guidance.
+
+`isp-block-maker serve --hub` starts only the central server. It does not open or initialize the current folder. If the central server already exists, it prints its address and exits. Otherwise Ctrl+C stops the newly started central server; workspace servers remain independent.
+
 ## Advanced options: central Agent API
 
 The native manager has **서버 / 고급 옵션** tabs. Advanced options manages one bridge token and an explicit allowlist of registered workspace IDs. The bridge uses the central URL, never per-workspace ports or credentials. Access is disabled by default and localhost-only. Offline workers are not automatically started.

@@ -82,6 +82,7 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
   }finally{if(!complete)stopping=false;}
  });
  app.post('/api/open',async(req,res)=>{if(typeof req.body.path!=='string')throw Error('Choose a folder');res.json(await open(req.body.path));});
+ app.post('/api/manager/open',(_req,res)=>{selected=null;selection++;res.json({selection});});
  app.post('/api/projects/:id/stop',async(req,res)=>{
   const item=projects.find(p=>p.id===req.params.id);if(!item) return res.status(404).json({error:'Project not found'});
   const address=await findWorkspaceServer(item.path);if(!address)return res.json({stopped:true});
@@ -119,7 +120,7 @@ export async function openInHub(folder){
   if(!record)throw Error('Hub startup timed out');
  }
  if(record.root&&key(path.resolve(record.root))!==key(root))throw Error('다른 설치 버전의 서버 관리 창이 실행 중입니다. 기존 Windows 서버 관리 창을 닫은 뒤 다시 실행하세요. 프로젝트 서버는 유지됩니다.');
- const response=await fetch(record.url+'/api/open',{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${record.token}`,'Content-Type':'application/json'},body:JSON.stringify({path:path.resolve(folder),launch:false}),signal:AbortSignal.timeout(120000)});
+ const response=await fetch(record.url+(folder?'/api/open':'/api/manager/open'),{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${record.token}`,'Content-Type':'application/json'},body:JSON.stringify(folder?{path:path.resolve(folder),launch:false}:{}),signal:AbortSignal.timeout(120000)});
  const result=await response.json();if(!response.ok)throw Error(result.error);
 
  return {url:record.url,workspace:result.workspace};
@@ -130,5 +131,5 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)&&process.argv.includes('--open')){
- try{console.log(JSON.stringify(await openInHub(process.env.ISP_MANAGER_FOLDER||process.cwd())));}catch(e){console.error(e.message);process.exitCode=1;}
+ try{console.log(JSON.stringify(await openInHub(process.env.ISP_MANAGER_ONLY==='1'?null:process.env.ISP_MANAGER_FOLDER||process.cwd())));}catch(e){console.error(e.message);process.exitCode=1;}
 }

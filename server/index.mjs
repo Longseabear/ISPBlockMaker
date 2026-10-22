@@ -42,7 +42,7 @@ import { readImplementation } from "./source.mjs";
 import { recordActivity, readActivity, summarySchema } from "./activity.mjs";
 import { openWorkspace } from "./workspaces.mjs";
 import { versionStatus, previewVersion, switchVersion, commitChanges } from "./versions.mjs";
-import { sourceRoot } from "./project-layout.mjs";
+import { sourceRoot,requireLayoutConsent } from "./project-layout.mjs";
 import {installProjectSkills,listProjectSkills} from './project-skills.mjs';
 import { listTracking, createAttempt, updateAttempt, acceptAttempt, createCheckpoint, previewRestore, restoreCheckpoint, compareCheckpoints } from "./tracking.mjs";
 
@@ -51,6 +51,7 @@ const {runtime, workspaceConfig, initialFolder} = serverPaths(root);
 fs.mkdirSync(initialFolder, { recursive: true });
 const existingServer = await findWorkspaceServer(initialFolder);
 if (existingServer) throw new Error(`Workspace server is already running at ${existingServer}. Open it, or stop it before restarting. No workspace files were moved.`);
+requireLayoutConsent(initialFolder);
 const opened = openWorkspace(initialFolder, root);
 let { workspace, dataDir, artifactDir, store } = opened;
 let cliPath = opened.cli;
@@ -388,6 +389,7 @@ app.post("/api/workspace", (req, res) => {
       .json({ error: "실행 중인 예제가 끝난 뒤 폴더를 변경하세요." });
   if (process.env.ISP_WORKSPACE && fs.realpathSync(input.path) !== workspace)
     return res.status(409).json({error: "폴더별 서버입니다. 다른 폴더에서 isp-block-maker . 명령으로 새 서버를 여세요."});
+  requireLayoutConsent(input.path);
   const opened = openWorkspace(input.path, root);
   if (opened.workspace === workspace) return res.json({ workspace });
   for (const session of sessions.values()) {

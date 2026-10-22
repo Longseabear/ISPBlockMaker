@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { once } from "node:events";
 import { WebSocket } from "ws";
 import { createStore } from "../server/store.mjs";
+import {ensureProjectLayout} from '../server/project-layout.mjs';
 
 test(
   "local API authenticates, validates writes, serves isolated artifacts and streams shell I/O",
@@ -16,8 +17,9 @@ test(
   async () => {
     const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "isp-api-test-"));
     const dir = path.join(testRoot, ".isp");
-    // A legacy root graph must migrate while its local requests and artifacts stay put.
+    // Migration is explicit; ordinary server startup must not relocate existing files.
     createStore(dir, path.join(testRoot, "graph.json"));
+    ensureProjectLayout(testRoot);
     const graphFile = path.join(testRoot, "project", "graph.json");
     const probe = net.createServer();
     probe.listen(0, "127.0.0.1");

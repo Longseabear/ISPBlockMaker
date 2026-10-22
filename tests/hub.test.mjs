@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
-import {createHub} from '../server/hub.mjs';
+import {createHub,openInHub} from '../server/hub.mjs';
 import {openWorkspaceServer} from '../server/workspace-open.mjs';
 import {listWorkspaces} from '../server/workspace-registry.mjs';
 
@@ -18,6 +18,8 @@ test('unified hub adopts existing servers, preserves isolated projects, serializ
   const existing=await openWorkspaceServer(process.cwd(),a);running.set(a,existing.url);
   hub=await createHub({stateRoot,port:0});const api=async(route,body,method)=>{const response=await fetch(hub.url+'/api'+route,{method:method||(body?'POST':'GET'),headers:{Authorization:'Bearer '+hub.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()};};
   assert.equal((await fetch(hub.url+'/api/projects')).status,401);
+  const managerOnly=await openInHub(null);assert.equal(managerOnly.url,hub.url);assert.equal(managerOnly.workspace,undefined);
+  assert.equal((await api('/projects')).data.selected,null);
   assert.equal((await fetch(hub.url+'/api/bootstrap',{headers:{Origin:'http://evil.invalid'}})).status,403);
   assert.equal(await new Promise((resolve,reject)=>{http.get(hub.url+'/api/projects',{headers:{Host:'evil.invalid',Authorization:'Bearer '+hub.token}},r=>{r.resume();resolve(r.statusCode);}).on('error',reject);}),403);
   let listing=(await api('/projects')).data;assert.equal(listing.projects.length,1);assert.equal(listing.projects[0].url,existing.url);

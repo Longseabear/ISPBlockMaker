@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {startBundleWorkspace} from './bundle-import.mjs';
-import {normalizeWorkspaceFolder} from './project-layout.mjs';
+import {normalizeWorkspaceFolder,requireLayoutConsent} from './project-layout.mjs';
 const opening=new Map();
 export async function findWorkspaceServer(folder){
  const workspace=normalizeWorkspaceFolder(folder);
@@ -20,7 +20,7 @@ export async function openWorkspaceServer(root,folder){
  if(!fs.statSync(workspace).isDirectory())throw new Error('작업 폴더를 선택하세요.');
  const key=process.platform==='win32'?workspace.toLowerCase():workspace;
  if(opening.has(key))return opening.get(key);
- const pending=(async()=>({workspace,url:await findWorkspaceServer(workspace)||await startBundleWorkspace(root,workspace)}))();
+ const pending=(async()=>{const existing=await findWorkspaceServer(workspace);if(existing)return {workspace,url:existing};requireLayoutConsent(workspace);return {workspace,url:await startBundleWorkspace(root,workspace)};})();
  opening.set(key,pending);
  try{return await pending;}finally{opening.delete(key);}
 }

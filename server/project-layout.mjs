@@ -140,6 +140,12 @@ function copyGuidance(from, to, state) {
 }
 
 /** A read-only migration preview; call this before stopping a live workspace server. */
+export function requireLayoutConsent(workspace) {
+  const plan=planProjectLayout(workspace);
+  if(plan.kind==='resume'||plan.actions.length)throw new Error('이 폴더는 project/ 구조로 파일 이동이 필요합니다. 자동 이동하지 않았습니다. 먼저 isp-block-maker init "'+plan.workspace+'" --dry-run 으로 확인하고, 동의하면 isp-block-maker init "'+plan.workspace+'" --migrate-layout 을 실행하세요.');
+  return plan;
+}
+
 export function planProjectLayout(workspace) {
   const root = rootFolder(workspace);
   const project = path.join(root, "project");
