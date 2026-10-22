@@ -415,7 +415,7 @@ Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` def
 
 ## 외부 브릿지 연결 (v0.1.27+)
 
-Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 브릿지용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [API 사용법과 Python 예제](docs/personal-agent-api.md)를 참고하세요.
+Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 브릿지용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [브릿지 구축 가이드·개발 에이전트용 요청문·Python 예제](docs/personal-agent-api.md)를 참고하세요.
 
 ## 프로젝트 MCP 서버
 
