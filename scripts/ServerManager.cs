@@ -13,12 +13,12 @@ using System.Collections.Generic;
 class ServerManager : Form {
     readonly string root, initialFolder;
     readonly ListView projects=new ListView {Dock=DockStyle.Fill,View=View.Details,FullRowSelect=true,MultiSelect=false,HideSelection=false};
-    readonly Label status=new Label {Dock=DockStyle.Bottom,Height=55,Padding=new Padding(12)};
+    readonly Label status=new Label {Dock=DockStyle.Bottom,Height=64,Padding=new Padding(16,10,16,8),BackColor=Color.FromArgb(243,245,248),ForeColor=Color.FromArgb(80,90,105)};
     readonly Button open=new Button {Text="시작 / 웹 열기",AutoSize=true};
     readonly Button stop=new Button {Text="선택 서버 종료",AutoSize=true};
     readonly Button add=new Button {Text="폴더 열기…",AutoSize=true};
     readonly Button refresh=new Button {Text="새로고침",AutoSize=true};
-    readonly Button stopAll=new Button {Text="전체 서버 종료",AutoSize=true,ForeColor=Color.Firebrick};
+    readonly Button stopAll=new Button {Text="전체 서버 종료…",AutoSize=true,ForeColor=Color.Firebrick};
     readonly TabControl tabs=new TabControl {Dock=DockStyle.Fill};
     readonly CheckedListBox agentScope=new CheckedListBox {Dock=DockStyle.Fill,CheckOnClick=true,Height=140};
     readonly TextBox agentUrl=new TextBox {Dock=DockStyle.Fill,ReadOnly=true};
@@ -52,13 +52,20 @@ class ServerManager : Form {
     }
     public ServerManager(string appRoot,string folder) {
         root=appRoot;initialFolder=folder;
-        Text="ISP Block Maker · 서버 관리";Size=new Size(1050,680);MinimumSize=new Size(780,460);StartPosition=FormStartPosition.CenterScreen;Font=new Font("Segoe UI",10);
-        var heading=new Label {Text="ISP Block Maker  /  실행 중 · 최근 프로젝트",Dock=DockStyle.Top,Height=60,Padding=new Padding(16),Font=new Font("Segoe UI",14,FontStyle.Bold)};
-        var actions=new FlowLayoutPanel {Dock=DockStyle.Bottom,Height=58,Padding=new Padding(12)};
-        actions.Controls.AddRange(new Control[]{add,open,stop,refresh,stopAll});
-        projects.Columns.Add("프로젝트",165);projects.Columns.Add("상태",90);projects.Columns.Add("서버 주소",205);projects.Columns.Add("폴더",550);
-        var serversPage=new TabPage("서버");serversPage.Controls.Add(projects);serversPage.Controls.Add(actions);tabs.TabPages.Add(serversPage);
-        var advancedPage=new TabPage("고급 옵션");
+        Text="ISP Block Maker · 서버 관리";Size=new Size(1050,680);MinimumSize=new Size(780,460);StartPosition=FormStartPosition.CenterScreen;Font=new Font("Segoe UI",10);AutoScaleMode=AutoScaleMode.Dpi;BackColor=Color.White;
+        var heading=new Label {Text="ISP Block Maker",Dock=DockStyle.Top,Height=64,Padding=new Padding(20,16,20,12),Font=new Font("Segoe UI",17,FontStyle.Bold)};
+        var actions=new FlowLayoutPanel {Dock=DockStyle.Top,Height=64,Padding=new Padding(12),WrapContents=false};
+        actions.Controls.AddRange(new Control[]{add,open,stop,refresh});
+        var shutdown=new TableLayoutPanel {Dock=DockStyle.Bottom,Height=76,ColumnCount=2,Padding=new Padding(14,12,14,8),BackColor=Color.FromArgb(248,249,251)};
+        shutdown.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));shutdown.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        shutdown.Controls.Add(new Label {Text="모든 서버와 작업 종료\n관리 목록의 서버·에이전트·터미널과 중앙 API를 종료합니다.",AutoSize=true,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(80,90,105)},0,0);
+        stopAll.Anchor=AnchorStyles.Right;shutdown.Controls.Add(stopAll,1,0);
+        projects.BorderStyle=BorderStyle.None;projects.HeaderStyle=ColumnHeaderStyle.Nonclickable;projects.ShowItemToolTips=true;
+        projects.Columns.Add("워크스페이스",180);projects.Columns.Add("상태",90);projects.Columns.Add("서버 주소",190);projects.Columns.Add("폴더",500);
+        var serversPage=new TabPage("서버") {Padding=new Padding(8),BackColor=Color.White};serversPage.Controls.Add(projects);serversPage.Controls.Add(actions);serversPage.Controls.Add(shutdown);tabs.TabPages.Add(serversPage);
+        projects.SelectedIndexChanged+=(s,e)=>UpdateActions();
+        projects.Resize+=(s,e)=>{if(projects.Columns.Count==4)projects.Columns[3].Width=Math.Max(180,projects.ClientSize.Width-480);};
+        var advancedPage=new TabPage("고급 옵션") {BackColor=Color.White};
         var advanced=new TableLayoutPanel {Dock=DockStyle.Fill,AutoScroll=true,ColumnCount=1,Padding=new Padding(16)};
         advanced.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         advanced.Controls.Add(new Label {Text="Agent API · 메신저 / 외부 프로그램 연결",AutoSize=true,Font=new Font("Segoe UI",12,FontStyle.Bold)});
@@ -76,6 +83,7 @@ class ServerManager : Form {
         copyToken.Click+=(s,e)=>{try{if(agentToken.Text.Length>0)Clipboard.SetText(agentToken.Text);}catch(Exception ex){agentStatus.Text=ex.Message;}};
         copyUrl.Click+=(s,e)=>{try{if(agentUrl.Text.Length>0)Clipboard.SetText(agentUrl.Text);}catch(Exception ex){agentStatus.Text=ex.Message;}};
         docs.Click+=(s,e)=>{try{Process.Start(new ProcessStartInfo(Path.Combine(root,"docs","personal-agent-api.md")){UseShellExecute=true});}catch(Exception ex){agentStatus.Text=ex.Message;}};
+        StyleControls(this);UpdateActions();
         status.Text="서버 목록을 확인하고 있습니다…";
         open.Click+=async(s,e)=>await OpenSelected();projects.DoubleClick+=async(s,e)=>await OpenSelected();
         add.Click+=async(s,e)=>{using(var picker=new FolderBrowserDialog {Description="ISP 작업 폴더",ShowNewFolderButton=true})if(picker.ShowDialog(this)==DialogResult.OK)await OpenFolder(picker.SelectedPath);};
@@ -86,7 +94,18 @@ class ServerManager : Form {
         FormClosed+=(s,e)=>{agentToken.Clear();};
     }
     Dictionary<string,object> Selected(){return projects.SelectedItems.Count==0?null:(Dictionary<string,object>)projects.SelectedItems[0].Tag;}
-    void SetBusy(bool value){busy=value;add.Enabled=open.Enabled=stop.Enabled=stopAll.Enabled=refresh.Enabled=agentActions.Enabled=!value;}
+    static void StyleControls(Control parent){
+        foreach(Control control in parent.Controls){
+            var button=control as Button;
+            if(button!=null){button.FlatStyle=FlatStyle.Flat;button.FlatAppearance.BorderColor=Color.FromArgb(211,217,225);button.BackColor=Color.White;button.Padding=new Padding(10,5,10,5);button.Margin=new Padding(0,0,8,0);button.Cursor=Cursors.Hand;}
+            StyleControls(control);
+        }
+    }
+    void UpdateActions(){
+        var selected=Selected();bool live=selected!=null&&Convert.ToBoolean(selected["running"]);
+        open.Enabled=!busy&&selected!=null;open.Text=live?"웹 열기":"서버 시작";stop.Enabled=!busy&&live;
+    }
+    void SetBusy(bool value){busy=value;add.Enabled=stopAll.Enabled=refresh.Enabled=agentActions.Enabled=agentScope.Enabled=!value;UpdateActions();}
     async Task LoadAgentSettings(){
         if(busy||url==null)return;SetBusy(true);
         try{var data=await Task.Run(()=>Request("/api/agent-settings"));agentUrl.Text=Convert.ToString(data["base_url"]);agentStatus.Text=Convert.ToBoolean(data["enabled"])?"중앙 Agent API 켜짐 · 허용된 워크스페이스에만 접근":"중앙 Agent API 꺼짐";agentToken.Clear();
@@ -127,15 +146,15 @@ class ServerManager : Form {
             var rows=(System.Collections.IList)result["projects"];int running=0;Dictionary<string,object> requested=null;
             int next=Convert.ToInt32(result["selection"]);string target=Convert.ToString(result["selected"]);
             projects.BeginUpdate();projects.Items.Clear();
-            foreach(object row in rows){var p=(Dictionary<string,object>)row;bool live=Convert.ToBoolean(p["running"]);if(live)running++;var item=new ListViewItem(new[]{Convert.ToString(p["name"]),live?"실행 중":"종료됨",Convert.ToString(p["url"]),Convert.ToString(p["path"])});item.Tag=p;projects.Items.Add(item);string id=Convert.ToString(p["id"]);if(id==(next!=selection?target:keep))item.Selected=true;if(id==target&&live)requested=p;}
-            projects.EndUpdate();status.Text=running+"개 실행 중 · 전체 "+rows.Count+"개  |  X: 관리 창만 닫기 · 서버/작업 유지\n완전히 종료하려면 ‘전체 서버 종료’ · 다시 열기: isp-block-maker .";
+            foreach(object row in rows){var p=(Dictionary<string,object>)row;bool live=Convert.ToBoolean(p["running"]);if(live)running++;var item=new ListViewItem(new[]{Convert.ToString(p["name"]),live?"실행 중":"종료됨",Convert.ToString(p["url"]),Convert.ToString(p["path"])});item.Tag=p;item.ToolTipText=Convert.ToString(p["path"]);item.ForeColor=live?Color.FromArgb(28,108,78):Color.FromArgb(105,115,128);projects.Items.Add(item);string id=Convert.ToString(p["id"]);if(id==(next!=selection?target:keep))item.Selected=true;if(id==target&&live)requested=p;}
+            projects.EndUpdate();UpdateActions();status.Text=running+"개 실행 중 · 전체 "+rows.Count+"개  |  X: 관리 창만 닫기 · 서버/작업 유지\n완전히 종료하려면 ‘전체 서버 종료’ · 다시 열기: isp-block-maker";
             if(next!=selection&&String.IsNullOrEmpty(target)){selection=next;if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;Activate();}
             if(next!=selection&&requested!=null){var address=new Uri(Convert.ToString(requested["url"]));if(address.Scheme!="http"||address.Host!="127.0.0.1")throw new Exception("Invalid server URL");if(Environment.GetEnvironmentVariable("ISP_MANAGER_NO_BROWSER")!="1")Process.Start(new ProcessStartInfo(address.AbsoluteUri){UseShellExecute=true});selection=next;if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;Activate();}
         }catch(Exception e){if(!IsDisposed)status.Text=e.Message;}finally{polling=false;}
     }
     async Task StopSelected(){
         var item=Selected();if(item==null||busy||!Convert.ToBoolean(item["running"]))return;
-        if(MessageBox.Show(this,Convert.ToString(item["path"])+"\n\n이 서버의 에이전트와 터미널도 종료됩니다. 종료할까요?","서버 종료",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
+        if(MessageBox.Show(this,Convert.ToString(item["path"])+"\n\n이 서버의 에이전트와 터미널도 종료됩니다. 종료할까요?","서버 종료",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
         SetBusy(true);try{await Task.Run(()=>Request("/api/projects/"+item["id"]+"/stop",new {instance=item["instance"]}));status.Text="종료 요청을 보냈습니다.";}catch(Exception e){status.Text=e.Message;}finally{SetBusy(false);}
     }
     async Task StopAll(){
