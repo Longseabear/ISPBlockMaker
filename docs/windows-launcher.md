@@ -4,7 +4,14 @@
 
 The native manager has **서버 / 고급 옵션** tabs. Advanced options manages one bridge token and an explicit allowlist of registered workspace IDs. The bridge uses the central URL, never per-workspace ports or credentials. Access is disabled by default and localhost-only. Offline workers are not automatically started.
 
-When enabled, closing the manager leaves the Hub running for bridge requests. Disabling access does not cancel accepted jobs. Reopen the manager after a PC restart. Existing manager and worker processes must restart to load updated code. See [Agent API usage](personal-agent-api.md).
+Closing the manager leaves the Hub and workspace servers running, regardless of whether Agent API is enabled. Disabling API access does not cancel accepted jobs. Reopen the manager with `isp-block-maker .`. Existing manager and worker processes must restart to load updated code. See [Agent API usage](personal-agent-api.md).
+
+## Closing and stopping (v0.1.28+)
+
+- **X / window close** closes only the manager. Terminals, agents and the central server continue. Reopening the manager reconnects and refreshes its credentials if the Hub instance changed.
+- **선택 서버 종료** stops one workspace server and its terminals/agents.
+- **전체 서버 종료** confirms the currently running registered workspace servers, stops them, verifies their ports have closed, and then stops the central server and closes the manager. Projects, session records and API configuration remain on disk. Unregistered servers started separately are outside this manager's scope.
+- A changed server list requires confirmation again. If any stop fails, the manager and Hub remain available and report the failed servers; already stopped servers stay stopped. New starts and central API mutations are rejected during shutdown.
 
 ## Installation
 

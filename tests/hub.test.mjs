@@ -37,5 +37,10 @@ test('unified hub adopts existing servers, preserves isolated projects, serializ
   assert.equal(listing.projects.find(p=>p.id===target.id).running,false);assert.equal(listing.projects.find(p=>p.path===a).running,true);
   await hub.close();hub=await createHub({stateRoot,port:0});listing=(await api('/projects')).data;assert.equal(listing.projects.length,2);assert.equal(listing.projects.find(p=>p.path===a).url,existing.url);
   const restart=(await api('/open',{path:b})).data;running.set(b,restart.url);assert.equal(restart.id,target.id);assert.notEqual((await fetch(restart.url+'/health').then(r=>r.json())).instance,target.instance);
+  listing=(await api('/projects')).data;
+  const identity=await fetch(hub.url+'/health').then(r=>r.json());
+  const all=await api('/shutdown-all',{instance:identity.instance,servers:listing.projects.filter(p=>p.running).map(p=>({id:p.id,instance:p.instance}))});
+  assert.equal(all.status,200);assert.ok(all.data.results.every(p=>p.stopped));
+  await new Promise(r=>setTimeout(r,250));await assert.rejects(fetch(hub.url+'/health'));
  }finally{await hub?.close();await Promise.all([...running.values()].map(stop));await new Promise(r=>setTimeout(r,1200));if(old===undefined)delete process.env.ISP_STATE_HOME;else process.env.ISP_STATE_HOME=old;assert.equal(path.dirname(temp),path.resolve(os.tmpdir()));fs.rmSync(temp,{recursive:true,force:true});}
 });

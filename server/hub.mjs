@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
+import net from 'node:net';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -16,12 +17,13 @@ const read=file=>{try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{ret
 const key=p=>process.platform==='win32'?p.toLowerCase():p;
 const localUrl=value=>{const u=new URL(value);if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||u.username||u.password)throw Error('Invalid local address');return u.origin;};
 async function health(url){return fetch(localUrl(url)+'/health',{redirect:'error',signal:AbortSignal.timeout(1500)}).then(r=>r.ok?r.json():null).catch(()=>null);}
+async function portClosed(url){const address=new URL(localUrl(url));return new Promise(resolve=>{const socket=net.connect({host:address.hostname,port:Number(address.port)});const done=value=>{socket.destroy();resolve(value);};socket.setTimeout(1000,()=>done(false));socket.once('connect',()=>done(false));socket.once('error',error=>done(error.code==='ECONNREFUSED'));});}
 
 export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,port=4309}={}){
  if(!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid hub port');
  fs.mkdirSync(stateRoot,{recursive:true});
  const registryFile=path.join(stateRoot,'hub-projects.json'),discovery=path.join(stateRoot,'hub.json');
- let projects=read(registryFile)||[],selected=null,selection=0;
+ let projects=read(registryFile)||[],selected=null,selection=0,stopping=false,openingCount=0;
  const token=crypto.randomBytes(32).toString('hex'),instance=crypto.randomUUID();
  const app=express(),server=http.createServer(app);let url,agentApi;
  const persist=()=>{fs.writeFileSync(registryFile+'.tmp',JSON.stringify(projects));fs.renameSync(registryFile+'.tmp',registryFile);};
@@ -35,7 +37,8 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
   let address=null,info=null;try{address=await findWorkspaceServer(item.path);if(address)info=await health(address);}catch{}
   return {...item,name:path.basename(item.path),running:!!info,url:info?address:null,instance:info?.instance||null};
  }));}
- async function open(folder){const item=remember(folder);const result=await openWorkspaceServer(frameworkRoot,item.path);item.lastOpened=new Date().toISOString();persist();selected=item.id;selection++;return {...result,id:item.id,selection};}
+ async function open(folder){openingCount++;try{const item=remember(folder);const result=await openWorkspaceServer(frameworkRoot,item.path);item.lastOpened=new Date().toISOString();persist();selected=item.id;selection++;return {...result,id:item.id,selection};}finally{openingCount--;}}
+ const closeHub=()=>{agentApi.close();if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);server.close();server.closeAllConnections();};
  app.disable('x-powered-by');
  app.use((req,res,next)=>{
   const origin=new URL(url).origin;
@@ -46,12 +49,37 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  app.get('/api/bootstrap',(req,res)=>res.json({token,instance}));
  app.use('/api',(req,res,next)=>(req.path.startsWith('/agent/v1/')?agentApi.access.authorized(req):req.headers.authorization===`Bearer ${token}`)?next():res.status(401).json({error:'Missing or invalid hub credential'}));
  app.use('/api',express.json({limit:'128kb'}));
+ app.use('/api',(req,res,next)=>stopping&&req.method!=='GET'?res.status(409).json({error:'전체 서버 종료 중입니다. 완료 후 다시 실행하세요.'}):next());
  agentApi=installHubAgentApi(app,{stateRoot,list,url:()=>url});
  app.get('/api/projects',async(req,res)=>res.json({projects:await list(),selected,selection}));
  app.post('/api/shutdown',(req,res)=>{
   if(req.body.instance!==instance)return res.status(409).json({error:'Hub instance changed'});
-  res.json({stopping:true});
-  setTimeout(()=>{agentApi.close();if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);server.close();server.closeAllConnections();},150);
+  stopping=true;res.json({stopping:true});
+  setTimeout(closeHub,150);
+ });
+ app.post('/api/shutdown-all',async(req,res)=>{
+  if(req.body.instance!==instance)return res.status(409).json({error:'중앙 서버가 바뀌었습니다. 다시 확인하세요.'});
+  if(openingCount)return res.status(409).json({error:'서버 시작이 진행 중입니다. 완료 후 다시 시도하세요.'});
+  stopping=true;let complete=false;
+  try{
+   const live=(await list()).filter(p=>p.running);
+   const expected=req.body.servers;
+   if(!Array.isArray(expected)||expected.length!==live.length||new Set(expected.map(p=>p?.id)).size!==live.length||live.some(p=>!expected.some(e=>e?.id===p.id&&e?.instance===p.instance)))return res.status(409).json({error:'실행 중인 서버 목록이 바뀌었습니다. 새 목록을 확인하고 다시 종료하세요.'});
+   const results=await Promise.all(live.map(async item=>{
+    try{
+     const current=await health(item.url);if(!current||current.instance!==item.instance)throw Error('서버가 변경되었습니다.');
+     const boot=await fetch(item.url+'/api/bootstrap',{redirect:'error',signal:AbortSignal.timeout(2000)}).then(r=>r.json());
+     const response=await fetch(item.url+'/api/shutdown',{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+boot.token,'Content-Type':'application/json'},body:JSON.stringify({instance:item.instance}),signal:AbortSignal.timeout(5000)});
+     if(!response.ok)throw Error('종료 요청이 거절되었습니다.');
+     const deadline=Date.now()+15000;
+     while(Date.now()<deadline){await new Promise(r=>setTimeout(r,150));const remaining=await health(item.url);if(!remaining&&await portClosed(item.url))return {id:item.id,name:item.name,stopped:true};if(remaining&&remaining.instance!==item.instance)throw Error('다른 서버로 교체되었습니다.');}
+     throw Error('종료 확인 시간이 초과되었습니다.');
+    }catch(error){return {id:item.id,name:item.name,stopped:false,error:error.message};}
+   }));
+   const failed=results.filter(p=>!p.stopped);
+   if(failed.length)return res.status(409).json({error:'종료하지 못한 서버: '+failed.map(p=>p.name+' ('+p.error+')').join(', '),results});
+   complete=true;res.json({stopping:true,results});setTimeout(closeHub,150);
+  }finally{if(!complete)stopping=false;}
  });
  app.post('/api/open',async(req,res)=>{if(typeof req.body.path!=='string')throw Error('Choose a folder');res.json(await open(req.body.path));});
  app.post('/api/projects/:id/stop',async(req,res)=>{
