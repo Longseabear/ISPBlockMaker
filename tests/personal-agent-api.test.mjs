@@ -28,8 +28,8 @@ test('personal API pins workspace and session, deduplicates requests and keeps r
  const f=await fixture(t),{m,base,call}=f;
  const current=await call('/api/internal/agent/v1/workspaces/current');assert.equal(current.body.workspace.id,agentWorkspaceId(f.workspace));
  assert.equal((await call('/api/personal-agent',{action:'enable'})).status,410);assert.equal((await call('/api/agent/v1/workspaces/current')).status,410);
- const created=await call(base+'/sessions',{title:'Messenger',provider:'claude'},'session-one');assert.equal(created.status,201);const id=created.body.session.id;
- assert.equal((await call(base+'/sessions',{title:'Messenger',provider:'claude'},'session-one')).body.session.id,id);
+ const created=await call(base+'/sessions',{title:'API client',provider:'claude'},'session-one');assert.equal(created.status,201);const id=created.body.session.id;
+ assert.equal((await call(base+'/sessions',{title:'API client',provider:'claude'},'session-one')).body.session.id,id);
  assert.equal((await call(base+'/sessions',{title:'Changed'},'session-one')).status,409);
  assert.equal((await call(base+'/sessions/missing/messages',{text:'bad'},'bad-session')).status,404);
  const route=base+'/sessions/'+id+'/messages';
@@ -44,7 +44,7 @@ test('personal API pins workspace and session, deduplicates requests and keeps r
  assert.equal(Object.keys(m.apiRuns).length,2);assert.ok(!JSON.stringify(first.body).includes('message-one'));
  f.setWorkspace(f.workspace+'-other');assert.equal((await call(base+'/sessions')).status,409);
  f.setWorkspace(f.workspace);assert.equal((await call(base.replace(agentWorkspaceId(f.workspace),'wrong')+'/sessions')).status,409);
- m.remove(id);await m.flushSaves();assert.equal((await call(base+'/sessions',{title:'Messenger',provider:'claude'},'session-one')).status,410);assert.equal((await call(base+'/runs/'+one.body.run_id)).body.run.output,'first result');
+ m.remove(id);await m.flushSaves();assert.equal((await call(base+'/sessions',{title:'API client',provider:'claude'},'session-one')).status,410);assert.equal((await call(base+'/runs/'+one.body.run_id)).body.run.output,'first result');
 });
 
 test('queued cancellation, owned questions, worker authorization and event replay are explicit',async t=>{

@@ -413,9 +413,9 @@ Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` def
 번들 미리보기는 데이터 파일별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
 
 
-## 외부 브릿지 연결 (v0.1.27+)
+## 외부 연결 프로그램 연결 (v0.1.27+)
 
-Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 브릿지용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [브릿지 구축 가이드·개발 에이전트용 요청문·Python 예제](docs/personal-agent-api.md)를 참고하세요.
+Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 연결 프로그램용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [연결 프로그램 구축 가이드·개발 에이전트용 요청문·Python 예제](docs/personal-agent-api.md)를 참고하세요.
 
 ## 프로젝트 MCP 서버
 

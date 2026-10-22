@@ -38,4 +38,4 @@ URL을 가진 사람에게 읽기 접근을 허용하는 HTTP 공유이므로 �
 
 변경 도구는 `request_id`로 중복 실행을 방지한다. 같은 작업의 재전송에는 같은 ID와 입력을 사용한다. 그래프 변경은 읽었던 revision, Runs 실행은 확인한 recipe hash, 하네스 제어는 현재 run version을 요구한다. 응답이 불확실하면 현재 상태를 확인하고 재실행 여부를 결정한다. 연결 종료를 작업 완료나 취소로 해석하지 않는다.
 
-메신저에서 에이전트에 작업을 보내려면 별도의 [Personal Agent API](personal-agent-api.md)를 켜고 전용 토큰을 사용한다. 이 읽기 공유 URL로 에이전트 실행을 요청할 수는 없다.
+클라이언트에서 에이전트에 작업을 보내려면 별도의 [Personal Agent API](personal-agent-api.md)를 켜고 전용 토큰을 사용한다. 이 읽기 공유 URL로 에이전트 실행을 요청할 수는 없다.

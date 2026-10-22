@@ -68,8 +68,8 @@ class ServerManager : Form {
         var advancedPage=new TabPage("고급 옵션") {BackColor=Color.White};
         var advanced=new TableLayoutPanel {Dock=DockStyle.Fill,AutoScroll=true,ColumnCount=1,Padding=new Padding(16)};
         advanced.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-        advanced.Controls.Add(new Label {Text="Agent API · 메신저 / 외부 프로그램 연결",AutoSize=true,Font=new Font("Segoe UI",12,FontStyle.Bold)});
-        advanced.Controls.Add(new Label {Text="메신저 → 브릿지 앱 → 중앙 서버 → 워크스페이스별 세션\n이 PC의 브릿지에서 주소와 토큰 하나로 접근합니다. 허용할 워크스페이스를 선택하세요.",AutoSize=true});
+        advanced.Controls.Add(new Label {Text="Agent API · 외부 클라이언트 연결",AutoSize=true,Font=new Font("Segoe UI",12,FontStyle.Bold)});
+        advanced.Controls.Add(new Label {Text="외부 클라이언트 → 중앙 서버 → 워크스페이스별 세션\n이 PC의 연결 프로그램에서 주소와 토큰 하나로 접근합니다. 허용할 워크스페이스를 선택하세요.",AutoSize=true});
         advanced.Controls.Add(agentStatus);advanced.Controls.Add(agentUrl);
         advanced.Controls.Add(agentScope);advanced.RowStyles.Add(new RowStyle(SizeType.AutoSize));advanced.RowStyles.Add(new RowStyle(SizeType.AutoSize));advanced.RowStyles.Add(new RowStyle(SizeType.AutoSize));advanced.RowStyles.Add(new RowStyle(SizeType.AutoSize));advanced.RowStyles.Add(new RowStyle(SizeType.Absolute,140));
         var enableApi=new Button {Text="API 켜기 / 토큰 발급",AutoSize=true};var rotateApi=new Button {Text="토큰 재발급",AutoSize=true};var disableApi=new Button {Text="API 끄기",AutoSize=true};var saveScope=new Button {Text="접근 범위 저장",AutoSize=true};var refreshApi=new Button {Text="상태 새로고침",AutoSize=true};
@@ -164,7 +164,7 @@ class ServerManager : Form {
             var health=await Task.Run(()=>Request("/health"));var listing=await Task.Run(()=>Request("/api/projects"));
             var targets=new List<object>();var names=new List<string>();
             foreach(object row in (System.Collections.IList)listing["projects"]){var p=(Dictionary<string,object>)row;if(Convert.ToBoolean(p["running"])){targets.Add(new {id=p["id"],instance=p["instance"]});names.Add(Convert.ToString(p["name"]));}}
-            if(MessageBox.Show(this,"관리 중인 워크스페이스 서버 "+targets.Count+"개와 중앙 서버를 완전히 종료합니다.\n"+String.Join(", ",names.ToArray())+"\n\n실행 중인 에이전트·터미널도 종료됩니다. 작업을 저장했나요?\n메신저 API도 중단됩니다. 프로젝트 파일과 설정은 유지됩니다.","전체 서버 종료",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
+            if(MessageBox.Show(this,"관리 중인 워크스페이스 서버 "+targets.Count+"개와 중앙 서버를 완전히 종료합니다.\n"+String.Join(", ",names.ToArray())+"\n\n실행 중인 에이전트·터미널도 종료됩니다. 작업을 저장했나요?\n클라이언트 API도 중단됩니다. 프로젝트 파일과 설정은 유지됩니다.","전체 서버 종료",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
             status.Text="서버와 작업을 종료하고 있습니다…";
             await Task.Run(()=>Request("/api/shutdown-all",new {instance=health["instance"],servers=targets.ToArray()}));stopped=true;
         }catch(Exception e){status.Text=e.Message;MessageBox.Show(this,e.Message,"전체 종료 미완료",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
