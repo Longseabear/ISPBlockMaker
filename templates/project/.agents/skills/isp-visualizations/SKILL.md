@@ -5,6 +5,8 @@ description: 시각화, 비주얼라이제이션, 리포트, 차트, 이미지 �
 
 # Visualizations · 시각화와 결과 리포트
 
+When workspace MCP is available, use `register_report` with the generated workspace file path, then `present_report` to show it. For revisions use `list_reports` and `update_report` with the current file version. The server reads HTML/image bytes; do not paste base64 into model context. The CLI below remains available. See [MCP workflow](../isp-block-maker/mcp-search.md).
+
 ## Updating an existing report
 
 HTML and report generators may be edited. For corrections to wording, layout or presentation of the same result, read `project`, inspect the target artifact and retain its current `file` value. Edit the authoring file and update the registered report:

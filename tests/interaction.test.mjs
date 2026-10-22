@@ -28,3 +28,12 @@ test('Codex model changes apply to each subsequent turn, including returning to 
  app.models=[{model:'default-model',isDefault:true}];await app.send({chatId:id,text:'three',model:''});await until(()=>!app.chats[0].busy&&!app.chats[0].queue?.length);
  assert.deepEqual(turns.map(p=>p.model),['first','second','default-model']);
 });
+
+test('chat names persist independently of engine sessions and deletion refuses active work',async t=>{
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'isp-chat-management-'));const app=new Interaction({workspace,env:process.env,launch});t.after(async()=>{await app.close();fs.rmSync(workspace,{recursive:true,force:true,maxRetries:20,retryDelay:100});});
+ const {id}=await app.send({provider:'codex',text:'hello'});await until(()=>!app.chats[0].busy);const threadId=app.chats[0].threadId;
+ assert.throws(()=>app.rename(id,'   '));assert.throws(()=>app.rename('missing','Name'));
+ app.rename(id,'  검증 작업  ');assert.equal(app.chats[0].title,'검증 작업');assert.equal(app.chats[0].threadId,threadId);await app.flushSaves();
+ const restored=new Interaction({workspace,env:process.env,launch});assert.equal(restored.chats[0].title,'검증 작업');await restored.close();
+ app.chats[0].busy=true;assert.throws(()=>app.remove(id),/실행 중/);app.chats[0].busy=false;app.remove(id);assert.equal(app.chats.length,0);
+});

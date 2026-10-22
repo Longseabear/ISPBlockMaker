@@ -1,5 +1,13 @@
 # Windows offline installation
 
+## Advanced options: central Agent API
+
+The native manager has **서버 / 고급 옵션** tabs. Advanced options manages one bridge token and an explicit allowlist of registered workspace IDs. The bridge uses the central URL, never per-workspace ports or credentials. Access is disabled by default and localhost-only. Offline workers are not automatically started.
+
+When enabled, closing the manager leaves the Hub running for bridge requests. Disabling access does not cancel accepted jobs. Reopen the manager after a PC restart. Existing manager and worker processes must restart to load updated code. See [Agent API usage](personal-agent-api.md).
+
+## Installation
+
 Build with `npm run build:installer` on Windows. Outputs: `release/ISPBlockMaker-Setup.exe`, SHA-256 sidecar and offline ZIP. The package includes the current Windows Node runtime, native terminal files, production server dependencies and built frontend. Installation needs neither npm nor network access. The build downloads and caches the matching Node license. Architecture matches the build Node (x64 here); Windows 10/11 with .NET Framework 4.x is required.
 
 Run Setup to install per-user under `%LOCALAPPDATA%\Programs\ISPBlockMaker`. It registers `bin` in user PATH and adds a Start menu shortcut and uninstall entry. It does not install global Node or change machine PATH. Open a new terminal:

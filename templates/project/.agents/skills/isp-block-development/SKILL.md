@@ -29,6 +29,8 @@ On authorized edits, move excessive card text into `detail` without losing knowl
 
 ## Block folders and longer explanations
 
+For searchable names, contracts and supporting documents, follow [searchable block authoring](../isp-block-maker/mcp-search.md#authoring-searchable-blocks). Keep facts at their canonical location and link related blocks by stable ID; do not duplicate entire documents into graph cards.
+
 Read [block-documents.md](../isp-block-maker/block-documents.md) when creating or updating block explanations, design notes or long technical documentation. Create useful supporting documents autonomously within the requested block scope; do not wait for a separate documentation request when the implementation needs a durable explanation.
 
 ## Graph commands

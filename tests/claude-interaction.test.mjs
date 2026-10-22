@@ -30,7 +30,7 @@ test('SDK adapter keeps settings, pauses for approvals/questions, resumes, and i
    yield {type:'result',is_error:false};
   })();gen.close=()=>{};return gen;
  };
- const app=new Interaction({workspace,env:process.env,claudeQuery});
+ const app=new Interaction({workspace,env:{...process.env,ISP_WORKSPACE:workspace,ISP_API_URL:'http://127.0.0.1:4400',ISP_API_TOKEN:'adapter-test-only'},claudeQuery});
  t.after(async()=>{await app.close();fs.rmSync(workspace,{recursive:true,force:true,maxRetries:10,retryDelay:100});});
  const {id}=await app.send({text:'question'});await until(()=>app.requests.size===1);
  let request=[...app.requests.values()][0];assert.equal(request.params.chatId,id);assert.equal(app.chats[0].busy,true);assert.equal(decisions.length,0);
@@ -40,6 +40,8 @@ test('SDK adapter keeps settings, pauses for approvals/questions, resumes, and i
  await until(()=>!app.chats[0].busy);assert.equal(app.chats[0].status,'completed');assert.equal(app.chats[0].items.filter(i=>i.type==='agentMessage').length,1);assert.equal(decisions[1].updatedInput.answers['Choose outputs'],'PNG, HTML');
  assert.deepEqual(app.chats[0].runtimeOptions,{model:'company-model-id',permissionMode:'default'});
  const opts=calls[0];assert.equal(opts.cwd,workspace);assert.deepEqual(opts.settingSources,['user','project','local']);for(const key of ['model','permissionMode','settings','allowDangerouslySkipPermissions'])assert.equal(opts[key],undefined);
+ assert.deepEqual(opts.mcpServers['isp-workspace'],{type:'http',url:'http://127.0.0.1:4400/mcp',headers:{Authorization:'Bearer adapter-test-only'}});
+ assert.equal(fs.existsSync(path.join(workspace,'.isp/mcp-settings.json')),false);
  assert.equal(fs.readFileSync(path.join(workspace,'.claude/settings.json'),'utf8'),settings);
  await app.send({chatId:id,text:'deny'});await until(()=>app.requests.size===1);assert.equal(calls[1].resume,'session-one');app.answer({id:[...app.requests.keys()][0],decision:'decline'});await until(()=>!app.chats[0].busy);assert.equal(decisions.at(-1).behavior,'deny');
  await app.send({chatId:id,text:'stop'});await until(()=>app.requests.size===1);await app.interrupt(id);assert.equal(app.requests.size,0);assert.equal(app.chats[0].status,'interrupted');assert.equal(app.chats[0].busy,false);

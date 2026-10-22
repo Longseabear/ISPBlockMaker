@@ -1,0 +1,19 @@
+import {z} from 'zod';
+const id=z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/),revision=z.number().int().positive(),hash=z.string().regex(/^[a-f0-9]{64}$/);
+const recipeId=z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(64);
+const text=z.string().max(8000);
+const recipe=z.object({version:z.literal(1),id:recipeId,title:z.string().min(1).max(200),description:z.string().max(12000).default(''),executable:text.min(1),args:z.array(text).max(256),cwd:text.default('.'),blockIds:z.array(id).max(200).default([]),parameters:z.record(z.string(),z.object({description:z.string().max(2000).default(''),required:z.boolean().default(false),default:text.optional()}).strict()).default({}),expectedOutputs:z.array(z.union([text,z.object({path:text,description:z.string().max(2000).optional(),required:z.boolean().optional()}).strict()])).max(100).default([]),timeoutMs:z.number().int().min(1).max(86400000).default(60000)}).strict();
+export function registerWorkTools(tool,api,mutate){
+ const register=(name,description,schema,fn,destructive=false)=>tool(name,description,{request_id:z.string().uuid(),...schema},input=>mutate(name,input,()=>fn(input)),false,destructive);
+ const jobPath=block=>block?`/api/blocks/${block}/jobs`:'/api/global/jobs';
+ tool('list_jobs','List workspace JOBs. Registration alone does not execute work.',{status:z.enum(['open','pending','in_progress','done','all']).default('open'),block_id:id.optional()},({status,block_id})=>api('GET',`/api/jobs?status=${status}${block_id?'&blockId='+block_id:''}`));
+ register('create_job','Register a pending block or global JOB without executing it. Omit block_id for a global JOB.',{revision,block_id:id.optional(),title:z.string().trim().min(1).max(200),description:z.string().max(12000).default('')},({request_id,block_id,...body})=>api('POST',jobPath(block_id),body));
+ register('update_job','Change JOB status using the current revision. Done requires a resolution describing actual implementation and validation.',{revision,block_id:id.optional(),job_id:id,status:z.enum(['pending','in_progress','done']),resolution:z.string().max(12000).default('')},({request_id,block_id,job_id,...body})=>api('PATCH',`${jobPath(block_id)}/${job_id}`,body));
+ register('delete_job','Remove an explicitly identified JOB. Do not continue work on a deleted JOB.',{revision,block_id:id.optional(),job_id:id},({revision,block_id,job_id})=>api('DELETE',`${jobPath(block_id)}/${job_id}`,{revision}),true);
+ tool('list_runs','List saved Runs recipes and their hashes. A recipe is a reusable command definition, not an execution.',{},()=>api('GET','/api/recipes'));
+ tool('get_run_recipe','Read one reusable Runs recipe and its current hash.',{recipe_id:recipeId},({recipe_id})=>api('GET',`/api/recipes/${recipe_id}`));
+ register('save_run_recipe','Create or replace a Runs recipe. expected_hash is null for creation, otherwise the hash read. Choose useful editable parameters; this does not execute the command.',{recipe,expected_hash:hash.nullable()},({recipe,expected_hash})=>api('POST','/api/recipes',{recipe,expectedHash:expected_hash}));
+ register('delete_run_recipe','Delete a recipe only if its hash still matches the version read.',{recipe_id:recipeId,expected_hash:hash},({recipe_id,expected_hash})=>api('DELETE',`/api/recipes/${recipe_id}`,{expectedHash:expected_hash}),true);
+ register('launch_run','Execute a reviewed saved recipe in a Windows terminal using literal parameter values. Returns a terminal session ID, not proof of successful completion. Disconnecting does not cancel it.',{recipe_id:recipeId,expected_hash:hash,parameters:z.record(z.string(),text).default({})},({recipe_id,expected_hash,parameters})=>api('POST',`/api/recipes/${recipe_id}/launch`,{expectedHash:expected_hash,parameters}),true);
+ tool('list_terminals','Inspect terminal session state after a Runs launch. A terminal session is distinct from the recipe run result manifest.',{},()=>api('GET','/api/terminals'));
+}

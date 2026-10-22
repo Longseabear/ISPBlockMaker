@@ -4,6 +4,7 @@ import {DiagramTabs} from './DiagramTabs';
 import {Runs} from './Runs';
 import {Interaction} from './Interaction';
 import {McpServers} from './McpServers';
+import {WorkspaceSearch} from './WorkspaceSearch';
 import {AppUpdate} from './AppUpdate';
 import {ProjectSkills} from './ProjectSkills';
 import {ReportShare} from './ReportShare';
@@ -39,6 +40,7 @@ import {
   Braces,
   BookOpen,
   Plug,
+  Search,
   Check,
   ChevronDown,
   Circle,
@@ -1309,6 +1311,8 @@ function App() {
   const compactPreview = workMode==='terminal'&&(view === "artifacts" || view === "viewer");
   const [runTerminal,setRunTerminal]=useState<TerminalSession|null>(null);
   const [mcpVisited,setMcpVisited]=useState(false);
+  const [searchVisited,setSearchVisited]=useState(false);
+  useEffect(()=>{if(view==='search')setSearchVisited(true);},[view]);
   useEffect(()=>{if(view==="mcp")setMcpVisited(true);},[view]);
   const [skillsVisited,setSkillsVisited]=useState(false);
   useEffect(()=>{if(view==="skills")setSkillsVisited(true);},[view]);
@@ -1396,7 +1400,7 @@ function App() {
     setView(next);
     if(next === "graph" && workMode === "interaction")setLayout(current=>({...current,inspector:false}));
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "mcp", "references"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "mcp", "search", "references"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   const [message, setMessage] = useState(""),
@@ -1496,8 +1500,11 @@ function App() {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if(response.status===401)window.dispatchEvent(new Event('isp-session-expired'));
-      if (!response.ok)
+      if (!response.ok) {
+        if (!response.headers.get("content-type")?.includes("json"))
+          throw new Error(`서버가 API ${endpoint}를 처리하지 못했습니다 (HTTP ${response.status}). 화면과 서버 버전이 다를 수 있습니다. 터미널 작업을 저장한 뒤 앱 서버를 재시작하세요.`);
         throw new Error((await response.json()).error || response.statusText);
+      }
       const result = response.headers.get("content-type")?.includes("json")
         ? await response.json()
         : await response.text();
@@ -1912,6 +1919,7 @@ function App() {
           <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
           <button aria-label="Runs" className={view==="runs"?"active":""} onClick={()=>switchView("runs")}><Play size={18}/><span>Runs</span></button>
           <button className={view === "mcp" ? "active" : ""} title="MCP Servers" aria-label="MCP Servers" aria-current={view === "mcp" ? "page" : undefined} onClick={() => switchView("mcp")}><Plug size={18}/><span>MCP Servers</span></button>
+          <button className={view === "search" ? "active" : ""} title="Workspace Search" aria-label="Workspace Search" aria-current={view === "search" ? "page" : undefined} onClick={() => switchView("search")}><Search size={18}/><span>Search</span></button>
           <button className={view === "jobs" ? "active job-nav" : "job-nav"} title="JOB Queue" aria-label="JOB Queue" aria-current={view === "jobs" ? "page" : undefined} onClick={() => switchView("jobs")}><Check size={18}/><span>JOB Queue</span><small>{[...(project.globalWork?.jobs || []), ...project.blocks.flatMap(b => b.jobs || [])].filter(j => j.status !== "done").length}</small></button>
           <button className={view === "documents" ? "active" : ""} title="Documentation" aria-label="Documentation" aria-current={view === "documents" ? "page" : undefined} onClick={() => switchView("documents")}><FileImage size={18}/><span>Documentation</span></button>
           <div className="graph-toolbar">
@@ -1976,7 +1984,7 @@ function App() {
             onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(e.clientX-rect.left)/rect.width)));}}
             onPointerUp={()=>{panelDrag.current=false;}} onPointerCancel={()=>{panelDrag.current=false;}} onLostPointerCapture={()=>{panelDrag.current=false;}}/>
           <section className={`work-panel ${workMode === "interaction" && view === "graph" && layout.inspector && (selected || globalOpen) ? "show-block-detail" : ""}`} aria-label="작업 패널">
-          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({skills:'Project Skills',mcp:'MCP Servers',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
+          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({skills:'Project Skills',mcp:'MCP Servers',search:'Search',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
             {view==='graph'&&<button disabled={!selected} aria-pressed={layout.inspector} onClick={()=>setLayout(l=>({...l,inspector:!l.inspector}))}>블록 상세</button>}
             <button aria-label={workPanelExpanded?'작업 패널 크기 복원':'작업 패널 최대화'} onClick={()=>setWorkPanelExpanded(v=>!v)}>{workPanelExpanded?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button>
             <button aria-label="작업 패널 숨기기" onClick={()=>{setWorkPanelOpen(false);setWorkPanelExpanded(false);}}><X size={16}/></button>
@@ -1988,7 +1996,8 @@ function App() {
               </div>}
               {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
               {(mcpVisited||view==="mcp")&&<div style={{display:view==="mcp"?"contents":"none"}}><McpServers api={api}/></div>}
-              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "skills" || view === "mcp" ? null : view === "documents" ? (
+              {(searchVisited||view==="search")&&<div style={{display:view==="search"?"contents":"none"}}><WorkspaceSearch api={api} project={project}/></div>}
+              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {

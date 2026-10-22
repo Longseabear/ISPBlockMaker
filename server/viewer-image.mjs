@@ -44,7 +44,7 @@ export function encodePng(width,height,rgba){
   for(let y=0;y<height;y++)rgba.copy(scan,y*(width*4+1)+1,y*width*4,(y+1)*width*4);
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",header),chunk("IDAT",deflateSync(scan)),chunk("IEND",Buffer.alloc(0))]);
 }
-export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,gamma=2.2,viewX=0,viewY=0,roi,fullFrame=false}={}){
+export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDepth)-1,gamma=2.2,viewX=0,viewY=0,roi,fullFrame=false,maxDimension=1200}={}){
   if(!Number.isFinite(black)||!Number.isFinite(white)||white<=black)throw new Error("White level은 black level보다 커야 합니다.");
   if(!["gray","color","cfa","simple"].includes(mode))throw new Error("잘못된 preview mode");
   if(!Number.isFinite(gamma)||gamma<0.1||gamma>5)throw new Error("Gamma는 0.1–5 범위여야 합니다.");
@@ -58,7 +58,8 @@ export function preview(image,{mode="color",black=0,white=(2**image.spec.bitDept
   // top-left window. Native detail is fetched independently as bounded tiles;
   // this overview keeps the complete source extent at a bounded raster size.
   // Explicit legacy windows and crop thumbnails retain their smaller budget.
-  const limit=1200;
+  if(!Number.isInteger(maxDimension)||maxDimension<1||maxDimension>1200)throw Error('Invalid preview dimension limit');
+  const limit=maxDimension;
   const scale=Math.min(1,limit/Math.max(area.width,area.height));const w=Math.max(1,Math.round(area.width*scale)),h=Math.max(1,Math.round(area.height*scale));const out=Buffer.alloc(w*h*4);
   const level=v=>Math.round(Math.max(0,Math.min(1,(v-black)/(white-black)))*255);
   const groupCache=new Map();

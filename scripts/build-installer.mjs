@@ -7,7 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 if (process.platform !== "win32") throw new Error("Build on Windows with the Node architecture used for distribution.");
 const version=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8")).version;
 const buildId=`${version}-${Date.now()}`;
-const release=path.join(root,"release");
+// Verification builds can use an isolated destination without replacing release assets.
+const release=path.resolve(process.env.ISP_BUILD_OUTPUT||path.join(root,"release"));
 const stage=path.join(release,`package-${buildId}`);
 const appRelative=`versions/${buildId}`;
 const app=path.join(stage,appRelative);
@@ -17,6 +18,8 @@ for(const name of ["dist","server","templates","package.json","ISPBlockMaker.exe
   fs.cpSync(path.join(root,name),path.join(app,name),{recursive:true});
 }
 fs.mkdirSync(path.join(app,"scripts"));
+fs.mkdirSync(path.join(app,"docs"));
+fs.copyFileSync(path.join(root,"docs","personal-agent-api.md"),path.join(app,"docs","personal-agent-api.md"));
 for(const name of ["isp.mjs","start-local.mjs","workspace-cli.mjs","recipe-terminal.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
 fs.copyFileSync(process.execPath,path.join(app,"node.exe"));
 const lock=JSON.parse(fs.readFileSync(path.join(root,"package-lock.json"),"utf8"));
@@ -35,7 +38,7 @@ function visit(name, parent = "") {
   required.add(relative);
   for(const dependency of Object.keys(lock.packages[relative].dependencies || {}))visit(dependency,relative);
 }
-for(const name of ["express","ws","zod","node-pty","prismjs","katex","@anthropic-ai/claude-agent-sdk"])visit(name);
+for(const name of ["@modelcontextprotocol/sdk","express","ws","zod","node-pty","prismjs","katex","@anthropic-ai/claude-agent-sdk"])visit(name);
 for(const relative of required) {
   const pkg=lock.packages[relative];
   const source=path.join(root,relative);

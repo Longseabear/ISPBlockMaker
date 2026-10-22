@@ -42,6 +42,15 @@ export function agentMcpConfig(servers,agent){
   agent==='codex'?{url:s.url,http_headers:s.headers}:{type:'http',url:s.url,headers:s.headers}
  ]));
 }
+// Runtime-only: never write the built-in credential into workspace settings.
+export function effectiveMcpServers(workspace,env=process.env){
+ const {servers}=readMcpSettings(workspace);
+ if(!env.ISP_API_URL||!env.ISP_API_TOKEN||!env.ISP_WORKSPACE)return servers;
+ if(path.resolve(env.ISP_WORKSPACE).toLowerCase()!==path.resolve(workspace).toLowerCase())throw Error('Built-in MCP workspace mismatch');
+ const url=new URL(env.ISP_API_URL);if(url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname)||url.username||url.password)throw Error('Built-in MCP requires a local server');
+ if(servers.some(s=>s.name.toLowerCase()==='isp-workspace'))throw Error('MCP 이름 isp-workspace는 기본 제공 서버와 충돌합니다. 사용자 서버 이름을 변경하세요.');
+ return [...servers,{name:'isp-workspace',enabled:true,agents:['claude','codex'],transport:'http',url:new URL('/mcp',url).href,headers:{Authorization:'Bearer '+env.ISP_API_TOKEN}}];
+}
 // Launch executables directly: MCP args never become cmd/PowerShell source code.
 export function resolveAgent(agent,env=process.env,platform=process.platform){
  if(!['codex','claude'].includes(agent))throw Error('Unknown agent');
@@ -57,7 +66,7 @@ export function resolveAgent(agent,env=process.env,platform=process.platform){
  throw Error(`${agent} 실행 파일을 찾을 수 없습니다. CLI를 설치하고 서버를 다시 시작하세요. 사용자 정의 .cmd 래퍼 대신 공식 CLI 설치를 사용하세요.`);
 }
 export function prepareMcpLaunch(workspace,agent,sessionId,env=process.env){
- const state=readMcpSettings(workspace),config=agentMcpConfig(state.servers,agent),names=Object.keys(config);
+ const state=readMcpSettings(workspace),config=agentMcpConfig(effectiveMcpServers(workspace,env),agent),names=Object.keys(config);
  if(!names.length)return {revision:state.revision,names,launch:null,cleanup:()=>{}};
  const launch=resolveAgent(agent,env);let file;
  if(agent==='codex')for(const [name,value] of Object.entries(config))launch.args.push('-c',`mcp_servers.${name}=${tomlValue(value)}`);
@@ -69,7 +78,7 @@ export function prepareMcpLaunch(workspace,agent,sessionId,env=process.env){
  return {revision:state.revision,names,launch,cleanup:()=>{if(file&&fs.existsSync(file))fs.unlinkSync(file);}};
 }
 export function installMcpSettings(app,current,sessions){
- const state=()=>({...readMcpSettings(current()),sessions:[...sessions.entries()].filter(([,s])=>s.agent!=='shell').map(([id,s])=>({id,agent:s.agent,revision:s.mcpRevision??0,names:s.mcpNames||[]}))});
+ const state=()=>({...readMcpSettings(current()),builtin:{name:'isp-workspace',available:true,endpoint:'/mcp'},sessions:[...sessions.entries()].filter(([,s])=>s.agent!=='shell').map(([id,s])=>({id,agent:s.agent,revision:s.mcpRevision??0,names:s.mcpNames||[]}))});
  app.get('/api/mcp',(_req,res)=>res.json(state()));
  app.put('/api/mcp',(req,res)=>{saveMcpSettings(current(),req.body);res.json(state());});
 }

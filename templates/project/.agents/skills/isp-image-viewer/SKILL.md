@@ -5,6 +5,8 @@ description: Open images in ISP Image Viewer, control the live view, inspect exa
 
 # Image Viewer
 
+If workspace MCP tools are available, use `import_viewer_image` followed by `control_viewer` for display, and `get_viewer_command` to check application. Supply confirmed RAW metadata through `spec`. These return metadata only: displaying an image does not require a vision-capable model. Use `get_image_pixels` or `get_image_statistics` for numerical inspection. Use `request_viewer_crops` and inspect `get_crop_request` until the user explicitly delivers crops, then read the selection and its statistics before acknowledging it. For render controls or other operations absent from the discovered MCP catalogue, use the CLI below. Never substitute a model image attachment for a display request. See [MCP and search](../isp-block-maker/mcp-search.md).
+
 Read [shared rules](../isp-block-maker/common.md) once and the relevant section of [viewer.md](../isp-block-maker/viewer.md):
 
 - **Open an image first** for display requests. Use `viewer-open FILE` (RAW: `--spec SPEC_JSON`), not registration alone or a crop request. Check `displayed` and command acknowledgement. Read actual source metadata or ask for missing RAW conditions; never guess dimensions/order solely from file size.

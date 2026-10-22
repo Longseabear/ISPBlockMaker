@@ -7,7 +7,7 @@ import {createRequire} from 'node:module';
 import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {query} from '@anthropic-ai/claude-agent-sdk';
-import {readMcpSettings,agentMcpConfig,resolveAgent} from './mcp-settings.mjs';
+import {readMcpSettings,agentMcpConfig,resolveAgent,effectiveMcpServers} from './mcp-settings.mjs';
 const require=createRequire(import.meta.url);
 function runtimeFiles(env){
  if(process.platform!=='win32')throw Error('Claude SDK 연결은 Windows 환경을 대상으로 합니다.');
@@ -38,7 +38,7 @@ export function safeClaudeError(error,env={}){
 }
 export function runClaude({workspace,env,chat,text,save,ask,cancelPrompts,queryImpl=query,changed=()=>{},runtime=claudeRuntime(env)}){
  const abortController=new AbortController();let stream,finished=false,resultSeen=false,resultError='',messageId='',partial='';
- const config=readMcpSettings(workspace);
+ const config={servers:effectiveMcpServers(workspace,env)};
  const options={...sdkClaudeOptions(chat.claudeOptions),cwd:workspace,env:{...env},pathToClaudeCodeExecutable:runtime.file,settingSources:['user','project','local'],includePartialMessages:true,abortController,
   ...(chat.threadId?{resume:chat.threadId}:{}),
   ...(config.servers.some(s=>s.enabled&&s.agents.includes('claude'))?{mcpServers:agentMcpConfig(config.servers,'claude')}:{}),

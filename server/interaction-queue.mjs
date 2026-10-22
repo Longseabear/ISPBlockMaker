@@ -12,7 +12,7 @@ export class InteractionQueue {
   const source=id=>{const value=blocks.find(b=>b.id===id)?.implementation;return typeof value==='string'&&value?path.resolve(this.manager.workspace,'project',value).toLowerCase():null;};
   return this.manager.chats.find(other=>other.id!==chat.id&&other.busy&&(!chat.blockId||!other.blockId||chat.blockId===other.blockId||!source(chat.blockId)||!source(other.blockId)||source(chat.blockId)===source(other.blockId)));
  }
- async submit(raw){
+ async submit(raw,{defer=false}={}){
   if(this.stopped)throw Error('서버 종료 중입니다. 다시 연결하세요.');
   const input=inputSchema.parse(raw),m=this.manager;
   if(input.requestId){const owner=m.chats.find(c=>(c.submissions||[]).includes(input.requestId)||(c.queue||[]).some(q=>q.id===input.requestId));if(owner)return {id:owner.id,duplicate:true};}
@@ -26,7 +26,7 @@ export class InteractionQueue {
   const item={id,text:input.text,model:input.model,claudeOptions:input.claudeOptions,createdAt:new Date().toISOString(),state:'queued'};
   (chat.queue||=[])[input.stopFirst?'unshift':'push'](item);
   chat.queueReason=chat.queuePaused?'중지됨':chat.busy?'현재 작업 완료 후 실행':this.conflict(chat)?'겹치는 작업 완료 후 실행':'';
-  await m.save(true);this.kick();await this.drain();return {id:chat.id,queued:true,queueId:id};
+  await m.save(true);this.kick();if(!defer)await this.drain();return {id:chat.id,queued:true,queueId:id};
  }
  kick(){if(this.stopped||this.timer)return;this.timer=setTimeout(()=>{this.timer=null;void this.drain().catch(e=>{this.manager.error='대기 지시 처리 실패: '+e.message;});},25);}
  async drain(){
@@ -36,16 +36,17 @@ export class InteractionQueue {
    if(chat.busy||chat.queuePaused||!chat.queue?.length)continue;
    if(this.conflict(chat)){chat.queueReason='겹치는 작업 완료 후 실행';continue;}
    const item=chat.queue[0];item.state='dispatching';chat.queueReason='';
+   this.manager.beginApiRun?.(chat,item.id);
    try{await this.manager.save(true);if(this.stopped){item.state='queued';break;}await this.manager.sendNow({chatId:chat.id,provider:chat.provider||'codex',blockId:chat.blockId,text:item.text,model:item.model,claudeOptions:item.claudeOptions});
     chat.queue=chat.queue.filter(q=>q.id!==item.id);(chat.submissions||=[]).push(item.id);
-   }catch(e){item.state='queued';chat.queuePaused=true;chat.queueReason=String(e.message);chat.error=String(e.message);}
+   }catch(e){item.state='queued';chat.queuePaused=true;chat.queueReason=String(e.message);chat.error=String(e.message);const run=this.manager.apiRuns?.[item.id];if(run){run.status='failed';run.error=String(e.message);this.manager.apiEvent(run);delete chat.currentApiRun;chat.queue=chat.queue.filter(q=>q.id!==item.id);}}
    await this.manager.save();
   }}finally{this.running=false;}
  }
  async edit(chatId,{id,text,remove,resume}){
   const chat=this.manager.chats.find(c=>c.id===chatId);if(!chat)throw Error('대화를 찾을 수 없습니다.');
   if(resume){chat.queuePaused=false;chat.queueReason='';}
-  else{const item=chat.queue?.find(q=>q.id===id);if(!item)throw Error('이미 실행되었거나 삭제된 지시입니다.');if(item.state==='dispatching')throw Error('실행을 시작한 지시는 수정할 수 없습니다.');if(remove)chat.queue=chat.queue.filter(q=>q.id!==id);else item.text=z.string().trim().min(1).max(30000).parse(text);}
+  else{const item=chat.queue?.find(q=>q.id===id);if(!item)throw Error('이미 실행되었거나 삭제된 지시입니다.');if(item.state==='dispatching')throw Error('실행을 시작한 지시는 수정할 수 없습니다.');if(remove)chat.queue=chat.queue.filter(q=>q.id!==id);else item.text=z.string().trim().min(1).max(30000).parse(text);const run=this.manager.apiRuns?.[id];if(run){if(remove)run.status='cancelled';else run.input_updated=true;this.manager.apiEvent(run);}}
   await this.manager.save();this.kick();return {ok:true};
  }
  stop(){this.stopped=true;clearTimeout(this.timer);}

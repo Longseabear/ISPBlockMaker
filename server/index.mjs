@@ -1,7 +1,16 @@
+import {WorkspaceSearchService} from './workspace-search-service.mjs';
+import {workspaceMcpHandler} from './workspace-mcp.mjs';
+import {localApiAdapter} from './mcp-local-tools.mjs';
+import {installMcpSharing} from './mcp-sharing.mjs';
+import {McpMutations} from './mcp-mutations.mjs';
+import {applyGraphOperations} from './graph-operations.mjs';
+import {readArtifactFile} from './mcp-artifact-tools.mjs';
+import {sharedImages,sharedImagePreview} from './mcp-shared-images.mjs';
 import {installHarness} from './harness.mjs';
 import {blockStorageDirectory,blockDocuments,safeGraphPath} from './graph-storage.mjs';
-import {listRecipes,saveRecipe,deleteRecipe,planRecipeRun} from './recipes.mjs';
+import {listRecipes,readRecipe,saveRecipe,deleteRecipe,planRecipeRun} from './recipes.mjs';
 import {installInteraction} from './interaction.mjs';
+import {installPersonalAgentApi} from './personal-agent-api.mjs';
 import {installMcpSettings,prepareMcpLaunch} from './mcp-settings.mjs';
 import {installAppUpdates} from './app-updates.mjs';
 import { graphCheck } from "./graph-check.mjs";
@@ -72,6 +81,7 @@ function stopTerminals() {
   sessions.clear();
 }
 function sourceChanged(bundleRestore) {
+  void mcpSharing.stop();
   store.get();
   token = crypto.randomBytes(32).toString("hex");
   if (!process.env.ISP_NO_DISCOVERY) publishConnection();
@@ -98,7 +108,7 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
-app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid }));
+app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid, agentApi:1 }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   if (workspaceRecoveryError) return res.status(503).json({error:workspaceRecoveryError});
@@ -128,6 +138,21 @@ app.use("/api", (req,res,next)=>{
  }
  next();
 });
+const workspaceSearch=new WorkspaceSearchService(()=>({sourceRoot:sourceRoot(workspace),dataDir,store}));
+const mcpMutationStores=new WeakMap();
+function localMcpContext(){
+ const requestToken=token,requestStore=store,requestWorkspace=workspace;
+ let ledger=mcpMutationStores.get(store);if(!ledger){ledger=new McpMutations(dataDir);mcpMutationStores.set(store,ledger);}
+ return {store,search:workspaceSearch,readArtifact:file=>readArtifactFile(requestWorkspace,file),localApi:localApiAdapter({origin,token:()=>requestToken}),mutate:(name,input,operation)=>{
+  if(requestStore!==store||requestToken!==token)throw Error('Workspace changed; reconnect before editing');
+  return ledger.execute(name,input,operation);
+ }};
+}
+app.post('/api/search',async(req,res)=>res.json(await workspaceSearch.search(req.body)));
+app.post('/api/search/read',async(req,res)=>res.json(await workspaceSearch.read(req.body)));
+app.post('/mcp',(req,res,next)=>{if(!authorized(req))return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),workspaceMcpHandler(localMcpContext));
+app.all('/mcp',(_req,res)=>res.status(405).end());
+const mcpSharing=installMcpSharing(app,()=>({store,search:workspaceSearch,sharedImages:{list:()=>sharedImages(workspace),read:id=>sharedImagePreview(workspace,id)}}));
 const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.get().artifacts}));
 const viewer = installViewer(app, {
   current: () => ({workspace,state:store.get()}),
@@ -180,6 +205,7 @@ installBundleImport(app,{
 });
 
 app.get('/api/recipes', (req,res)=>res.json(listRecipes(workspace)));
+app.get('/api/recipes/:id',(req,res)=>res.json(readRecipe(workspace,req.params.id)));
 app.post('/api/recipes', (req,res)=>res.json(saveRecipe(workspace,req.body.recipe,{expectedHash:req.body.expectedHash})));
 app.delete('/api/recipes/:id', (req,res)=>res.json(deleteRecipe(workspace,req.params.id,{expectedHash:req.body.expectedHash})));
 app.post('/api/recipes/:id/launch', (req,res)=>{
@@ -200,6 +226,7 @@ app.post('/api/recipes/:id/launch', (req,res)=>{
 });
 installMcpSettings(app,()=>workspace,sessions);
 interaction=installInteraction(app,()=>({workspace,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_CLI:cliPath,ISP_WORKSPACE:workspace,ISP_SOURCE_ROOT:sourceRoot(workspace)}}));
+installPersonalAgentApi(app,{current:()=>({workspace,store,artifactDir}),interaction,authorize:authorized});
 installAppUpdates(app,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
 installProjectSkills(app,{current:()=>({workspace}),root});
 const bundleOptions=z.object({excludedData:z.array(z.string().min(1).max(2000)).max(10000).optional(),includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
@@ -249,6 +276,7 @@ app.patch('/api/diagrams/:id',(req,res)=>{const state=store.diagram('update',{..
 app.delete('/api/diagrams/:id',(req,res)=>{const state=store.diagram('delete',{id:req.params.id},req.body.revision);broadcast();res.json(state);});
 app.post('/api/diagrams/:id/select',(req,res)=>{const state=store.diagram('select',{id:req.params.id});broadcast();res.json(state);});
 app.get("/api/project", (req, res) => res.json(store.get()));
+app.post('/api/graph/operations',(req,res)=>{const result=applyGraphOperations(store,req.body);broadcast();res.json(result);});
 app.get("/api/terminals", (req, res) => res.json(
   [...sessions].map(([sessionId, session]) => ({sessionId, agent: session.agent, blockId: session.blockId})),
 ));
@@ -379,6 +407,7 @@ app.post("/api/workspace", (req, res) => {
     } catch {}
   }
   ({ workspace, dataDir, artifactDir, store } = opened);
+  void mcpSharing.stop();
   cliPath = opened.cli;
   token = crypto.randomBytes(32).toString("hex");
   if (!process.env.ISP_NO_DISCOVERY) {
@@ -1057,6 +1086,8 @@ wss.on("connection", (socket) => {
   });
 });
 
+// Unknown API routes must never fall through to the HTML application.
+app.use('/api',(_req,res)=>res.status(404).json({error:'Unknown API endpoint. Check that the server and UI versions match.'}));
 // Serve the isolated, prebuilt chat surface in both production and Vite mode.
 app.use('/cloudcli',express.static(path.join(root,'dist/cloudcli')));
 app.use('/cloudcli',(_req,res)=>res.status(503).type('text').send('Interaction UI is not built. Run npm run build.'));
@@ -1099,6 +1130,8 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
 async function shutdown() {
+  await workspaceSearch.close();
+  await mcpSharing.stop();
   await harness?.close();
   await interaction?.close();
   await reportSharing.stop();

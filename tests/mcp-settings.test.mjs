@@ -39,3 +39,14 @@ test('settings reject linked state and stay out of project bundles',async t=>{
  saveMcpSettings(dir,{revision:0,servers:[server()]});const plan=await planBundle(dir);assert.ok(!plan.files.some(f=>f.path.includes('mcp-settings')));
  const linked=fixture(t);fs.symlinkSync(outside,path.join(linked,'.isp'),process.platform==='win32'?'junction':'dir');assert.throws(()=>saveMcpSettings(linked,{revision:0,servers:[server()]}),/Linked/);
 });
+
+test('built-in HTTP MCP is injected only into matching app launches without persisting credentials',async()=>{
+ const {effectiveMcpServers,agentMcpConfig}=await import('../server/mcp-settings.mjs');
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'isp-built-in-mcp-'));
+ try{
+  const env={ISP_API_URL:'http://127.0.0.1:4400',ISP_API_TOKEN:'test-only-secret',ISP_WORKSPACE:folder};
+  const servers=effectiveMcpServers(folder,env);assert.equal(servers.at(-1).name,'isp-workspace');assert.equal(agentMcpConfig(servers,'claude')['isp-workspace'].type,'http');assert.equal(agentMcpConfig(servers,'codex')['isp-workspace'].url,'http://127.0.0.1:4400/mcp');
+  assert.deepEqual(effectiveMcpServers(folder,{}),[]);assert.equal(fs.existsSync(path.join(folder,'.isp/mcp-settings.json')),false);
+  assert.throws(()=>effectiveMcpServers(folder,{...env,ISP_WORKSPACE:folder+'-other'}),/mismatch/);
+ }finally{fs.rmSync(folder,{recursive:true,force:true});}
+});

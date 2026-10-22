@@ -23,17 +23,31 @@ export class Interaction {
   this.queue=new InteractionQueue(this);this.declaredSettings=[];void claudeDeclaredSettings(workspace,env).then(value=>{this.declaredSettings=value;this.changed();});
   const base=path.join(workspace,'.isp');fs.mkdirSync(base,{recursive:true});
   this.file=path.join(base,'interaction.json');this.persistence=new AsyncSnapshot(this.file);
+  this.apiRuns={};this.apiEvents=[];this.apiSequence=0;this.apiSessions={};
   for(const f of [base,this.file])if(fs.existsSync(f)&&fs.lstatSync(f).isSymbolicLink())throw Error('Linked interaction state is not supported');
   if(fs.existsSync(this.file)){const saved=JSON.parse(fs.readFileSync(this.file,'utf8'));this.chats=(saved.chats||[]).map(c=>({...c,loaded:false,busy:false,turnId:null,queuePaused:!!c.queue?.length||c.queuePaused,queueReason:c.queue?.some(q=>q.state==='dispatching')?'시작 여부가 불확실한 지시가 있습니다. 대화 기록을 확인하고 삭제 또는 재개하세요':c.queue?.length?'서버 재시작 후 재개를 눌러주세요':c.queueReason,queue:(c.queue||[]).map(q=>({...q,state:'queued'})),status:c.busy?'interrupted':c.status}));}
+  if(fs.existsSync(this.file)){const saved=JSON.parse(fs.readFileSync(this.file,'utf8'));this.apiRuns=saved.apiRuns||{};this.apiEvents=saved.apiEvents||[];this.apiSequence=saved.apiSequence||0;this.apiSessions=saved.apiSessions||{};
+   for(const run of Object.values(this.apiRuns))if(!['completed','failed','cancelled','interrupted'].includes(run.status)){run.status='interrupted';run.error='Server restarted; inspect the previous work before submitting again.';this.apiEvent(run);}
+   for(const c of this.chats){delete c.currentApiRun;c.queue=(c.queue||[]).filter(q=>!this.apiRuns[q.id]);}
+  }
  }
+ apiEvent(run){run.updated_at=new Date().toISOString();this.apiEvents.push({id:++this.apiSequence,type:'run.'+run.status,run_id:run.id,session_id:run.session_id,status:run.status,phase:run.phase||null,time:run.updated_at});if(this.apiEvents.length>1000)this.apiEvents.shift();}
+ beginApiRun(chat,id){const run=this.apiRuns[id];if(!run)return;chat.currentApiRun=id;run.start_index=chat.items.length;run.status='dispatching';this.apiEvent(run);}
+ syncApiRuns(){for(const c of this.chats){const run=this.apiRuns[c.currentApiRun];if(!run||['completed','failed','cancelled','interrupted'].includes(run.status))continue;
+   const waiting=[...this.requests.values()].some(r=>r.params?.chatId===c.id||(c.threadId&&r.params?.threadId===c.threadId));
+   let status=run.status;if(c.busy){run.started=true;status=waiting?'waiting_input':'running';}else if(run.started&&['completed','failed','interrupted'].includes(c.status))status=run.cancel_requested?'cancelled':c.status;
+   const phase=c.busy?c.phase||c.status:null;
+   if(status!==run.status||phase!==run.phase){run.status=status;run.phase=phase;if(['completed','failed','cancelled','interrupted'].includes(status)){run.output=c.items.slice(run.start_index||0).filter(i=>i.type==='agentMessage').map(i=>i.text||'').join('\n\n').slice(-100000);run.error=c.error||'';delete c.currentApiRun;}this.apiEvent(run);}
+  }}
  changed(){
   if(this.closed)return;
+  this.syncApiRuns();
   if(!this.notifyTimer)this.notifyTimer=setTimeout(()=>{this.notifyTimer=null;for(const fn of this.listeners)fn();},40);
   if(!this.checkpointTimer)this.checkpointTimer=setTimeout(()=>{this.checkpointTimer=null;try{this.save();}catch(e){this.error='대화 기록 저장 실패: '+e.message;}},1000);
  }
  subscribe(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
- save(strict=false){if(this.closed)return;this.queue.kick();clearTimeout(this.checkpointTimer);this.checkpointTimer=null;
- if(!this.notifyTimer)this.notifyTimer=setTimeout(()=>{this.notifyTimer=null;for(const fn of this.listeners)fn();},40);return this.persistence.write(()=>({chats:this.chats})).catch(error=>{this.error='대화 기록 저장 실패: '+error.message;for(const fn of this.listeners)fn();if(strict)throw error;});}
+ save(strict=false){if(this.closed)return;this.syncApiRuns();this.queue.kick();clearTimeout(this.checkpointTimer);this.checkpointTimer=null;
+ if(!this.notifyTimer)this.notifyTimer=setTimeout(()=>{this.notifyTimer=null;for(const fn of this.listeners)fn();},40);return this.persistence.write(()=>({chats:this.chats,apiRuns:this.apiRuns,apiEvents:this.apiEvents,apiSequence:this.apiSequence,apiSessions:this.apiSessions})).catch(error=>{this.error='대화 기록 저장 실패: '+error.message;for(const fn of this.listeners)fn();if(strict)throw error;});}
  flushSaves(){return this.persistence.flush();}
  snapshot(){return {declaredSettings:this.declaredSettings,preferredProvider:'claude',claude:this.claude||null,connected:!!this.child&&!!this.account,account:this.account,models:this.models,error:this.error,mcp:this.mcp||null,chats:this.chats,requests:[...this.requests.values()]};}
  write(value){if(!this.child?.stdin.writable)throw Error('Codex 연결이 닫혔습니다. 다시 연결하세요.');this.child.stdin.write(JSON.stringify(value)+'\n');}
@@ -80,7 +94,7 @@ export class Interaction {
    let item=c.items.find(x=>x.id===p.itemId);if(!item){item={id:p.itemId,type:method.includes('agentMessage')?'agentMessage':'commandExecution',text:'',status:'inProgress'};c.items.push(item);}
    const field=method.includes('agentMessage')?'text':'aggregatedOutput';c.items[c.items.indexOf(item)]={...item,[field]:bounded((item[field]||'')+p.delta)};
   }
-  if(method==='turn/completed'){if(p.turn.status!=='completed')c.queuePaused=true;c.busy=false;c.turnId=null;c.status=p.turn.status;c.error=p.turn.error?.message||'';for(const [id,r] of this.requests)if(r.params.threadId===c.threadId)this.requests.delete(id);this.save();}
+  if(method==='turn/completed'){c.updatedAt=new Date().toISOString();if(p.turn.status!=='completed')c.queuePaused=true;c.busy=false;c.turnId=null;c.status=p.turn.status;c.error=p.turn.error?.message||'';for(const [id,r] of this.requests)if(r.params.threadId===c.threadId)this.requests.delete(id);this.save();}
   if(method==='error'){c.error=p.error?.message||'Codex 실행 오류';}
   if(method==='turn/plan/updated')c.plan=p.plan;
  }
@@ -94,7 +108,7 @@ export class Interaction {
   if(c?.busy)throw Error('현재 응답을 중지하거나 완료될 때까지 기다려주세요.');
   if(c&&model!==undefined)c.model=model||(this.models.find(m=>m.isDefault)?.model||null);
   if(!c){if(this.chats.length>=50)throw Error('대화는 최대 50개입니다. 종료된 대화를 정리하세요.');c={id:crypto.randomUUID(),title:text.slice(0,60),blockId,model:model||null,threadId:null,items:[],status:'idle',createdAt:new Date().toISOString()};this.chats.push(c);}
-  c.busy=true;c.error='';c.status='starting';this.save();
+  c.updatedAt=new Date().toISOString();c.busy=true;c.error='';c.status='starting';this.save();
   try{
    const params={cwd:this.workspace,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(c.model?{model:c.model}:{}),developerInstructions:`You are working in the ISP Block Maker workspace ${this.workspace}. Read AGENTS.md and project skills. Use node .isp/tools/isp.mjs for graph/context/artifacts. Pinned diagram: ${c.diagramId||'none'}. When a diagram is pinned, always use isp project --diagram ID and explicit --diagram ID for that diagram, regardless of UI selection. Otherwise run isp project or graph-info to discover the current diagram. Capture its diagramId and use --diagram ID for subsequent graph edits in that task. JOBs are project-global. The pinned block for this conversation is ${c.blockId||'whole project'}; do not silently change targets when UI selection changes. GPU simulator and Reference I/O features have been retired. Use Image Viewer for source inspection and Visualizations for reports. Respond in the user's language. Never print local API credentials.`};
    if(!c.loaded){const r=await this.rpc(c.threadId?'thread/resume':'thread/start',{...params,...(c.threadId?{threadId:c.threadId}:{})});c.threadId=r.thread.id;c.loaded=true;}
@@ -109,8 +123,8 @@ export class Interaction {
   if(c?.busy)throw Error('현재 응답을 중지하거나 완료될 때까지 기다려주세요.');
   if(!c){if(this.chats.length>=50)throw Error('대화는 최대 50개입니다.');c={id:crypto.randomUUID(),provider:'claude',title:text.slice(0,60),blockId,threadId:null,items:[],createdAt:new Date().toISOString()};this.chats.push(c);}
   if(claudeOptions!==undefined)c.claudeOptions=claudeOptions;
-  c.busy=true;c.error='';c.status='starting';c.phase='starting';c.items.push({id:crypto.randomUUID(),type:'userMessage',text});this.save();
-  try{const runtime=await claudeRuntimeAsync(this.env);if(this.closed||!c.busy)return {id:c.id};this.claude={ready:true,sdkVersion:runtime.sdkVersion,engineVersion:runtime.engineVersion,validated:runtime.validated};c.status='inProgress';this.claudeRuns.set(c.id,runClaude({workspace:this.workspace,env:this.env,chat:c,text,runtime,queryImpl:this.claudeQuery,changed:()=>this.changed(),ask:(...args)=>this.claudePrompts.ask(...args),cancelPrompts:id=>this.claudePrompts.cancelChat(id),save:()=>{if(!c.busy&&c.status!=='completed')c.queuePaused=true;if(!c.busy)this.claudeRuns.delete(c.id);return this.save();}}));return {id:c.id};}
+  c.updatedAt=new Date().toISOString();c.busy=true;c.error='';c.status='starting';c.phase='starting';c.items.push({id:crypto.randomUUID(),type:'userMessage',text});this.save();
+  try{const runtime=await claudeRuntimeAsync(this.env);if(this.closed||!c.busy)return {id:c.id};this.claude={ready:true,sdkVersion:runtime.sdkVersion,engineVersion:runtime.engineVersion,validated:runtime.validated};c.status='inProgress';this.claudeRuns.set(c.id,runClaude({workspace:this.workspace,env:this.env,chat:c,text,runtime,queryImpl:this.claudeQuery,changed:()=>this.changed(),ask:(...args)=>this.claudePrompts.ask(...args),cancelPrompts:id=>this.claudePrompts.cancelChat(id),save:()=>{if(!c.busy)c.updatedAt=new Date().toISOString();if(!c.busy&&c.status!=='completed')c.queuePaused=true;if(!c.busy)this.claudeRuns.delete(c.id);return this.save();}}));return {id:c.id};}
   catch(e){c.busy=false;c.status='failed';c.error=e.message;this.save();throw e;}
  }
  async recoverImage(id){const c=this.chats.find(c=>c.id===id);if(!c)throw Error('대화를 찾을 수 없습니다.');recoverImageSession(c);await this.save();return {ok:true};}
@@ -121,7 +135,8 @@ export class Interaction {
   else {if(!decision)throw Error('승인 또는 거절을 선택하세요.');const allowed=r.params.availableDecisions;if(allowed&&!allowed.includes(decision))throw Error('허용되지 않은 승인 선택입니다.');result={decision};}
   this.write({id:r.id,result});this.requests.delete(String(id));return {ok:true};
  }
- remove(id){const c=this.chats.find(c=>c.id===id);if(c?.busy)throw Error('실행 중인 대화는 삭제할 수 없습니다.');this.chats=this.chats.filter(c=>c.id!==id);this.save();return {ok:true};}
+ rename(id,title){const c=this.chats.find(c=>c.id===id);if(!c)throw Error('대화를 찾을 수 없습니다.');c.title=z.string().trim().min(1).max(100).parse(title);this.save();return {id:c.id,title:c.title};}
+ remove(id){const c=this.chats.find(c=>c.id===id);if(c?.busy)throw Error('실행 중인 대화는 삭제할 수 없습니다.');for(const run of Object.values(this.apiRuns))if(run.session_id===id&&['queued','dispatching'].includes(run.status)){run.status='cancelled';run.error='Session deleted';this.apiEvent(run);}this.chats=this.chats.filter(c=>c.id!==id);this.save();return {ok:true};}
  disconnect(){const child=this.child;this.child=null;this.ready=null;this.account=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('연결이 종료되었습니다.'));}this.pending.clear();for(const [id,r] of this.requests)if(r.provider!=='claude')this.requests.delete(id);for(const c of this.chats.filter(c=>c.provider!=='claude')){c.loaded=false;if(c.busy){c.queuePaused=true;c.busy=false;c.status='interrupted';c.turnId=null;}}this.save();if(child){child.stdin.end();return new Promise(resolve=>{const timer=setTimeout(resolve,5000);child.once('exit',()=>{clearTimeout(timer);resolve();});if(process.platform==='win32')execFile('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true},()=>{});else child.kill();});}return Promise.resolve();}
  async close(){this.closing=true;this.queue.stop();for(const c of this.chats)if(c.provider==='claude'&&c.status==='starting'){c.busy=false;c.status='interrupted';}const runs=[...this.claudeRuns.values()].map(r=>r.stop());this.claudeRuns.clear();const done=this.disconnect();await Promise.all([...runs,done]);await this.save();await this.flushSaves();this.closed=true;clearTimeout(this.notifyTimer);clearTimeout(this.checkpointTimer);for(const fn of this.listeners)fn(true);this.listeners.clear();}
 }
@@ -152,6 +167,7 @@ export function installInteraction(app,current){
  app.post('/api/interaction/:id/recover-image',async(req,res)=>res.json(await get().recoverImage(z.string().uuid().parse(req.params.id))));
  app.post('/api/interaction/interrupt',async(req,res)=>res.json(await get().interrupt(z.string().uuid().parse(req.body.id))));
  app.post('/api/interaction/answer',(req,res)=>res.json(get().answer(req.body)));
+ app.patch('/api/interaction/:id',(req,res)=>res.json(get().rename(z.string().uuid().parse(req.params.id),req.body.title)));
  app.delete('/api/interaction/:id',(req,res)=>res.json(get().remove(z.string().uuid().parse(req.params.id))));
  return {get,close(){const done=manager?.close();manager=null;return done;}};
 }

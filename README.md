@@ -14,7 +14,7 @@ Self-contained HTML reports (including embedded images and offline math fonts) a
 
 [설치·사용·공유 가이드 (GitHub Pages)](https://longseabear.github.io/ISPBlockMaker/) · [프로젝트 공유 방법](https://longseabear.github.io/ISPBlockMaker/#sharing)
 
-로컬 CLI 에이전트와 함께 ISP 블록을 설계·구현·시각화하는 웹 작업 공간입니다. MCP 없이 HTTP API와 WebSocket으로 동작합니다.
+로컬 CLI 에이전트와 함께 ISP 블록을 설계·구현·시각화하는 웹 작업 공간입니다. UI와 CLI는 HTTP API와 WebSocket을 사용하며, 앱에서 실행한 에이전트에는 같은 로컬 서비스의 기본 MCP가 연결됩니다. [기본 MCP·검색·LAN 공유](docs/workspace-mcp.md)를 참고하세요.
 
 프레임워크와 작업 프로젝트는 독립 Git 저장소입니다. 각 workspace의 `project/`만 그래프·코드 저장소로 사용하고, 입력 데이터·요청/JOB·시각화·작업 기록은 workspace에 따로 보관합니다. 예제 구현·프로젝트 그래프·로컬 결과는 이 프레임워크 저장소에 포함하지 않습니다.
 
@@ -153,7 +153,7 @@ Browser ── HTTP ──────────── Local Node server ─�
 CLI agent ── isp.mjs ── HTTP API ── Local Node server
 ```
 
-HTTP와 WebSocket도 TCP 위에서 동작합니다. Raw TCP를 직접 구현하면 메시지 경계·요청 ID·오류·재연결 처리를 별도로 만들어야 하며 브라우저에서 직접 raw TCP를 사용할 수도 없습니다. 실행 중인 에이전트에 TCP 패킷을 보내는 것만으로 새 도구 호출이나 사용자 요청이 되지는 않습니다. 이번 구현은 에이전트가 context를 명시적으로 조회하는 pull 방식입니다. WebSocket push는 웹 화면 갱신과 터미널 입출력에 사용합니다. 필요하면 같은 서비스 위에 MCP 어댑터를 추가할 수 있습니다.
+HTTP와 WebSocket도 TCP 위에서 동작합니다. Raw TCP를 직접 구현하면 메시지 경계·요청 ID·오류·재연결 처리를 별도로 만들어야 하며 브라우저에서 직접 raw TCP를 사용할 수도 없습니다. 실행 중인 에이전트에 TCP 패킷을 보내는 것만으로 새 도구 호출이나 사용자 요청이 되지는 않습니다. 에이전트는 CLI 또는 기본 MCP로 context를 명시적으로 조회합니다. WebSocket push는 웹 화면 갱신과 터미널 입출력에 사용합니다.
 
 주요 API는 `Authorization: Bearer <token>`을 사용합니다.
 
@@ -413,7 +413,7 @@ Use LaTeX without dollar delimiters; JSON escapes backslashes. `displayMode` def
 번들 미리보기는 데이터 파일별 용량·포함 선택과 범주별 합계를 보여줍니다. 파일당 256 MiB / 전체 2 GiB 제한에 걸린 파일도 목록에 남으며, 데이터 항목을 제외한 뒤 저장할 수 있습니다. Git 이력 용량은 별도이며 큰 데이터가 과거 커밋에 포함됐다면 Git 이력을 끄세요.
 
 
-## 외부 브릿지 연결 (개발 버전)
+## 외부 브릿지 연결 (v0.1.27+)
 
 Windows **서버 관리 → 고급 옵션 → Agent API**에서 외부 브릿지용 중앙 실행 API를 켤 수 있습니다. 토큰 하나와 허용 워크스페이스 목록을 관리하고 workspace/session ID로 요청·결과를 전달합니다. MCP 읽기 공유와 별개입니다. [API 사용법과 Python 예제](docs/personal-agent-api.md)를 참고하세요.
 

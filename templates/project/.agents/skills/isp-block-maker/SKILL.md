@@ -9,6 +9,10 @@ The board is a big-picture map of major processing stages and data flow. Consult
 
 Read [common.md](common.md) once for this project. These skills apply to the workspace containing this file and its subdirectories; they are not global instructions.
 
+## Workspace MCP and search
+
+When `isp-workspace` MCP tools are available, prefer their typed operations for supported reads and UI actions. Read [mcp-search.md](mcp-search.md) for tool selection, evidence retrieval, and searchable block documentation. Discover the actual tool catalogue; unavailable operations still use the documented CLI. MCP is automatically supplied only to agents launched by this app. Do not modify global agent settings or assume external terminals have it.
+
 ## UI control: show, highlight and fit the Board
 
 Use this section when the user asks to show the block diagram, highlight blocks/connections, zoom in on a block, or fit the graph to the screen. These are UI actions; do not change graph positions or implementation code just to change the view.

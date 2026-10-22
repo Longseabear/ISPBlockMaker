@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {openWorkspaceServer,findWorkspaceServer} from './workspace-open.mjs';
 import {normalizeWorkspaceFolder} from './project-layout.mjs';
+import {installHubAgentApi} from './hub-agent-api.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export const hubStateRoot=()=>process.env.ISP_STATE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'.local','share'),'ISPBlockMaker','state');
@@ -22,7 +23,7 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  const registryFile=path.join(stateRoot,'hub-projects.json'),discovery=path.join(stateRoot,'hub.json');
  let projects=read(registryFile)||[],selected=null,selection=0;
  const token=crypto.randomBytes(32).toString('hex'),instance=crypto.randomUUID();
- const app=express(),server=http.createServer(app);let url;
+ const app=express(),server=http.createServer(app);let url,agentApi;
  const persist=()=>{fs.writeFileSync(registryFile+'.tmp',JSON.stringify(projects));fs.renameSync(registryFile+'.tmp',registryFile);};
  const remember=folder=>{const canonical=normalizeWorkspaceFolder(folder);let item=projects.find(p=>key(p.path)===key(canonical));if(!item){item={id:crypto.randomUUID(),path:canonical,lastOpened:null};projects.push(item);persist();}return item;};
  function discover(){
@@ -41,15 +42,16 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
   if(req.headers.host!==new URL(url).host||(req.headers.origin&&req.headers.origin!==origin)||req.headers['sec-fetch-site']==='cross-site')return res.status(403).json({error:'Local hub requests only'});
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');next();
  });
- app.get('/health',(req,res)=>res.json({app:'ISPBlockMakerHub',instance,pid:process.pid,root:frameworkRoot}));
+ app.get('/health',(req,res)=>res.json({app:'ISPBlockMakerHub',instance,pid:process.pid,root:frameworkRoot,agentGateway:1}));
  app.get('/api/bootstrap',(req,res)=>res.json({token,instance}));
- app.use('/api',(req,res,next)=>req.headers.authorization===`Bearer ${token}`?next():res.status(401).json({error:'Missing hub token'}));
- app.use('/api',express.json({limit:'32kb'}));
+ app.use('/api',(req,res,next)=>(req.path.startsWith('/agent/v1/')?agentApi.access.authorized(req):req.headers.authorization===`Bearer ${token}`)?next():res.status(401).json({error:'Missing or invalid hub credential'}));
+ app.use('/api',express.json({limit:'128kb'}));
+ agentApi=installHubAgentApi(app,{stateRoot,list,url:()=>url});
  app.get('/api/projects',async(req,res)=>res.json({projects:await list(),selected,selection}));
  app.post('/api/shutdown',(req,res)=>{
   if(req.body.instance!==instance)return res.status(409).json({error:'Hub instance changed'});
   res.json({stopping:true});
-  setTimeout(()=>{if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);server.close();server.closeAllConnections();},150);
+  setTimeout(()=>{agentApi.close();if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);server.close();server.closeAllConnections();},150);
  });
  app.post('/api/open',async(req,res)=>{if(typeof req.body.path!=='string')throw Error('Choose a folder');res.json(await open(req.body.path));});
  app.post('/api/projects/:id/stop',async(req,res)=>{
@@ -63,13 +65,14 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  });
  app.get('/api/folders',(req,res)=>{const folder=fs.realpathSync(typeof req.query.path==='string'?req.query.path:os.homedir());res.json({path:folder,parent:path.dirname(folder),directories:fs.readdirSync(folder,{withFileTypes:true}).filter(e=>e.isDirectory()&&!['.git','.isp','node_modules'].includes(e.name)).map(e=>({name:e.name,path:path.join(folder,e.name)}))});});
  app.get('/',(req,res)=>res.status(410).type('text').send('ISP server management is available in the Windows launcher. Open the workspace server URL for the web UI.'));
- app.use((error,req,res,next)=>res.status(400).json({error:error.message}));
+ app.use('/api',(_req,res)=>res.status(404).json({error:'Unknown hub API endpoint'}));
+ app.use((error,req,res,next)=>res.status(error.status||400).json({error:error.message}));
  for(let candidate=port;candidate<=Math.min(port+20,65535);candidate++){
   try{await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(candidate,'127.0.0.1',()=>{server.removeListener('error',reject);resolve();});});break;}catch(e){if(e.code!=='EADDRINUSE'||candidate===Math.min(port+20,65535))throw e;}
  }
  url=`http://127.0.0.1:${server.address().port}`;
  fs.writeFileSync(discovery,JSON.stringify({url,token,instance,pid:process.pid}),{mode:0o600});
- return {url,token,server,close:async()=>{if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});}};
+ return {url,token,server,close:async()=>{agentApi.close();if(read(discovery)?.instance===instance)fs.unlinkSync(discovery);await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});}};
 }
 
 export async function openInHub(folder){
