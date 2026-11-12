@@ -489,3 +489,9 @@ Pipeline과 Harness 모두 `project/diagrams/d-<다이어그램 ID>/`를 사용�
 하네스 실행 상태는 `.isp/harness-runs/`에 계속 별도로 저장됩니다.
 하네스 정의 내보내기는 보조 파일을 포함하지 않으며, 소스를 함께 공유하려면
 프로젝트 bundle을 사용합니다.
+
+### Remove a workspace from the list
+
+In **Workspaces**, select an item and click the trash icon (**Remove from List**). Stop a running workspace with **Stop Server** first. Removal keeps project files and conversation history, revokes its selected API access, and prevents automatic rediscovery after restart. **Open Folder** explicitly registers it again with a new workspace ID; external programs must refresh their workspace selection.
+
+Workspace list shortcuts: **Enter** opens/starts the selected workspace, **Delete** opens the removal confirmation, and **F5** refreshes the list. Right-click provides open/start, stop, folder-path copy and removal. Removal confirmations show the full path to distinguish identical names; project files are never deleted by this action.

@@ -33,6 +33,7 @@ test('unified hub adopts existing servers, preserves isolated projects, serializ
   const folderResponse=await fetch(existing.url+'/api/workspaces',{headers:{Authorization:'Bearer '+boot.token}});
   assert.equal(folderResponse.status,200);assert.equal((await folderResponse.json()).length,2);
   const target=listing.projects.find(p=>p.path===b);
+  assert.equal((await api('/projects/'+target.id+'/remove',{})).status,409);
   assert.equal((await api('/projects/'+target.id+'/stop',{instance:'wrong'})).status,409);
   assert.equal((await api('/projects/'+target.id+'/stop',{instance:target.instance})).status,200);
   for(let i=0;i<50;i++){await new Promise(r=>setTimeout(r,100));listing=(await api('/projects')).data;if(!listing.projects.find(p=>p.id===target.id).running)break;}

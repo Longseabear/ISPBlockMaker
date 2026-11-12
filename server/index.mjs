@@ -154,13 +154,14 @@ app.post('/api/search/read',async(req,res)=>res.json(await workspaceSearch.read(
 app.post('/mcp',(req,res,next)=>{if(!authorized(req))return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),workspaceMcpHandler(localMcpContext));
 app.all('/mcp',(_req,res)=>res.status(405).end());
 const mcpSharing=installMcpSharing(app,()=>({store,search:workspaceSearch,sharedImages:{list:()=>sharedImages(workspace),read:id=>sharedImagePreview(workspace,id)}}));
-const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.get().artifacts}));
+const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.peek().artifacts}));
 const viewer = installViewer(app, {
-  current: () => ({workspace,state:store.get()}),
+  current: () => ({workspace,get state(){return store.peek();}}),
+  getGraph: () => store.get(),
   present: (requestId,message,commandId) => {
     let delivered=0;
     for(const client of wss.clients) if(client.readyState===WebSocket.OPEN) {
-      client.send(JSON.stringify({type:"present",presentation:{view:"viewer",requestId,commandId,message,blockIds:[],edgeIds:[]},state:store.get()}));delivered++;
+      client.send(JSON.stringify({type:"present",presentation:{view:"viewer",requestId,commandId,message,blockIds:[],edgeIds:[]},state:store.peek()}));delivered++;
     }
     return delivered;
   }
@@ -810,11 +811,10 @@ app.post("/api/selection", (req, res) => {
   broadcast();
   res.json(state);
 });
-app.get("/api/context", (req, res) =>
-  res.json(
-    {...(req.query.blockId||store.get().selectedBlockId?contextFor(store.get(), req.query.blockId || store.get().selectedBlockId):{...diagramView(store.get()),block:null}), paths: workspaceInfo(), blockDocumentation:(req.query.blockId||store.get().selectedBlockId)?{directory:blockStorageDirectory(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId),documents:blockDocuments(workspaceInfo().graphFile,req.query.blockId||store.get().selectedBlockId)}:null, projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)},
-  ),
-);
+app.get("/api/context", (req,res)=>{
+ const graph=store.get(),blockId=req.query.blockId||graph.selectedBlockId,info=workspaceInfo();
+ res.json({... (blockId?contextFor(graph,blockId):{...diagramView(graph),block:null}),paths:info,blockDocumentation:blockId?{directory:blockStorageDirectory(info.graphFile,blockId),documents:blockDocuments(info.graphFile,blockId)}:null,projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)});
+});
 app.get("/api/mermaid", (req, res) =>
   res.type("text/plain").send(toMermaid(diagramView(store.get(),req.query.diagramId||undefined))),
 );

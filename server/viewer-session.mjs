@@ -75,7 +75,7 @@ export function installViewerSession(app,{current,present,read,write,findImage,f
   app.post('/api/viewer/view',(req,res)=>{
     const input=view.extend({sessionId:z.string().uuid(),png:z.string().max(12*1024*1024).optional()}).parse(req.body);checkView(input);
     const {png,...metadata}=input;
-    let imagePath;
+    let imagePath=liveWorkspace===current().workspace&&live?.sessionId===metadata.sessionId&&live?.imageId===metadata.imageId?live?.paths?.image:undefined;
     if(png){
       if(!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png))throw new Error('PNG image required');
       const bytes=Buffer.from(png.split(',')[1],'base64');if(bytes.length<24||bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||!bytes.readUInt32BE(16)||!bytes.readUInt32BE(20)||bytes.readUInt32BE(16)>2048||bytes.readUInt32BE(20)>2048)throw new Error('Invalid view PNG');

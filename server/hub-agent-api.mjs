@@ -12,6 +12,11 @@ export class HubAgentAccess {
  constructor(folder){this.file=path.join(folder,'agent-api.json');this.listeners=new Set();}
  read(){if(!fs.existsSync(this.file))return {enabled:false,workspace_ids:[]};if(fs.lstatSync(this.file).isSymbolicLink())fail(400,'Linked agent settings are unsupported');return read(this.file);}
  authorized(req){const c=this.read(),s=req.headers.authorization||'';return c.enabled&&s.startsWith('Bearer ')&&hash(s.slice(7))===c.tokenHash;}
+ revokeWorkspace(id){
+  const config=this.read();config.workspace_ids=config.workspace_ids.filter(value=>value!==id);
+  const temp=this.file+'.'+crypto.randomUUID()+'.tmp';try{fs.writeFileSync(temp,JSON.stringify(config),{flag:'wx',mode:0o600});fs.renameSync(temp,this.file);}finally{if(fs.existsSync(temp))fs.unlinkSync(temp);}
+  for(const listener of this.listeners)listener();
+ }
  update(action,workspaceIds,projects,manageWorkspaces){
   const previous=this.read();const manage=manageWorkspaces??!!previous.manage_workspaces;const ids=workspaceIds===undefined?previous.workspace_ids:[...new Set(z.array(z.string().uuid()).max(100).parse(workspaceIds))];
   if(action!=='disable'&&((!manage&&ids.length===0)||ids.some(id=>!projects.some(p=>p.id===id))))fail(400,'Select at least one registered workspace');

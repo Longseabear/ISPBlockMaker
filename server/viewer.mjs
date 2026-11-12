@@ -9,7 +9,7 @@ import {writeZip} from "./bundle-zip.mjs";
 import {installViewerSession} from "./viewer-session.mjs";
 import {imagePixels,imageStatistics,imageTile,MAX_PIXEL_SAMPLES,MAX_STAT_SAMPLES} from "./viewer-analysis.mjs";
 
-export function installViewer(app,{current,present}) {
+export function installViewer(app,{current,present,getGraph=()=>current().state}) {
   const changes=new EventEmitter(); changes.setMaxListeners(64);
   const id=value=>z.string().uuid().parse(value);
   const folder=()=>path.join(current().workspace,".isp","viewer");
@@ -83,7 +83,7 @@ export function installViewer(app,{current,present}) {
   app.post("/api/viewer/requests",(req,res)=>{
     const input=z.object({imageId:z.string().uuid(),prompt:z.string().min(1).max(4000),origin:z.enum(["agent","user"]).default("user"),purpose:z.enum(["analysis","white_balance","input"]).default("analysis"),blockId:z.string().optional(),show:z.boolean().default(true)}).parse(req.body);
     findImage(input.imageId);
-    if(input.blockId&&!current().state.blocks.some(b=>b.id===input.blockId))throw new Error("블록을 찾을 수 없습니다.");
+    if(input.blockId&&!getGraph().blocks.some(b=>b.id===input.blockId))throw new Error("블록을 찾을 수 없습니다.");
     const requests=read("requests");if(requests.length>=1000)throw new Error("크롭 요청 한도(1000개)에 도달했습니다.");
     const request={...input,id:crypto.randomUUID(),status:"pending",createdAt:new Date().toISOString(),revision:current().state.revision};
     write("requests",[...requests,request]);

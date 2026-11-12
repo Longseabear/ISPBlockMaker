@@ -8,11 +8,11 @@ function stableId(id){if(!/^[a-zA-Z0-9_-]{1,80}$/.test(id))throw Error('Invalid 
 export const diagramDirectory=id=>`diagrams/d-${stableId(id)}`;
 export const blockDirectory=(id,diagramId='main')=>`${diagramDirectory(diagramId)}/blocks/b-${stableId(id)}`;
 const legacyDirectory=id=>`board/blocks/b-${stableId(id)}`;
-export function safeGraphPath(root,relative){
+export function safeGraphPath(root,relative,checked){
  if(relative.includes('\\')||relative.split('/').some(p=>!p||p==='.'||p==='..')||path.isAbsolute(relative))throw Error('Invalid graph path');
  let current=path.resolve(root);
- if(fs.lstatSync(current).isSymbolicLink())throw Error('Linked graph root');
- for(const part of relative.split('/')){current=path.join(current,part);if(fs.existsSync(current)&&fs.lstatSync(current).isSymbolicLink())throw Error('Linked graph metadata is not supported');}
+ if(!checked?.has(current)){if(fs.lstatSync(current).isSymbolicLink())throw Error('Linked graph root');checked?.add(current);}
+ for(const part of relative.split('/')){current=path.join(current,part);if(!checked?.has(current)){if(fs.existsSync(current)&&fs.lstatSync(current).isSymbolicLink())throw Error('Linked graph metadata is not supported');checked?.add(current);}}
  return current;
 }
 // A shared generator keeps filesystem and historical Git readers identical.
@@ -50,7 +50,8 @@ function* decode(raw){
  return validateGraph({...raw,diagrams,blocks,edges});
 }
 export function readGraph(graphFile){
- const root=path.dirname(graphFile),read=file=>fs.readFileSync(safeGraphPath(root,file),'utf8');
+ // Reuse ancestor checks only within this synchronous read; never across requests.
+ const root=path.dirname(graphFile),checked=new Set(),read=file=>fs.readFileSync(safeGraphPath(root,file,checked),'utf8');
  const iterator=decode(JSON.parse(read(path.basename(graphFile))));let next=iterator.next();
  while(!next.done)next=iterator.next(read(next.value));return next.value;
 }

@@ -32,6 +32,13 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await post("/viewer/images/import",{path:os.tmpdir(),spec})).status,400);
   assert.equal((await post("/viewer/images/import",{path:external,spec:{format:"bmp"}})).status,400);
   const imported=JSON.parse(execFileSync(process.execPath,[path.join(temp,".isp/tools/isp.mjs"),"viewer-import","input.raw","--spec","spec.json"],{cwd:temp,windowsHide:true,encoding:"utf8"}));
+  // Ordinary viewer work must not read or repair graph metadata, even if a graph edit is incomplete.
+  const graphPath=path.join(temp,'project','graph.json'),graphBefore=fs.readFileSync(graphPath);
+  try {
+   fs.writeFileSync(graphPath,'incomplete external graph edit');
+   for(const route of ['/viewer',`/viewer/images/${imported.id}/tile?x=0&y=0&width=2&height=2`,`/viewer/images/${imported.id}/pixels?x=0&y=0&width=2&height=2`,`/viewer/images/${imported.id}/preview`])assert.equal((await fetch(base+'/api'+route,{headers})).status,200,route);
+   assert.equal(fs.readFileSync(graphPath,'utf8'),'incomplete external graph edit');
+  } finally {fs.writeFileSync(graphPath,graphBefore);}
   assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/pixels?x=0&y=0&width=2&height=2`)).status,401);
   assert.equal((await fetch(base+`/api/viewer/images/${imported.id}/tile?x=0&y=0&width=2&height=2`)).status,401);
   const tileResponse=await fetch(base+`/api/viewer/images/${imported.id}/tile?x=2&y=1&width=2&height=2`,{headers});assert.equal(tileResponse.status,200);

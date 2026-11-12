@@ -102,6 +102,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
  function zoomCenter(next:number){const v=viewport.current;if(!v)return;setOffset(zoomAround(offset,zoom,next,{x:v.clientWidth/2,y:v.clientHeight/2}));setZoom(next);}
  useEffect(()=>{
    const v=viewport.current,c=canvas.current;if(!v||!c||!preview)return;
+   let frameId=0,pending:{zoom:number;offset:{x:number;y:number}}|null=null;
    const wheel=(event:WheelEvent)=>{
      if(!event.deltaY||(event.target as HTMLElement).closest(".viewer-info-float,.viewer-selection-float"))return;
      event.preventDefault();
@@ -109,20 +110,22 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
      // Pointer release can be missed when a preview is replaced during a drag.
      start.current=null;pan.current=null;
      const bounds=c.getBoundingClientRect(),frame=v.getBoundingClientRect();
-     const oldZoom=bounds.width/preview.width;if(!oldZoom)return;
+     const oldZoom=pending?.zoom??bounds.width/preview.width;if(!oldZoom)return;
      const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?v.clientHeight:1);
      const nextZoom=Math.max(.1,Math.min(512,oldZoom*Math.exp(-Math.max(-300,Math.min(300,delta))*.002)));
      if(nextZoom===oldZoom)return;
-     const x=(event.clientX-bounds.left)/oldZoom;
-     const y=(event.clientY-bounds.top)/oldZoom;
+     const left=pending?frame.left+v.clientLeft+pending.offset.x:bounds.left,top=pending?frame.top+v.clientTop+pending.offset.y:bounds.top;
+     const x=(event.clientX-left)/oldZoom;
+     const y=(event.clientY-top)/oldZoom;
      const pointerX=event.clientX-frame.left-v.clientLeft,pointerY=event.clientY-frame.top-v.clientTop;
-     flushSync(()=>{setZoom(nextZoom);setOffset({x:pointerX-x*nextZoom,y:pointerY-y*nextZoom});});
+     pending={zoom:nextZoom,offset:{x:pointerX-x*nextZoom,y:pointerY-y*nextZoom}};
+     if(!frameId)frameId=requestAnimationFrame(()=>{frameId=0;const next=pending;pending=null;if(next)flushSync(()=>{setZoom(next.zoom);setOffset(next.offset);});});
    };
    // React wheel handlers are passive; prevent page scrolling with a native listener.
    v.addEventListener('wheel',wheel,{passive:false,capture:true});
    const reset=()=>{start.current=null;pan.current=null;};
    window.addEventListener('blur',reset);
-   return()=>{v.removeEventListener('wheel',wheel,true);window.removeEventListener('blur',reset);reset();};
+   return()=>{cancelAnimationFrame(frameId);pending=null;v.removeEventListener('wheel',wheel,true);window.removeEventListener('blur',reset);reset();};
  },[preview]);
  async function refresh(){const epoch=++stateEpoch.current,next=await api<State>("/viewer");if(epoch===stateEpoch.current)setState(next);}
  async function clearCropHistory(){
@@ -142,7 +145,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
    }catch(e){setError(`${removed}/${items.length}개 삭제됨. 남은 크롭을 확인하고 다시 시도하세요. ${String(e)}`);}
    finally{try{await refresh();}catch(e){setError(`크롭 목록을 새로 읽지 못했습니다. ${String(e)}`);}historyDeleting.current=false;setClearingHistory(false);setBusy(false);}
  }
- useEffect(()=>{if(!visible)return;let alive=true;const load=()=>{const epoch=stateEpoch.current;return api<State>("/viewer").then(s=>{if(alive&&epoch===stateEpoch.current&&!captureBusy.current)setState(s);}).catch(e=>{if(alive)setError(String(e));});};void load();const timer=setInterval(load,2500);return()=>{alive=false;clearInterval(timer);};},[api,visible]);
+ useEffect(()=>{if(!visible)return;let alive=true,pending=false;const load=()=>{if(pending)return;pending=true;const epoch=stateEpoch.current;return api<State>("/viewer").then(s=>{if(alive&&epoch===stateEpoch.current&&!captureBusy.current)setState(old=>JSON.stringify(old)===JSON.stringify(s)?old:s);}).catch(e=>{if(alive)setError(String(e));}).finally(()=>{pending=false;});};void load();const timer=setInterval(load,2500);return()=>{alive=false;clearInterval(timer);};},[api,visible]);
  // Camera presentations carry an empty requestId. Only an explicit request/image
  // switch starts a new crop context; a same-image agent camera move preserves it.
  useEffect(()=>{if(requestId||!commandId)setSelected(requestId);},[requestId,commandId]);
@@ -183,9 +186,11 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
  liveView.current=currentView;
  useEffect(()=>{
    if(!visible){void api('/viewer/view/hidden',{sessionId:sessionId.current}).catch(()=>{});return;}
-   let stopped=false,pending=false;
+   let stopped=false,pending=false,lastKey='',lastCapture=0;
    const publish=async()=>{if(pending)return;const view=liveView.current(),c=canvas.current;if(!view||!c){pending=true;try{await api('/viewer/view/hidden',{sessionId:sessionId.current});if(!stopped)setLiveStatus('화면에 보이는 이미지 없음');}catch{}finally{pending=false;}return;}pending=true;
-     try{const sx=(view.visible.x-view.area.x)/view.area.width*c.width,sy=(view.visible.y-view.area.y)/view.area.height*c.height,sw=view.visible.width/view.area.width*c.width,sh=view.visible.height/view.area.height*c.height;
+     const captureKey=JSON.stringify([view,annotationsRef.current]);
+     try{if(captureKey===lastKey&&Date.now()-lastCapture<10000){await api('/viewer/view',{...view,sessionId:sessionId.current});return;}
+       const sx=(view.visible.x-view.area.x)/view.area.width*c.width,sy=(view.visible.y-view.area.y)/view.area.height*c.height,sw=view.visible.width/view.area.width*c.width,sh=view.visible.height/view.area.height*c.height;
        const scale=Math.min(view.zoom,1600/Math.max(sw,sh)),out=document.createElement('canvas');out.width=Math.max(1,Math.round(sw*scale));out.height=Math.max(1,Math.round(sh*scale));const ctx=out.getContext('2d')!;ctx.imageSmoothingEnabled=false;ctx.drawImage(c,sx,sy,sw,sh,0,0,out.width,out.height);
        const native=viewport.current?.querySelector<HTMLCanvasElement>('canvas.viewer-native-image');
        if(native&&native.style.display!=='none'&&viewport.current){ctx.clearRect(0,0,out.width,out.height);const baseBounds=c.getBoundingClientRect(),viewBounds=viewport.current.getBoundingClientRect(),screenX=baseBounds.left-viewBounds.left-viewport.current.clientLeft+sx*view.zoom,screenY=baseBounds.top-viewBounds.top-viewport.current.clientTop+sy*view.zoom;ctx.drawImage(native,screenX*native.width/viewport.current.clientWidth,screenY*native.height/viewport.current.clientHeight,sw*view.zoom*native.width/viewport.current.clientWidth,sh*view.zoom*native.height/viewport.current.clientHeight,0,0,out.width,out.height);}
@@ -200,7 +205,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
         ctx.lineWidth=4*screenScale;ctx.strokeStyle='#101820b0';ctx.strokeRect(x,y,w,h);ctx.lineWidth=2*screenScale;ctx.strokeStyle=mark.color;ctx.fillStyle=mark.color;ctx.strokeRect(x,y,w,h);
         ctx.fillText(mark.label,x+4*screenScale,Math.max(16*screenScale,y+16*screenScale));
        }
-       await api('/viewer/view',{...view,sessionId:sessionId.current,png:out.toDataURL('image/png')});if(!stopped)setLiveStatus('현재 화면 공유 중');
+       await api('/viewer/view',{...view,sessionId:sessionId.current,png:out.toDataURL('image/png')});lastKey=captureKey;lastCapture=Date.now();if(!stopped)setLiveStatus('현재 화면 공유 중');
      }catch{if(!stopped)setLiveStatus('화면 연결 재시도 중');}finally{pending=false;if(!visibleRef.current)void api('/viewer/view/hidden',{sessionId:sessionId.current}).catch(()=>{});}
    };
    const timer=setInterval(()=>void publish(),1500);return()=>{stopped=true;clearInterval(timer);};

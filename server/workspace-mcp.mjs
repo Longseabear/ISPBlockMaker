@@ -23,7 +23,7 @@ export function createWorkspaceMcp({store,search,scope={},localApi,mutate,readAr
  if(localApi&&!scope.public)registerLocalTools(tool,localApi,mutate);
  if(localApi&&mutate&&!scope.public)registerEditTools(tool,localApi,mutate);
  if(localApi&&mutate&&!scope.public)registerWorkTools(tool,localApi,mutate);
- if(localApi&&mutate&&readArtifact&&!scope.public)registerArtifactTools(tool,{api:localApi,mutate,readFile:readArtifact,artifacts:()=>store.get().artifacts});
+ if(localApi&&mutate&&readArtifact&&!scope.public)registerArtifactTools(tool,{api:localApi,mutate,readFile:readArtifact,artifacts:()=>(store.peek?.()||store.get()).artifacts});
  if(scope.public&&scope.imageIds?.length&&sharedImages)registerSharedImageTools(server,{scope,...sharedImages});
  return server;
 }

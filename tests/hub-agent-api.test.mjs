@@ -84,3 +84,21 @@ test('workspace management is opt-in, registers idempotently without modifying f
  await call('/agent-settings',{action:'scope',workspace_ids:[id],manage_workspaces:false},true);
  assert.equal((await call('/agent/v1/workspaces',{path:folder})).status,403);
 });
+
+
+test('removing a workspace preserves files, revokes scope and suppresses rediscovery across restarts',async t=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-remove-')),folder=path.join(temp,'project'),stateRoot=path.join(temp,'state');fs.mkdirSync(folder);fs.mkdirSync(stateRoot);fs.writeFileSync(path.join(folder,'keep.txt'),'keep');
+ const id=crypto.randomUUID();fs.writeFileSync(path.join(stateRoot,'hub-projects.json'),JSON.stringify([{id,path:folder}]));
+ fs.mkdirSync(path.join(stateRoot,'cached'));fs.writeFileSync(path.join(stateRoot,'cached','active-workspace.json'),JSON.stringify({path:folder}));
+ let hub=await createHub({stateRoot,port:0});t.after(async()=>{await hub.close();fs.rmSync(temp,{recursive:true,force:true});});
+ const admin=async(route,body)=>{const r=await fetch(hub.url+'/api'+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+hub.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
+ await admin('/agent-settings',{action:'enable',workspace_ids:[id]});
+ assert.equal((await admin('/projects/'+id+'/remove',{})).status,200);
+ assert.equal((await admin('/projects')).data.projects.length,0);
+ assert.deepEqual((await admin('/agent-settings')).data.workspace_ids,[]);
+ assert.equal(fs.readFileSync(path.join(folder,'keep.txt'),'utf8'),'keep');
+ await hub.close();hub=await createHub({stateRoot,port:0});assert.equal((await admin('/projects')).data.projects.length,0);
+ const token=(await admin('/agent-settings',{action:'enable',workspace_ids:[],manage_workspaces:true})).data.token;
+ const response=await fetch(hub.url+'/api/agent/v1/workspaces',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({path:folder})});assert.equal(response.status,200);assert.notEqual((await response.json()).workspace.id,id);
+ assert.equal((await admin('/projects')).data.projects.length,1);
+});

@@ -134,6 +134,8 @@ export function createStore(
   refresh();
   return {
     get: refresh,
+    // Local presentation/artifact state does not require reading graph files.
+    peek: () => state,
     migrate(){refresh();if(read(graphFile).storageVersion===4)return state;planGraph(graphFile,state);backupLegacyGraph(graphFile,directory);loadedSpec=null;return persist(state);},
     global(input, revision, overview) {
       refresh();

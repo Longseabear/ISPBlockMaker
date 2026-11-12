@@ -27,13 +27,13 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  const token=crypto.randomBytes(32).toString('hex'),instance=crypto.randomUUID();
  const app=express(),server=http.createServer(app);let url,agentApi;
  const persist=()=>{fs.writeFileSync(registryFile+'.tmp',JSON.stringify(projects));fs.renameSync(registryFile+'.tmp',registryFile);};
- const remember=folder=>{const canonical=normalizeWorkspaceFolder(folder);let item=projects.find(p=>key(p.path)===key(canonical));if(!item){item={id:crypto.randomUUID(),path:canonical,lastOpened:null};projects.push(item);persist();}return item;};
+ const remember=(folder,explicit=true)=>{const canonical=normalizeWorkspaceFolder(folder);let item=projects.find(p=>key(p.path)===key(canonical));if(item?.removed&&explicit){item.id=crypto.randomUUID();delete item.removed;item.lastOpened=null;persist();}if(!item){item={id:crypto.randomUUID(),path:canonical,lastOpened:null};projects.push(item);persist();}return item;};
  function discover(){
   for(const entry of fs.readdirSync(stateRoot,{withFileTypes:true}).filter(e=>e.isDirectory())){
-   for(const file of ['connection.json','active-workspace.json']){const data=read(path.join(stateRoot,entry.name,file));const folder=data?.workspace||data?.path;if(folder)try{remember(folder);}catch{}}
+   for(const file of ['connection.json','active-workspace.json']){const data=read(path.join(stateRoot,entry.name,file));const folder=data?.workspace||data?.path;if(folder)try{remember(folder,false);}catch{}}
   }
  }
- async function list(){discover();return Promise.all(projects.map(async item=>{
+ async function list(){discover();return Promise.all(projects.filter(p=>!p.removed).map(async item=>{
   let address=null,info=null;try{address=await findWorkspaceServer(item.path);if(address)info=await health(address);}catch{}
   return {...item,name:path.basename(item.path),running:!!info,url:info?address:null,instance:info?.instance||null};
  }));}
@@ -86,6 +86,17 @@ export async function createHub({stateRoot=hubStateRoot(),frameworkRoot=root,por
  });
  app.post('/api/open',async(req,res)=>{if(typeof req.body.path!=='string')throw Error('Choose a folder');res.json(await open(req.body.path));});
  app.post('/api/manager/open',(_req,res)=>{selected=null;selection++;res.json({selection});});
+ app.post('/api/projects/:id/remove',async(req,res)=>{
+  const item=projects.find(p=>p.id===req.params.id&&!p.removed);
+  if(!item)return res.status(404).json({error:'Workspace not found'});
+  if(openingCount)return res.status(409).json({error:'Server startup is in progress. Try again after it finishes.'});
+  const address=await findWorkspaceServer(item.path);
+  if(address)return res.status(409).json({error:'Stop this workspace server before removing it from the list.'});
+  if(openingCount||item.removed)return res.status(409).json({error:'Workspace state changed. Refresh and try again.'});
+  agentApi.access.revokeWorkspace(item.id);
+  item.removed=true;persist();if(selected===item.id){selected=null;selection++;}
+  res.json({removed:true,files_preserved:true});
+ });
  app.post('/api/projects/:id/stop',async(req,res)=>{
   const item=projects.find(p=>p.id===req.params.id);if(!item) return res.status(404).json({error:'Project not found'});
   const address=await findWorkspaceServer(item.path);if(!address)return res.json({stopped:true});
