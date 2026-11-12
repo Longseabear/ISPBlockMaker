@@ -96,6 +96,15 @@ test("Viewer authenticates imports, presents requests, persists exact user crops
   assert.equal((await(await fetch(base+`/api/viewer/commands/${command.id}`,{headers})).json()).status,'applied');
   assert.equal((await post('/viewer/view',{...view,sessionId})).status,200);
   assert.deepEqual((await(await fetch(base+'/api/viewer/view',{headers})).json()).live.visible,view.visible);
+  assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,409);
+  await post('/viewer/view',{...view,sessionId,png:preview.url});
+  const currentPng=path.join(temp,'.isp/viewer/current-view.png'),beforeHeartbeat=fs.statSync(currentPng).mtimeMs;
+  await post('/viewer/view',{...view,sessionId});
+  assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,200);
+  assert.equal(fs.statSync(currentPng).mtimeMs,beforeHeartbeat,'Unchanged heartbeat must not rewrite PNG');
+  await post('/viewer/view',{...view,zoom:view.zoom+1,sessionId});
+  assert.equal((await fetch(base+'/api/viewer/current/attachment',{headers})).status,409,'Changed view must not expose the old capture');
+  await post('/viewer/view',{...view,sessionId,png:preview.url});
   await post('/viewer/view/hidden',{sessionId:crypto.randomUUID()});
   assert.ok((await(await fetch(base+'/api/viewer/view',{headers})).json()).live);
   await post('/viewer/view/hidden',{sessionId});

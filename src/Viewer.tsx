@@ -64,6 +64,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
  const sideDrag=useRef<{x:number;width:number}|null>(null);
  useEffect(()=>{try{localStorage.setItem('isp-viewer-side-width',String(sideWidth));}catch{}},[sideWidth]);
  const [command,setCommand]=useState<ViewCommand|null>(null),[loadedKey,setLoadedKey]=useState(''),[showSelection,setShowSelection]=useState(false);
+ const lastGesture=useRef(0);
  const sessionId=useRef(crypto.randomUUID()),appliedCommand=useRef(''),liveView=useRef<()=>ViewState|null>(()=>null);
  const pan=useRef<{x:number;y:number;left:number;top:number}|null>(null);
  const canvas=useRef<HTMLCanvasElement>(null),viewport=useRef<HTMLDivElement>(null),start=useRef<{x:number;y:number;clientX:number;clientY:number;additive:boolean;staged:boolean}|null>(null),bitmap=useRef<HTMLImageElement|null>(null);
@@ -106,6 +107,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
    const wheel=(event:WheelEvent)=>{
      if(!event.deltaY||(event.target as HTMLElement).closest(".viewer-info-float,.viewer-selection-float"))return;
      event.preventDefault();
+     lastGesture.current=performance.now();
      if(event.buttons)return;
      // Pointer release can be missed when a preview is replaced during a drag.
      start.current=null;pan.current=null;
@@ -186,10 +188,10 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
  liveView.current=currentView;
  useEffect(()=>{
    if(!visible){void api('/viewer/view/hidden',{sessionId:sessionId.current}).catch(()=>{});return;}
-   let stopped=false,pending=false,lastKey='',lastCapture=0;
-   const publish=async()=>{if(pending)return;const view=liveView.current(),c=canvas.current;if(!view||!c){pending=true;try{await api('/viewer/view/hidden',{sessionId:sessionId.current});if(!stopped)setLiveStatus('화면에 보이는 이미지 없음');}catch{}finally{pending=false;}return;}pending=true;
+   let stopped=false,pending=false,lastKey='';
+   const publish=async()=>{if(pending||document.hidden||performance.now()-lastGesture.current<250)return;const view=liveView.current(),c=canvas.current;if(!view||!c){pending=true;try{await api('/viewer/view/hidden',{sessionId:sessionId.current});if(!stopped)setLiveStatus('화면에 보이는 이미지 없음');}catch{}finally{pending=false;}return;}pending=true;
      const captureKey=JSON.stringify([view,annotationsRef.current]);
-     try{if(captureKey===lastKey&&Date.now()-lastCapture<10000){await api('/viewer/view',{...view,sessionId:sessionId.current});return;}
+     try{if(captureKey===lastKey){const receipt=await api<{paths?:{image:string}}>('/viewer/view',{...view,sessionId:sessionId.current});if(!receipt.paths?.image)lastKey='';else if(!stopped)setLiveStatus('현재 화면 공유 중');return;}
        const sx=(view.visible.x-view.area.x)/view.area.width*c.width,sy=(view.visible.y-view.area.y)/view.area.height*c.height,sw=view.visible.width/view.area.width*c.width,sh=view.visible.height/view.area.height*c.height;
        const scale=Math.min(view.zoom,1600/Math.max(sw,sh)),out=document.createElement('canvas');out.width=Math.max(1,Math.round(sw*scale));out.height=Math.max(1,Math.round(sh*scale));const ctx=out.getContext('2d')!;ctx.imageSmoothingEnabled=false;ctx.drawImage(c,sx,sy,sw,sh,0,0,out.width,out.height);
        const native=viewport.current?.querySelector<HTMLCanvasElement>('canvas.viewer-native-image');
@@ -205,7 +207,10 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
         ctx.lineWidth=4*screenScale;ctx.strokeStyle='#101820b0';ctx.strokeRect(x,y,w,h);ctx.lineWidth=2*screenScale;ctx.strokeStyle=mark.color;ctx.fillStyle=mark.color;ctx.strokeRect(x,y,w,h);
         ctx.fillText(mark.label,x+4*screenScale,Math.max(16*screenScale,y+16*screenScale));
        }
-       await api('/viewer/view',{...view,sessionId:sessionId.current,png:out.toDataURL('image/png')});lastKey=captureKey;lastCapture=Date.now();if(!stopped)setLiveStatus('현재 화면 공유 중');
+       const blob=await new Promise<Blob>((resolve,reject)=>out.toBlob(value=>value?resolve(value):reject(new Error('PNG encoding failed')),'image/png'));
+       const png=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);});
+       if(stopped||!visibleRef.current||captureKey!==JSON.stringify([liveView.current(),annotationsRef.current]))return;
+       await api('/viewer/view',{...view,sessionId:sessionId.current,png});lastKey=captureKey;if(!stopped)setLiveStatus('현재 화면 공유 중');
      }catch{if(!stopped)setLiveStatus('화면 연결 재시도 중');}finally{pending=false;if(!visibleRef.current)void api('/viewer/view/hidden',{sessionId:sessionId.current}).catch(()=>{});}
    };
    const timer=setInterval(()=>void publish(),1500);return()=>{stopped=true;clearInterval(timer);};
@@ -216,6 +221,7 @@ export function Viewer({api,token,requestId,commandId,visible,expanded,onExpand}
  function point(e:React.PointerEvent<HTMLDivElement>){const rect=canvas.current!.getBoundingClientRect(),area=preview!.area;return{x:area.x+Math.max(0,Math.min(area.width,Math.floor((e.clientX-rect.left)/rect.width*area.width))),y:area.y+Math.max(0,Math.min(area.height,Math.floor((e.clientY-rect.top)/rect.height*area.height))) };}
  function alignSelection(next:ROI){if(!image)return;try{setShowSelection(true);setRoi(alignCfaRoi(image.spec,next));setError("");}catch(e){setError(String(e));}}
  function move(e:React.PointerEvent<HTMLDivElement>){
+   if(pan.current||start.current)lastGesture.current=performance.now();
    if(preview&&canvas.current&&!pan.current){const b=canvas.current.getBoundingClientRect();const next=e.clientX>=b.left&&e.clientX<b.right&&e.clientY>=b.top&&e.clientY<b.bottom?point(e):null;setCursor(old=>old?.x===next?.x&&old?.y===next?.y?old:next);}else setCursor(null);
    if(pan.current&&viewport.current){setOffset({x:pan.current.left+e.clientX-pan.current.x,y:pan.current.top+e.clientY-pan.current.y});return;}if(!start.current||!image)return;if(Math.hypot(e.clientX-start.current.clientX,e.clientY-start.current.clientY)<3)return;if(!start.current.staged){start.current.staged=true;setInspection(null);setExtraRois(start.current.additive&&showSelection?[...extraRois,roi]:[]);}const p=point(e),x=Math.min(p.x,start.current.x),y=Math.min(p.y,start.current.y);alignSelection({x,y,width:Math.max(1,Math.abs(p.x-start.current.x)),height:Math.max(1,Math.abs(p.y-start.current.y))});}
  async function upload(){if(!file)return;setBusy(true);setError("");try{
