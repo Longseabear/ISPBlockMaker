@@ -308,7 +308,7 @@ isp-block-maker open C:\Work\MyISP.bundle --into C:\Work\ReceivedISP
 
 UI의 **번들 열기**에서는 내용을 확인한 뒤 **새 폴더 만들기 / 기존 작업 폴더에 덮어쓰기**를 선택합니다. 새 폴더의 부모는 미리 준비합니다. 덮어쓰기는 기존 폴더 전체를 옆의 `.backup-시간-식별자` 폴더에 보관하고, 검증된 번들로 교체한 뒤 해당 프로젝트를 엽니다. 대상 서버의 터미널 작업은 종료됩니다. 대상이 미리보기 이후 변경됐다면 위치를 다시 확인해야 합니다. CLI에서는 서버를 먼저 종료하고 `open ... --into FOLDER --overwrite`로 명시합니다. `--no-open`은 복원과 초기화만 수행합니다. 현재 폴더를 여는 `isp-block-maker .`도 그대로 지원합니다.
 
-`pack`에는 workspace 루트 또는 그 아래 `project/`를 지정할 수 있습니다. 그래프·구현은 항상 포함하고 **Visualizations는 전체 / 선택 / 제외**를 고릅니다. Viewer 자료·원본 이미지·`data/`·Git 이력은 각각 선택할 수 있습니다. CLI 옵션은 `--without-images`, `--without-viewer`, `--without-data`, `--without-visualizations` 또는 `--visualizations ID,ID`, `--with-git`, `--dry-run`입니다. Git 이력이 없으면 현재 구현과 시도 기록은 포함하지만 과거 체크포인트의 소스 복원은 보장할 수 없습니다. 이력을 포함해도 미커밋 구현은 보존됩니다. Git 원격 설정·훅은 복원하지 않습니다. 큰 번들 파일은 `sourceRoot` 밖에 저장하세요.
+`pack`에는 workspace 루트 또는 그 아래 `project/`를 지정할 수 있습니다. 그래프·블록 명세는 항상 포함하며 구현 코드·프로젝트 스킬과 요청/JOB·작업 기록은 각각 선택합니다. 코드 제외 시 Git 이력도 자동 제외됩니다. **Visualizations는 전체 / 선택 / 제외**를 고릅니다. Viewer 자료·원본 이미지·`data/`·Git 이력은 각각 선택할 수 있습니다. CLI 옵션은 `--without-source`, `--without-work-records`, `--without-images`, `--without-viewer`, `--without-data`, `--without-visualizations` 또는 `--visualizations ID,ID`, `--with-git`, `--dry-run`입니다. Git 이력이 없으면 현재 구현과 시도 기록은 포함하지만 과거 체크포인트의 소스 복원은 보장할 수 없습니다. 이력을 포함해도 미커밋 구현은 보존됩니다. Git 원격 설정·훅은 복원하지 않습니다. 큰 번들 파일은 `sourceRoot` 밖에 저장하세요.
 
 번들은 ZIP 저장 방식과 버전 2 명세/체크섬을 사용하며 기존 버전 1도 읽습니다. 최대 2 GiB, 파일당 256 MiB, 10,000개 파일입니다. 일반 ZIP이나 git bundle 형식과는 다릅니다. 가져올 때 파일 경로와 SHA-256/CRC, 그래프·로컬 기록을 확인합니다. 덮어쓰기는 유효한 ISP 작업 폴더만 대상으로 하고 프레임워크·홈·상위 폴더·연결된 경로는 보호합니다.
 
@@ -495,3 +495,13 @@ Pipeline과 Harness 모두 `project/diagrams/d-<다이어그램 ID>/`를 사용�
 In **Workspaces**, select an item and click the trash icon (**Remove from List**). Stop a running workspace with **Stop Server** first. Removal keeps project files and conversation history, revokes its selected API access, and prevents automatic rediscovery after restart. **Open Folder** explicitly registers it again with a new workspace ID; external programs must refresh their workspace selection.
 
 Workspace list shortcuts: **Enter** opens/starts the selected workspace, **Delete** opens the removal confirmation, and **F5** refreshes the list. Right-click provides open/start, stop, folder-path copy and removal. Removal confirmations show the full path to distinguish identical names; project files are never deleted by this action.
+
+
+에이전트에게 “그래프와 선택한 리포트만, 코드와 작업 기록 없이 번들로 묶어줘”라고 요청할 수 있습니다. 로컬 `isp-workspace` MCP의 `preview_bundle`로 포함 목록을 확인하고 `pack_bundle`로 workspace 루트에 새 파일을 생성합니다. 미리보기 후 내용이 변경되면 다시 확인해야 합니다. 팩킹은 외부 업로드가 아닙니다. 그래프 설명·선택한 리포트에 직접 작성된 코드는 보존됩니다.
+
+
+### HTML 리포트의 로컬 파일 자동 포함
+
+HTML 옆에 이미지·CSS·JavaScript 파일을 두고 상대경로로 참조해도 됩니다. MCP `register_report` / `update_report`와 CLI `artifact` / `artifact-update`가 등록할 사본에 자동으로 포함합니다. 원본은 수정하지 않으며 별도 `report-build`는 필요 없습니다.
+
+이미지 `src`·`srcset`, CSS의 이미지·폰트 URL과 일반/미디어 `@import`, 일반 JavaScript 파일을 지원합니다. 경로는 참조하는 HTML/CSS 파일 기준이며 workspace 내부 파일만 사용합니다. 외부 URL·누락 파일은 구체적인 오류를 반환합니다. ES 모듈 의존성·런타임 `fetch()`는 미리 번들링하거나 인라인 데이터로 준비하세요. 화면 품질 검증 단계는 없습니다. 최종 HTML은 10 MiB 이하이며 임의 리사이즈·압축은 하지 않습니다. 수정 시 원본과 포함 자산의 해시도 갱신됩니다.

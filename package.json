@@ -1,6 +1,6 @@
 {
   "name": "isp-block-maker",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "private": true,
   "type": "module",
   "scripts": {
@@ -24,6 +24,10 @@
     "katex": "0.18.9",
     "lucide-react": "^1.45.0",
     "node-pty": "^1.1.0",
+    "parse-srcset": "1.0.2",
+    "parse5": "8.1.1",
+    "postcss": "8.5.33",
+    "postcss-value-parser": "4.2.0",
     "prismjs": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

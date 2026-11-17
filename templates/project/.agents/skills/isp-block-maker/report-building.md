@@ -1,5 +1,7 @@
 # Build a self-contained evidence report
 
+This generator is optional. Freely authored HTML can be registered directly with automatic [local asset packaging](report-assets.md).
+
 Use `report-build` when existing measured data can be expressed as images, lines, histogram bins, tables or mathematical formulas. It supplies a reusable local renderer; custom generators remain appropriate for specialized or interactive views. Choose evidence with [visualization-method.md](visualization-method.md).
 
 ```text

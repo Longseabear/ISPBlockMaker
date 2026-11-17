@@ -4,7 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import crypto from 'node:crypto';
 
-const csp = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+const csp = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'";
 const mime = {html:'text/html; charset=utf-8',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',svg:'image/svg+xml',webp:'image/webp'};
 export function createReportSharing(directory, current) {
   fs.mkdirSync(directory,{recursive:true});

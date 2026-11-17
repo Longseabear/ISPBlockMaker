@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -25,8 +26,15 @@ try{
  assert.ok(health,'Packaged server startup timed out: '+diagnostics);instance=health.instance;
  const boot=await fetch(origin+'/api/bootstrap').then(r=>r.json());token=boot.token;
  client=new Client({name:'package-verification',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:`Bearer ${token}`}}}));
- const tools=await client.listTools();for(const name of ['search_workspace','register_report','launch_run','edit_graph','control_viewer'])assert.ok(tools.tools.some(t=>t.name===name),`Missing ${name}`);
+ const tools=await client.listTools();for(const name of ['search_workspace','register_report','launch_run','edit_graph','control_viewer','preview_bundle','pack_bundle'])assert.ok(tools.tools.some(t=>t.name===name),`Missing ${name}`);
  const searched=await client.callTool({name:'search_workspace',arguments:{query:boot.state.blocks[0].name}});assert.ok(!searched.isError,JSON.stringify(searched));assert.ok(searched.structuredContent.total>0);
+ fs.writeFileSync(path.join(workspace,'report.css'),'body{color:navy}');
+ fs.writeFileSync(path.join(workspace,'report.js'),'window.reportReady=true;');
+ fs.writeFileSync(path.join(workspace,'report.html'),'<link rel="stylesheet" href="report.css"><h1>Packaged test</h1><script defer src="report.js"></script>');
+ const registered=await client.callTool({name:'register_report',arguments:{request_id:crypto.randomUUID(),file:'report.html',title:'Packaged report',block_id:boot.state.blocks[0].id,revision:boot.state.revision}});
+ assert.ok(!registered.isError,JSON.stringify(registered));assert.equal(registered.structuredContent.metadata.registrationSource.assets.length,2);
+ const preview=await client.callTool({name:'preview_bundle',arguments:{includeSource:false,includeWorkRecords:false,includeVisualizations:true}});assert.ok(!preview.isError,JSON.stringify(preview));
+ const packed=await client.callTool({name:'pack_bundle',arguments:{request_id:crypto.randomUUID(),preview_id:preview.structuredContent.previewId}});assert.ok(!packed.isError,JSON.stringify(packed));assert.ok(fs.existsSync(packed.structuredContent.path));
  const info=await fetch(origin+'/api/workspace-info',{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json());assert.ok(fs.existsSync(path.join(info.dataDir,'search','index.sqlite')),'SQLite search database was not created');
  const sharing=await fetch(origin+'/api/mcp/sharing',{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json());assert.equal(sharing.enabled,false);
  assert.equal(health.agentApi,1);

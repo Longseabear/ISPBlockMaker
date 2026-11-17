@@ -31,7 +31,7 @@ After a requested restore, re-read context/project: old API revisions are stale.
 
 ## Portable `.bundle`
 
-This is an ISP workspace archive, not a plain `git bundle`, framework release or external upload. Use the installed launcher **`isp-block-maker`**, not the workspace `isp` bridge. Prefer the discovered workspace root; a recognized `project/` source-folder alias is normalized to its containing workspace, so passing it does not mean a code-only export:
+This is an ISP workspace archive, not a plain `git bundle`, framework release or external upload. Prefer the local `isp-workspace` MCP tools `preview_bundle` and `pack_bundle`. The installed launcher **`isp-block-maker`** is the CLI fallback; the workspace `isp` bridge is not the pack command. Prefer the discovered workspace root; a recognized `project/` source-folder alias is normalized to its containing workspace, so passing it does not mean a code-only export:
 
 ```text
 isp-block-maker pack "<workspace>" --dry-run
@@ -41,10 +41,22 @@ isp-block-maker open "Project name.bundle" --into "C:\Work\NewProject"
 isp-block-maker open "Project name.bundle" --into "C:\Work\ExistingProject" --overwrite
 ```
 
+### Agent packing through MCP
+
+For requests such as “그래프와 리포트만, 코드 없이 번들로 묶어줘”, call `preview_bundle` with `includeSource:false`, `includeWorkRecords:false`, `includeGit:false`, and only the requested material enabled. For selected reports, obtain actual artifact IDs and set `includeVisualizations:true, artifactIds:[...]`. Viewer, images and input data are independent options; do not add them merely because they exist.
+
+Inspect returned categories, file list, effective options and problems. A truncated list is explicitly marked; use the UI or CLI dry-run for the complete list if needed. Call `pack_bundle` with that `preview_id` and a new UUID `request_id`. The file is created locally at the returned path, outside the source directory for separated workspaces. Report the path and inclusions. Packing is not upload, LAN sharing or publication, and the user's packing request authorizes local creation without another generic confirmation.
+
+Retry an uncertain call with the same request ID and payload. If a preview expires or files change, obtain a fresh preview and use a new request ID. Do not bypass a stale-preview error. Code exclusion removes source files and Git, not text embedded in graph descriptions, chosen reports, images or explicitly included records; describe that distinction when relevant to the request. Do not claim arbitrary content was scrubbed.
+
+### CLI fallback
+
 Use a filesystem-safe form of the actual project name and an explicit output path outside `sourceRoot`, so bundles do not enter later source checkpoints. `pack` refuses to overwrite its output file; choose a new name when needed. Default content includes current graph/code/skills, local requests/JOBs, tracking records, registered visualizations/documents, Viewer data and workspace input data. **Use `--with-git` to make historical checkpoints restorable after sharing.** Tracking metadata alone cannot reconstruct their source trees. Without Git history, only the current implementation travels; describe older checkpoint restore limitations accurately.
 
-The UI's **공유 → .bundle 저장** always includes the project and lets the user include all, selected or no visualizations, with separate Viewer and input-data options. CLI equivalents, also usable with `--dry-run`:
+The UI's **공유 → .bundle 저장** always includes the graph and block specifications and lets the user include all, selected or no visualizations, with separate Viewer and input-data options. CLI equivalents, also usable with `--dry-run`:
 
+- `--without-source`: keep graph/specification files but omit other source-root files and project skills. Git history is automatically excluded. Implementation references remain marked as source omitted.
+- `--without-work-records`: omit requests/JOBs, activity, tracking and Viewer request records. Independent of source selection. Conversation/session files are always excluded.
 - `--visualizations ID,ID`: include only those registered visualizations/documents; use actual artifact IDs.
 - `--without-visualizations`: exclude all registered visualizations/documents; do not combine with `--visualizations`.
 - `--without-images`: omit Viewer originals while retaining saved crops. `--without-viewer` instead omits all Viewer data.

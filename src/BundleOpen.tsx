@@ -5,7 +5,7 @@ import type {Api} from './types';
 import './bundle-exchange.css';
 
 type Restored={id:string;workspace:string;name:string;includeImages:boolean;backupPath?:string};
-type ImportPreview={token:string;name:string;sourceRoot:string;fileCount:number;bytes:number;includeImages:boolean;includeViewer:boolean;includeVisualizations:boolean;artifactCount:number;hasGit:boolean};
+type ImportPreview={includeSource?:boolean;includeWorkRecords?:boolean;token:string;name:string;sourceRoot:string;fileCount:number;bytes:number;includeImages:boolean;includeViewer:boolean;includeVisualizations:boolean;artifactCount:number;hasGit:boolean};
 type DestinationPreview={destination:string;snapshot:string;exists:boolean;name?:string;backupRequired:boolean;backupPath?:string;serverRunning?:boolean;currentWorkspace?:boolean};
 type ImportMode='new'|'overwrite';
 type BackupNotice={workspace:string;backupPath:string;name:string;time:number};
@@ -95,7 +95,9 @@ export function BundleOpen({api,token,current,dirty}:{api:Api;token:string;curre
    <label className="bundle-field">번들 파일<input aria-label="번들 파일" type="file" accept=".bundle" disabled={busy||!!restored} onChange={e=>{const selected=e.target.files?.[0];if(selected)void inspect(selected);else{setFile(null);setPreview(null);setError('');}}}/></label>
    {busy&&!preview&&<p role="status">{phase}</p>}
    {preview&&<div className="bundle-import-summary"><strong>{preview.name}</strong><dl>
-    <dt>구현</dt><dd>{preview.sourceRoot==='project'?'project/':'이전 workspace 형식 · 복원 시 변환'}</dd>
+    <dt>코드</dt><dd>{preview.includeSource===false?"소스 미포함 · 그래프/명세만":"포함"}</dd>
+    <dt>작업 기록</dt><dd>{preview.includeWorkRecords===false?"제외":"포함"}</dd>
+    <dt>구현 위치</dt><dd>{preview.sourceRoot==='project'?'project/':'이전 workspace 형식 · 복원 시 변환'}</dd>
     <dt>포함 파일</dt><dd>{preview.fileCount.toLocaleString()}개 · {size(preview.bytes)}</dd>
     <dt>Visualizations</dt><dd>{preview.artifactCount}개</dd>
     <dt>Image Viewer</dt><dd>{preview.includeViewer?(preview.includeImages?'크롭 자료 + 원본 이미지':'크롭 자료 · 원본 제외'):'제외'}</dd>

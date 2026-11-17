@@ -39,3 +39,15 @@ URL을 가진 사람에게 읽기 접근을 허용하는 HTTP 공유이므로 �
 변경 도구는 `request_id`로 중복 실행을 방지한다. 같은 작업의 재전송에는 같은 ID와 입력을 사용한다. 그래프 변경은 읽었던 revision, Runs 실행은 확인한 recipe hash, 하네스 제어는 현재 run version을 요구한다. 응답이 불확실하면 현재 상태를 확인하고 재실행 여부를 결정한다. 연결 종료를 작업 완료나 취소로 해석하지 않는다.
 
 클라이언트에서 에이전트에 작업을 보내려면 별도의 [Personal Agent API](personal-agent-api.md)를 켜고 전용 토큰을 사용한다. 이 읽기 공유 URL로 에이전트 실행을 요청할 수는 없다.
+
+
+## Portable bundle packing
+
+Local authenticated MCP exposes `preview_bundle` and `pack_bundle`; neither is exposed through public sharing. Source (`includeSource`) and work records (`includeWorkRecords`) are explicit choices. Graph and block specifications always travel; source exclusion also disables Git history and omits project skills. The preview binds content hashes and expires after ten minutes. `pack_bundle` requires its `preview_id` plus an idempotent UUID `request_id`, writes a new `.bundle` in the workspace root and returns a path. It never uploads. Reports and graph prose are preserved as selected, including any embedded code.
+
+
+## HTML report assets
+
+`register_report` and `update_report` automatically embed relative local images, `srcset`, CSS links, nested plain/media CSS imports, CSS image/font URLs and classic JavaScript. HTML/CSS paths are resolved from their authoring file inside the workspace. Original files stay unchanged; the registered HTML is portable. Deferred/async classic scripts retain their attributes via embedded data URLs. The runtime still blocks network access. Missing, remote or linked asset paths fail before registration. ES modules and runtime `fetch()` dependencies require an already bundled implementation. No screenshot/visual-quality gate or mandatory report builder is used.
+
+Updates retain artifact/experiment identity and refresh `metadata.registrationSource`: authoring path/hash, packaged hash and referenced asset paths/hashes. CLI artifact registration and updates use the same packaging. Raw HTTP base64 content calls continue to require already self-contained bytes. Final output remains limited to 10 MiB.

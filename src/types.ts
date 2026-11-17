@@ -34,6 +34,7 @@ export type Block = {
   principle: string;
   detail?: string;
   implementation: string;
+  implementationOmitted?: boolean;
   implementationSymbol?: string;
   implementationLine?: number;
   agentContract?: {

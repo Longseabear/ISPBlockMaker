@@ -92,20 +92,12 @@ export async function registerArtifact(
   file,
   { blockId, revision, title, runId, metadata, artifactId, expectedFile } = {},
 ) {
-  const extension = path.extname(file).toLowerCase();
-  const kind = {
-    ".html": "html",
-    ".htm": "html",
-    ".png": "png",
-    ".jpg": "jpeg",
-    ".jpeg": "jpeg",
-    ".webp": "webp",
-  }[extension];
-  if (!kind) throw new Error("지원 형식: HTML, PNG, JPEG, WebP");
-  if (fs.statSync(file).size > 10 * 1024 * 1024)
-    throw new Error("결과물은 10MB 이하여야 합니다.");
+  const {workspace}=await request('/workspace-info');
+  const {readArtifactFile}=await import('../server/mcp-artifact-tools.mjs');
+  const data=readArtifactFile(workspace,path.resolve(file));
+  const {kind,content,registrationSource}=data;
   if(artifactId)return request(`/artifacts/${encodeURIComponent(artifactId)}`,{
-    method:'PATCH',body:JSON.stringify({expectedFile,kind,content:fs.readFileSync(file).toString('base64'),...(title===undefined?{}:{title})}),
+    method:'PATCH',body:JSON.stringify({expectedFile,kind,content,registrationSource,...(title===undefined?{}:{title})}),
   });
   return request("/artifacts", {
     method: "POST",
@@ -114,9 +106,9 @@ export async function registerArtifact(
       blockId,
       revision,
       runId,
-      metadata,
+      metadata: {...metadata,registrationSource},
       kind,
-      content: fs.readFileSync(file).toString("base64"),
+      content,
     }),
   });
 }

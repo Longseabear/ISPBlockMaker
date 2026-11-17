@@ -39,6 +39,7 @@ export const blockSchema = z.object({
   detail: z.string().max(30000).default(""),
   principle: z.string().max(20000),
   implementation: z.string().max(1000),
+  implementationOmitted: z.boolean().optional(),
   implementationSymbol: z.string().max(200).default(""),
   implementationLine: z.number().int().min(0).max(10000000).default(0),
   agentContract: z

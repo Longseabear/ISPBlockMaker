@@ -11,8 +11,9 @@ export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolea
  const [open,setOpen]=useState(false),[images,setImages]=useState(true),[viewer,setViewer]=useState(true),[data,setData]=useState(false),[git,setGit]=useState(false);
  const [visualizations,setVisualizations]=useState<VisualizationChoice>('all'),[artifactIds,setArtifactIds]=useState<string[]>([]),[availableArtifacts,setAvailableArtifacts]=useState<BundleArtifact[]>([]);
  const [planned,setPlanned]=useState<{key:string;value:Plan}|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[refresh,setRefresh]=useState(0),[notice,setNotice]=useState('');
+ const [source,setSource]=useState(true),[workRecords,setWorkRecords]=useState(true);
  const [excludedData,setExcludedData]=useState<string[]>([]);
- const options={excludedData,includeImages:viewer&&images,includeViewer:viewer,includeData:data,includeGit:git,includeVisualizations:visualizations!=='none',...(visualizations==='selected'?{artifactIds}:{} )};
+ const options={includeSource:source,includeWorkRecords:workRecords,excludedData,includeImages:viewer&&images,includeViewer:viewer,includeData:data,includeGit:source&&git,includeVisualizations:visualizations!=='none',...(visualizations==='selected'?{artifactIds}:{} )};
  const settingsKey=JSON.stringify(options),plan=planned?.key===settingsKey?planned.value:null;
  useEffect(()=>{
   if(!open)return;
@@ -48,8 +49,8 @@ export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolea
  return <>
   <button className="bundle-share-button" title="프로젝트를 .bundle로 공유" aria-label="프로젝트 공유" onClick={()=>setOpen(true)}><Package size={15}/><span>공유</span></button>
   {open&&<div className="workspace-picker-backdrop"><section className="bundle-dialog bundle-exchange-dialog" role="dialog" aria-modal="true" aria-label="프로젝트 번들 저장" onKeyDown={e=>{if(e.key==='Escape'&&!busy)setOpen(false);}}>
-   <header><div><h2>프로젝트 공유</h2><p>구현과 함께 전달할 결과를 선택하세요.</p></div><button autoFocus disabled={busy} aria-label="번들 창 닫기" onClick={()=>setOpen(false)}><X size={18}/></button></header>
-   <div className="bundle-core"><Check size={17}/><div><strong>Project · 항상 포함</strong><small>그래프, 구현 코드, 요청/JOB, 작업 기록, 프로젝트 스킬 (입력 데이터는 아래에서 선택)</small></div></div>
+   <header><div><h2>프로젝트 공유</h2><p>그래프와 함께 전달할 코드·기록·결과를 선택하세요.</p></div><button autoFocus disabled={busy} aria-label="번들 창 닫기" onClick={()=>setOpen(false)}><X size={18}/></button></header>
+   <div className="bundle-core"><Check size={17}/><div><strong>그래프·블록 명세 · 항상 포함</strong><small>블록 구조, 연결, 설명, 입출력 및 파라미터 명세</small></div></div>
    <fieldset className="bundle-choices" disabled={busy}><legend>Visualizations</legend><div className="bundle-choice-row">
     {([['all','전체'],['selected','선택'],['none','제외']] as const).map(([value,label])=><label key={value} className={visualizations===value?'active':''}><input type="radio" name="bundle-visualizations" value={value} checked={visualizations===value} onChange={()=>setVisualizations(value)}/>{label}{value==='all'&&availableArtifacts.length>0?` (${availableArtifacts.length})`:''}</label>)}
    </div>
@@ -59,10 +60,13 @@ export function BundleShare({api,token,dirty}:{api:Api;token:string;dirty:boolea
    <small>{visualizations==='none'?'시각화 파일은 제외하고 구현을 공유합니다.':visualizations==='selected'?`${artifactIds.filter(id=>availableArtifacts.some(artifact=>artifact.id===id)).length}개 선택 · 시각화 파일과 등록 정보를 포함합니다.`:'등록된 시각화 파일과 등록 정보를 포함합니다.'}</small>
    </fieldset>
    <fieldset className="bundle-choices" disabled={busy}><legend>추가 자료</legend>
+    <label className="bundle-option"><input type="checkbox" checked={source} onChange={e=>{setSource(e.target.checked);if(!e.target.checked){setGit(false);setWorkRecords(false);}}}/><span>구현 코드·소스 파일·프로젝트 스킬<small>끄면 project/에서는 그래프와 블록 명세 파일만 포함합니다.</small></span></label>
+    <label className="bundle-option"><input type="checkbox" checked={workRecords} onChange={e=>setWorkRecords(e.target.checked)}/><span>요청/JOB·작업 기록<small>기록에 코드가 포함될 수 있습니다. 대화 세션은 항상 제외됩니다.</small></span></label>
+    {!source&&<p>소스 미포함으로 공유합니다. 그래프 설명이나 선택한 리포트에 직접 작성된 코드는 유지됩니다.</p>}
     <label className="bundle-option"><input type="checkbox" checked={viewer} onChange={e=>setViewer(e.target.checked)}/><span>Image Viewer · 크롭 자료<small>저장된 크롭 그룹, 설명과 Viewer 요청</small></span></label>
     {viewer&&<label className="bundle-option bundle-sub-option"><input type="checkbox" checked={images} onChange={e=>setImages(e.target.checked)}/><span>Viewer 원본 이미지<small>끄면 저장된 크롭은 유지되며, 원본 미리보기와 새 크롭에는 원본 파일이 필요합니다.</small></span></label>}
     <label className="bundle-option"><input type="checkbox" checked={data} onChange={e=>setData(e.target.checked)}/><span>data/ 입력 데이터<small>Workspace의 data/ 폴더를 추가합니다. tmp/와 캐시는 제외합니다.</small></span></label>
-    <label className="bundle-option"><input type="checkbox" checked={git} onChange={e=>setGit(e.target.checked)}/><span>Git 이력 · 체크포인트<small>포함하면 이전 구현으로 복원할 수 있습니다. 끄면 현재 구현과 작업 기록만 전달합니다.</small></span></label>
+    <label className="bundle-option"><input type="checkbox" disabled={!source} checked={source&&git} onChange={e=>setGit(e.target.checked)}/><span>Git 이력 · 체크포인트<small>포함하면 이전 구현으로 복원할 수 있습니다. 코드를 제외하면 Git 이력도 제외됩니다.</small></span></label>
    </fieldset>
    {dirty&&<p role="alert">작성 중인 변경을 저장한 뒤 번들을 내려받으세요.</p>}
    {error&&<div className="bundle-feedback" role="alert"><p>{error}</p><button disabled={busy} onClick={()=>setRefresh(n=>n+1)}><RefreshCw size={14}/> 포함 목록 다시 확인</button>{/session token|unauthorized/i.test(error)&&<button onClick={()=>location.reload()}>서버에 다시 연결</button>}</div>}

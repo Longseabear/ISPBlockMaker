@@ -38,7 +38,7 @@ function visit(name, parent = "") {
   required.add(relative);
   for(const dependency of Object.keys(lock.packages[relative].dependencies || {}))visit(dependency,relative);
 }
-for(const name of ["@modelcontextprotocol/sdk","express","ws","zod","node-pty","prismjs","katex","@anthropic-ai/claude-agent-sdk"])visit(name);
+for(const name of ["@modelcontextprotocol/sdk","express","ws","zod","node-pty","prismjs","katex","parse5","postcss","postcss-value-parser","parse-srcset","@anthropic-ai/claude-agent-sdk"])visit(name);
 for(const relative of required) {
   const pkg=lock.packages[relative];
   const source=path.join(root,relative);

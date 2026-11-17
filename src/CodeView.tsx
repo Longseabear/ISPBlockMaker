@@ -132,7 +132,7 @@ export function CodeView({
             <Code2 size={15} />
             <span>
               {b.name}
-              <small>{b.implementation || "구현 파일 미지정"}</small>
+              <small>{b.implementationOmitted ? "공유 시 소스 미포함 · " + b.implementation : b.implementation || "구현 파일 미지정"}</small>
               {b.implementationSymbol && (
                 <small>↳ {b.implementationSymbol}</small>
               )}

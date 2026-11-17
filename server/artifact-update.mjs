@@ -3,11 +3,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {z} from 'zod';
 
+const digest=z.string().regex(/^[a-f0-9]{64}$/);
+const registrationSource=z.object({path:z.string().min(1).max(4096),sha256:digest,packagedSha256:digest,assets:z.array(z.object({path:z.string().max(4096),sha256:digest,bytes:z.number().int().nonnegative()})).max(256)});
 export const artifactUpdateSchema=z.object({
   expectedFile:z.string().min(1).max(200),
   kind:z.enum(['html','png','jpeg','webp']),
   content:z.string().min(1).max(15*1024*1024),
   title:z.string().min(1).max(150).optional(),
+  registrationSource:registrationSource.optional(),
 }).strict();
 
 export function updateArtifact(store,directory,id,body){
@@ -21,7 +24,7 @@ export function updateArtifact(store,directory,id,body){
   const file=`${crypto.randomUUID()}.${input.kind}`;
   fs.writeFileSync(path.join(directory,file),bytes,{flag:'wx'});
   let artifact;
-  try {artifact=store.updateArtifact(id,input.expectedFile,{file,updatedAt:new Date().toISOString(),...(input.title===undefined?{}:{title:input.title})});}
+  try {artifact=store.updateArtifact(id,input.expectedFile,{file,updatedAt:new Date().toISOString(),...(input.registrationSource?{metadata:{...previous.metadata,registrationSource:input.registrationSource}}:{}),...(input.title===undefined?{}:{title:input.title})});}
   catch(error){fs.unlinkSync(path.join(directory,file));throw error;}
   // The new filename also invalidates the browser's currently rendered result.
   if(path.basename(previous.file)===previous.file&&!store.get().artifacts.some(a=>a.file===previous.file)){

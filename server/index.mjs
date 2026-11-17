@@ -20,7 +20,7 @@ import {restructureJobs,restructureSchema} from './job-restructure.mjs';
 import {openWorkspaceServer, findWorkspaceServer} from './workspace-open.mjs';
 import {installBundleImport} from "./bundle-import.mjs";
 import os from "node:os";
-import {planBundle,packBundle,bundleFilename} from "./bundles.mjs";
+import {planBundle,packBundle,bundleFilename,bundleFingerprint} from "./bundles.mjs";
 import { installViewer } from "./viewer.mjs";
 import { deleteArtifacts } from "./artifact-delete.mjs";
 import { updateArtifact } from './artifact-update.mjs';
@@ -128,7 +128,7 @@ app.use("/api", (req, res, next) => {
 app.use("/api", express.json({ limit: "16mb" }));
 app.use("/api", (req,res,next)=>{
  const folder=dataDir,endpoint=req.path,method=req.method;
- if (method!=="GET" && !["/selection","/present","/activity/summaries","/graph-check","/shutdown","/viewer/view","/viewer/view/hidden","/bundle/import/preview","/bundle/import/destination"].includes(endpoint) && !endpoint.startsWith("/bundle/import/preview/")) {
+ if (method!=="GET" && !["/selection","/present","/activity/summaries","/graph-check","/shutdown","/viewer/view","/viewer/view/hidden","/bundle/import/preview","/bundle/import/destination","/bundle/preview","/bundle/agent-preview"].includes(endpoint) && !endpoint.startsWith("/bundle/import/preview/")) {
   let result;const json=res.json.bind(res);res.json=(body)=>{result=body;return json(body);};
   res.on("finish",()=>{try {
    const blockId=endpoint.startsWith("/global")?null:/^\/blocks\/([^/]+)/.exec(endpoint)?.[1];
@@ -231,9 +231,25 @@ interaction=installInteraction(app,()=>({workspace,env:{...process.env,ISP_API_U
 installPersonalAgentApi(app,{current:()=>({workspace,store,artifactDir}),interaction,authorize:authorized});
 installAppUpdates(app,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
 installProjectSkills(app,{current:()=>({workspace}),root});
-const bundleOptions=z.object({excludedData:z.array(z.string().min(1).max(2000)).max(10000).optional(),includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
-app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({...(typeof req.query.excludedData==='string'?{excludedData:JSON.parse(req.query.excludedData)}:{}),includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+const bundleOptions=z.object({includeSource:z.boolean().default(true),includeWorkRecords:z.boolean().default(true),excludedData:z.array(z.string().min(1).max(2000)).max(10000).optional(),includeImages:z.boolean().default(true),includeGit:z.boolean().default(false),includeVisualizations:z.boolean().default(true),artifactIds:z.array(z.string().min(1).max(100)).max(10000).optional(),includeViewer:z.boolean().default(true),includeData:z.boolean().default(true)});
+app.get('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse({...(typeof req.query.excludedData==='string'?{excludedData:JSON.parse(req.query.excludedData)}:{}),includeSource:req.query.includeSource!=='false',includeWorkRecords:req.query.includeWorkRecords!=='false',includeImages:req.query.includeImages!=='false',includeGit:req.query.includeGit==='true',includeVisualizations:req.query.includeVisualizations!=='false',includeViewer:req.query.includeViewer!=='false',includeData:req.query.includeData!=='false',...(typeof req.query.artifactIds==='string'?{artifactIds:req.query.artifactIds.split(',').filter(Boolean)}:{})});const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
 app.post('/api/bundle/preview',async(req,res)=>{const options=bundleOptions.parse(req.body);const {files,workspace:ignored,...plan}=await planBundle(workspace,options);res.json({...plan,downloadName:bundleFilename(store.get().name),files:files.map(({path,size})=>({path,size})),revision:store.get().revision});});
+const bundlePreviews=new Map();
+app.post('/api/bundle/agent-preview',async(req,res)=>{
+ const options=bundleOptions.parse(req.body),plan=await planBundle(workspace,options),fingerprint=plan.problems.length?null:await bundleFingerprint(plan),previewId=crypto.randomUUID();
+ for(const [id,item] of bundlePreviews)if(Date.now()-item.createdAt>600000)bundlePreviews.delete(id);
+ if(bundlePreviews.size>=100)bundlePreviews.delete(bundlePreviews.keys().next().value);
+ bundlePreviews.set(previewId,{workspace,options,fingerprint,createdAt:Date.now()});
+ res.json({previewId,expiresInSeconds:600,includeSource:plan.includeSource,includeWorkRecords:plan.includeWorkRecords,includeGit:plan.includeGit,fileCount:plan.fileCount,bytes:plan.bytes,problems:plan.problems,categories:plan.categories,files:plan.files.slice(0,200).map(({path,size})=>({path,size})),filesTruncated:plan.files.length>200,selectedArtifactIds:plan.selectedArtifactIds});
+});
+app.post('/api/bundle/pack',async(req,res)=>{
+ const {previewId}=z.object({previewId:z.string().uuid()}).parse(req.body),preview=bundlePreviews.get(previewId);
+ if(!preview||preview.workspace!==workspace||Date.now()-preview.createdAt>600000)return res.status(409).json({error:'Bundle preview expired. Preview again.'});
+ const name=bundleFilename(store.get().name).replace(/\.bundle$/i,'')+'-'+previewId+'.bundle',output=path.join(workspace,name);
+ versionChanging=true;
+ try{const result=await packBundle(workspace,output,{...preview.options,expectedFingerprint:preview.fingerprint});bundlePreviews.delete(previewId);res.json({path:result.path,bytes:result.bytes,fileCount:result.fileCount,includeSource:result.manifest.includeSource,includeWorkRecords:result.manifest.includeWorkRecords,includeGit:!!result.manifest.history});}
+ finally{versionChanging=false;}
+});
 app.post('/api/bundle/export',async(req,res)=>{
  const options=bundleOptions.parse(req.body);if(req.body.revision!==undefined&&req.body.revision!==store.get().revision)return res.status(409).json({error:'프로젝트가 변경됐습니다. 목록을 새로 확인하세요.'});
  versionChanging=true;let temp;const downloadName=bundleFilename(store.get().name);
@@ -922,7 +938,7 @@ app.get("/artifacts/:file", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader(
     "Content-Security-Policy",
-    "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'",
+    "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'",
   );
   res
     .type(artifact.kind === "html" ? "text/html" : `image/${artifact.kind}`)

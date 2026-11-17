@@ -238,3 +238,44 @@ test('Retired reference state is preserved locally but excluded from new bundles
   assert.equal((await fs.readFile(path.join(f.workspace,prefix,'files/sample.bin'))).length,13);
  }finally{await clean(f.temp);}
 });
+
+
+test('Graph-only sharing preserves split graph specifications and omits arbitrary sources, skills, records and Git',async()=>{
+ const f=await separatedFixture();try{
+  const {writeGraph,readGraph}=await import('../server/graph-storage.mjs');
+  writeGraph(path.join(f.project,'graph.json'),graph);
+  const before=readGraph(path.join(f.project,'graph.json'));
+  const base='project/diagrams/d-main/blocks/b-input/';
+  for(const name of ['project/custom.script','project/compiled.exe',base+'hidden.cpp','.agents/skills/private/SKILL.md'])await f.write(name,'PRIVATE_SOURCE');
+  await f.write('.isp/activity.json','["PRIVATE_RECORD"]');
+  await f.write('.isp/tracking.json',JSON.stringify({schemaVersion:1,attempts:[],checkpoints:[]}));
+  await f.write('.isp/project.json',JSON.stringify({storageVersion:2,revision:1,blocks:[{id:'input',jobs:[{description:'PRIVATE_RECORD'}]}],globalWork:{userRequests:['PRIVATE_RECORD']},artifacts:[]}));
+  const options={includeSource:false,includeWorkRecords:false,includeGit:true,includeVisualizations:false,includeViewer:false,includeData:false};
+  const plan=await planBundle(f.workspace,options);
+  assert.equal(plan.includeGit,false);assert.equal(plan.history,null);
+  assert.ok(plan.files.some(f=>f.path.endsWith('/block.json')));
+  assert.ok(!plan.files.some(f=>/hidden.cpp|custom.script|compiled.exe|SKILL.md|activity.json|tracking.json/.test(f.path)));
+  const bundle=path.join(f.temp,'spec.bundle');await packBundle(f.workspace,bundle,options);
+  assert.equal((await inspectBundle(bundle)).includeSource,false);
+  const restored=path.join(f.temp,'spec');await unpackBundle(bundle,restored);
+  const after=readGraph(path.join(restored,'project/graph.json'));
+  assert.deepEqual(after.edges,before.edges);assert.equal(after.blocks[0].implementation,before.blocks[0].implementation);assert.equal(after.blocks[0].implementationOmitted,true);
+  const local=JSON.parse(await fs.readFile(path.join(restored,'.isp/project.json')));assert.deepEqual(local.blocks,[]);assert.equal(local.globalWork,undefined);
+  assert.equal(readGraph(path.join(f.project,'graph.json')).blocks[0].implementationOmitted,undefined);
+ }finally{await clean(f.temp);}
+});
+
+test('Legacy graph-only bundle and records inclusion are independent; stale previews reject same-size edits',async()=>{
+ const f=await fixture();try{
+  const {bundleFingerprint}=await import('../server/bundles.mjs');
+  const options={includeSource:false,includeWorkRecords:true};
+  await f.write('.isp/activity.json','["retained"]');
+  const plan=await planBundle(f.workspace,options),fingerprint=await bundleFingerprint(plan);
+  assert.ok(plan.files.some(f=>f.path==='.isp/activity.json'));assert.ok(!plan.files.some(f=>f.path==='blocks/input.py'));
+  await f.write('graph.json',JSON.stringify({...graph,name:'Changed xyz'}));
+  await assert.rejects(packBundle(f.workspace,path.join(f.temp,'stale.bundle'),{...options,expectedFingerprint:fingerprint}),/stale/);
+  await assert.rejects(fs.stat(path.join(f.temp,'stale.bundle')));
+  const output=path.join(f.temp,'legacy-spec.bundle');await packBundle(f.workspace,output,options);await unpackBundle(output,path.join(f.temp,'copy'));
+  assert.equal(JSON.parse(await fs.readFile(path.join(f.temp,'copy/graph.json'))).blocks[0].implementationOmitted,true);
+ }finally{await clean(f.temp);}
+});

@@ -11,6 +11,9 @@ const segment=value=>encodeURIComponent(value);
 export function registerLocalTools(tool,api,mutate){
  const get=(route)=>api('GET',route);
  const post=(route,body)=>api('POST',route,body);
+ const bundleSelection={includeSource:z.boolean(),includeWorkRecords:z.boolean(),includeGit:z.boolean().default(false),includeImages:z.boolean().default(false),includeViewer:z.boolean().default(false),includeData:z.boolean().default(false),includeVisualizations:z.boolean().default(false),artifactIds:z.array(id).max(10000).optional(),excludedData:z.array(z.string().max(2000)).max(10000).optional()};
+ tool('preview_bundle','Preview a portable .bundle. Graph/specifications are mandatory. Choose source and work records explicitly; excluding source also excludes Git. Reports or graph prose can contain code. Returns a 10-minute previewId bound to file contents. No upload.',bundleSelection,input=>post('/api/bundle/agent-preview',input));
+ if(mutate)tool('pack_bundle','Create the exact previewed .bundle locally in the workspace root. Requires a fresh previewId; changed contents are rejected. Returns its file path, never uploads. Retry with the same request_id to recover the same result.',{request_id:z.string().uuid(),preview_id:z.string().uuid()},input=>mutate('pack_bundle',input,()=>post('/api/bundle/pack',{previewId:input.preview_id})),false);
  tool('get_block_context','Read an explicit block contract, documentation paths and implementation references.',{block_id:id},({block_id})=>get(`/api/context?blockId=${segment(block_id)}`));
  tool('get_diagram','Read a specific diagram by stable ID, independent of the selected UI tab.',{diagram_id:id},({diagram_id})=>get(`/api/graph?diagramId=${segment(diagram_id)}`));
  tool('present_board','Highlight and fit explicit blocks or edges. Delivery does not prove the UI applied the request; unsaved edits may defer it.',{block_ids:z.array(id).max(200),edge_ids:z.array(id).max(1000).default([]),message:z.string().max(500).default('')},({block_ids,edge_ids,message})=>post('/api/present',{view:'graph',blockIds:block_ids,edgeIds:edge_ids,message}),false);
@@ -42,7 +45,7 @@ export function localApiAdapter({origin,token,fetchImpl=fetch}){
   if(!route.startsWith('/api/')||route.includes('\\'))throw Error('Invalid local API route');
   const url=new URL(route,base);
   if(url.origin!==base.origin)throw Error('Invalid local API origin');
-  const response=await fetchImpl(url,{method,headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(30000)});
+  const response=await fetchImpl(url,{method,headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(route==='/api/bundle/pack'||route==='/api/bundle/agent-preview'?300000:30000)});
   const reader=response.body.getReader();let size=0;const chunks=[];
   try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>512*1024)throw Error('Response exceeds MCP limit; use a narrower query');chunks.push(value);}}
   finally{await reader.cancel();reader.releaseLock();}

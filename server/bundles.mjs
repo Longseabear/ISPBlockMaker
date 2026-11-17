@@ -1,4 +1,4 @@
-import {readGraph,readGraphAt} from './graph-storage.mjs';
+import {readGraph,readGraphAt,safeGraphPath} from './graph-storage.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -46,12 +46,26 @@ async function gitInfo(source){
 }
 function sourceRelative(workspace,source){const relative=path.relative(workspace,source).split(path.sep).join('/')||'.';if(!['.','project'].includes(relative))throw new Error('Unsupported project source root');return relative;}
 export async function planBundle(folder,options={}){
+ options={...options,includeSource:options.includeSource!==false,includeWorkRecords:options.includeWorkRecords!==false,includeGit:options.includeSource!==false&&!!options.includeGit};
  const workspace=normalizeWorkspaceFolder(folder),files=[],skipped=[],names=new Set(),dataItems=new Map();let bytes=0;
  if(options.excludedData!==undefined&&(!Array.isArray(options.excludedData)||options.excludedData.some(x=>typeof x!=='string')))throw new Error('Invalid data selection');
  if(await fs.stat(path.join(workspace,'.isp/storage-transaction.json')).then(()=>true,()=>false))throw new Error('Pending workspace transaction. Open the workspace before exporting.');
  const source=sourceRoot(workspace),relativeSource=sourceRelative(workspace,source),graphPath=path.join(source,'graph.json');
  if((await fs.lstat(graphPath)).isSymbolicLink())throw new Error('Linked graph files are not bundled');
- readGraph(graphPath);
+ const graphFiles=new Set();
+ await readGraphAt(async relative=>{graphFiles.add(relative);return fs.readFile(safeGraphPath(source,relative),'utf8');});
+ const sourcePrefix=relativeSource==='project'?'project/':'';
+ const graphNames=new Set([...graphFiles].map(name=>sourcePrefix+name));
+ const graphAncestor=name=>[...graphNames].some(file=>file.startsWith(name+'/'));
+ const encode=value=>Buffer.from(JSON.stringify(value,null,2)+'\n');
+ function graphData(bytes){
+  const data=JSON.parse(bytes);
+  const cleanBlock=b=>{if(!options.includeSource&&typeof b.implementation==='string')b.implementationOmitted=true;if(!options.includeWorkRecords){delete b.userRequests;delete b.jobs;}};
+  if(Array.isArray(data.blocks))data.blocks.forEach(cleanBlock);
+  if(data.id)cleanBlock(data);
+  if(!options.includeWorkRecords)delete data.globalWork;
+  return encode(data);
+ }
  const recordsPath=path.join(workspace,'.isp/project.json');
  const records=await fs.readFile(recordsPath,'utf8').then(JSON.parse,error=>{if(error.code==='ENOENT')return null;throw error;});
  const availableArtifacts=(records?.artifacts||[]).map(({id,title,kind,file,blockId})=>({id,title,kind,file,blockId}));
@@ -59,18 +73,22 @@ export async function planBundle(folder,options={}){
  const selectedArtifactIds=options.includeVisualizations===false?[]:options.artifactIds??availableArtifacts.map(a=>a.id);
  const selectedFiles=new Set(availableArtifacts.filter(a=>selectedArtifactIds.includes(a.id)).map(a=>'.isp/artifacts/'+a.file));
  const filterArtifacts=options.includeVisualizations===false||options.artifactIds!==undefined;
- const transformed=records&&filterArtifacts?Buffer.from(JSON.stringify({...records,artifacts:records.artifacts.filter(a=>selectedArtifactIds.includes(a.id))},null,2)+'\n'):null;
+ const exportRecords=records?{...records,artifacts:records.artifacts.filter(a=>selectedArtifactIds.includes(a.id))}:null;
+ if(exportRecords&&!options.includeWorkRecords){exportRecords.blocks=[];delete exportRecords.globalWork;}
+ const transformed=exportRecords&&(filterArtifacts||!options.includeWorkRecords)?encode(exportRecords):null;
  async function walk(relative=''){
   const dir=path.join(workspace,relative);if((await fs.lstat(dir)).isSymbolicLink())throw new Error('Linked directories are not bundled: '+relative);
   for(const e of (await fs.readdir(dir,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const name=(relative?relative+'/':'')+e.name;
    if(name===metaName)throw new Error('Reserved filename: '+metaName);
    if(!relative&&relativeSource==='project'&&!['project','.isp','.agents','.claude','AGENTS.md','CLAUDE.md','isp.cmd','isp.mjs','data','inputs','datasets'].includes(name)){skipped.push(name);continue;}
+   if(!options.includeSource&&!graphNames.has(name)&&!graphAncestor(name)&&!['.isp','data','inputs','datasets'].includes(name)&&!name.startsWith('.isp/')&&!/^(data|inputs|datasets)\//.test(name)){skipped.push(name);continue;}
+   if(!options.includeWorkRecords&&['.isp/activity.json','.isp/tracking.json','.isp/viewer/requests.json'].includes(name)){skipped.push(name);continue;}
    // Traverse .isp/.agents/.claude containers to reach only the allowed children.
    if(!['.isp','.agents','.claude','project/.agents','project/.claude'].includes(name)&&excluded(name,options)){skipped.push(name);continue;}
    safeName(name);if(names.has(name.toLowerCase()))throw new Error('Case-colliding path: '+name);names.add(name.toLowerCase());const absolute=path.join(workspace,name),stat=await fs.lstat(absolute);if(stat.isSymbolicLink()){skipped.push(name+' (link)');continue;}
    if(stat.isDirectory()){await walk(name);continue;}if(!stat.isFile()){skipped.push(name);continue;}
    if(filterArtifacts&&name.startsWith('.isp/artifacts/')&&!selectedFiles.has(name)){skipped.push(name);continue;}
-   const data=name==='.isp/project.json'?transformed:null,size=data?data.length:stat.size;
+   const data=name==='.isp/project.json'?transformed:graphNames.has(name)&&name.endsWith('.json')&&(!options.includeSource||!options.includeWorkRecords)?graphData(await fs.readFile(absolute)):null,size=data?data.length:stat.size;
    const group=dataGroup(name);
    if(group){const item=dataItems.get(group.id)||{...group,bytes:0,fileCount:0,files:[],oversized:false,included:!options.excludedData?.includes(group.id)};item.bytes+=size;item.fileCount++;item.files.push({path:name,size});item.oversized ||= size>MAX_FILE;dataItems.set(group.id,item);if(!item.included){skipped.push(name);continue;}}
    bytes+=size;files.push({path:name,size,mtime:stat.mtimeMs,source:absolute,...(data?{data,sourceHash:sha256(await fs.readFile(absolute))}:{})});
@@ -80,19 +98,25 @@ export async function planBundle(folder,options={}){
  const problems=files.filter(f=>f.size>MAX_FILE).map(f=>'File exceeds 256 MiB: '+f.path);
  if(bytes>MAX_TOTAL||files.length>MAX_FILES)problems.push('Bundle limit: 2 GiB / 10,000 files');
  const categories={};for(const f of files){const key=bundleCategory(f.path);categories[key]=(categories[key]||0)+f.size;}
- return {workspace,sourceRoot:relativeSource,files,skipped,bytes,fileCount:files.length,history,problems,categories,dataItems:[...dataItems.values()].sort((a,b)=>b.bytes-a.bytes),availableArtifacts,selectedArtifactIds,includeImages:options.includeImages!==false,includeGit:!!options.includeGit,includeVisualizations:options.includeVisualizations!==false,includeViewer:options.includeViewer!==false,includeData:options.includeData!==false};
+ return {includeSource:options.includeSource,includeWorkRecords:options.includeWorkRecords,workspace,sourceRoot:relativeSource,files,skipped,bytes,fileCount:files.length,history,problems,categories,dataItems:[...dataItems.values()].sort((a,b)=>b.bytes-a.bytes),availableArtifacts,selectedArtifactIds,includeImages:options.includeImages!==false,includeGit:!!options.includeGit,includeVisualizations:options.includeVisualizations!==false,includeViewer:options.includeViewer!==false,includeData:options.includeData!==false};
+}
+export async function bundleFingerprint(plan){
+ const files=[];for(const f of plan.files)files.push([f.path,sha256(f.data??await fs.readFile(f.source))]);
+ return sha256(Buffer.from(JSON.stringify({files,history:plan.history,source:plan.includeSource,records:plan.includeWorkRecords})));
 }
 export async function packBundle(folder,output,options={}){
  output=path.resolve(output);if(!output.toLowerCase().endsWith('.bundle'))throw new Error('Output filename must end in .bundle');if(await fs.lstat(output).then(()=>true,()=>false))throw new Error('Output already exists');
  const plan=await planBundle(folder,options),temp=await fs.mkdtemp(path.join(os.tmpdir(),'isp-bundle-'));const partial=path.join(path.dirname(output),'.'+path.basename(output)+'.'+path.basename(temp)+'.tmp');
  try{
   if(plan.problems.length)throw new Error(plan.problems.join('\n'));
+  if(options.expectedFingerprint&&await bundleFingerprint(plan)!==options.expectedFingerprint)throw Error('Bundle preview is stale. Preview again.');
   const items=[];for(const f of plan.files){if((await fs.lstat(f.source)).isSymbolicLink()||!((await fs.realpath(f.source)).startsWith(plan.workspace+path.sep)))throw new Error('File moved outside workspace: '+f.path);const original=await fs.readFile(f.source);if(f.sourceHash&&sha256(original)!==f.sourceHash)throw new Error('Workspace changed during export. Refresh and try again.');const data=f.data??original;items.push({...f,sha256:sha256(data)});}
   const project=path.resolve(plan.workspace,plan.sourceRoot),history=plan.history;if(history&&!history.empty){const source=path.join(temp,'history.gitbundle');await git(project,['bundle','create',source,'--all',...(history.head?['HEAD']:[])]);const data=await fs.readFile(source);if(data.length>MAX_FILE)throw new Error('Git history exceeds 256 MiB');items.push({path:historyName,source,size:data.length,sha256:sha256(data)});}
-  const manifest={format:'isp-block-maker-bundle',version:2,sourceRoot:plan.sourceRoot,appVersion:JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version,createdAt:new Date().toISOString(),name:JSON.parse(await fs.readFile(path.join(project,'graph.json'),'utf8')).name,includeImages:plan.includeImages,includeViewer:plan.includeViewer,includeVisualizations:plan.includeVisualizations,includeData:plan.includeData,artifactIds:plan.selectedArtifactIds,history,files:items.map(({path,size,sha256})=>({path,size,sha256}))};
+  const manifest={format:'isp-block-maker-bundle',version:2,includeSource:plan.includeSource,includeWorkRecords:plan.includeWorkRecords,sourceRoot:plan.sourceRoot,appVersion:JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8')).version,createdAt:new Date().toISOString(),name:JSON.parse(await fs.readFile(path.join(project,'graph.json'),'utf8')).name,includeImages:plan.includeImages,includeViewer:plan.includeViewer,includeVisualizations:plan.includeVisualizations,includeData:plan.includeData,artifactIds:plan.selectedArtifactIds,history,files:items.map(({path,size,sha256})=>({path,size,sha256}))};
   const manifestBytes=Buffer.from(JSON.stringify(manifest,null,2));if(manifestBytes.length>4*1024*1024)throw new Error('Bundle manifest exceeds 4 MiB');
   await writeZip(partial,[...items,{path:metaName,data:manifestBytes}]);
   const after=await planBundle(folder,options);if(after.sourceRoot!==plan.sourceRoot||JSON.stringify(after.files.map(({path,size,mtime})=>({path,size,mtime})))!==JSON.stringify(plan.files.map(({path,size,mtime})=>({path,size,mtime})))||JSON.stringify(after.history)!==JSON.stringify(history))throw new Error('Workspace changed during export. Pause agent writes and try again.');
+  if(options.expectedFingerprint&&await bundleFingerprint(after)!==options.expectedFingerprint)throw Error('Workspace changed during export. Preview again.');
   // Exclusive publication prevents replacing an existing bundle.
   await fs.copyFile(partial,output,1);return {path:output,bytes:(await fs.stat(output)).size,fileCount:items.length,manifest};
  }finally{await fs.rm(partial,{force:true});await fs.rm(temp,{recursive:true,force:true});}
@@ -157,7 +181,7 @@ async function extractValidatedBundle(input,parent){
 
 export async function inspectBundle(input){
  const {stage,manifest}=await extractValidatedBundle(input,os.tmpdir());
- try{return {name:manifest.name,sourceRoot:manifest.sourceRoot||'.',version:manifest.version,fileCount:manifest.files.length,bytes:manifest.files.reduce((sum,f)=>sum+f.size,0),includeImages:manifest.includeImages!==false,includeViewer:manifest.includeViewer!==false,includeVisualizations:manifest.includeVisualizations!==false,includeData:manifest.includeData!==false,artifactCount:JSON.parse(await fs.readFile(path.join(stage,'.isp/project.json'),'utf8').catch(()=>'{"artifacts":[]}')).artifacts?.length||0,hasGit:!!manifest.history};}
+ try{return {includeSource:manifest.includeSource!==false,includeWorkRecords:manifest.includeWorkRecords!==false,name:manifest.name,sourceRoot:manifest.sourceRoot||'.',version:manifest.version,fileCount:manifest.files.length,bytes:manifest.files.reduce((sum,f)=>sum+f.size,0),includeImages:manifest.includeImages!==false,includeViewer:manifest.includeViewer!==false,includeVisualizations:manifest.includeVisualizations!==false,includeData:manifest.includeData!==false,artifactCount:JSON.parse(await fs.readFile(path.join(stage,'.isp/project.json'),'utf8').catch(()=>'{"artifacts":[]}')).artifacts?.length||0,hasGit:!!manifest.history};}
  finally{await fs.rm(stage,{recursive:true,force:true});}
 }
 
