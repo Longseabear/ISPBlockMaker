@@ -6,6 +6,17 @@ import {McpAgents} from '../server/mcp-agents.mjs';
 function fixture(){const events=[],processes=[],agents=new McpAgents(),a=agents.authenticate(agents.issue('A').token),b=agents.authenticate(agents.issue('B').token);const manager=new SharedTerminals({agents,context:()=>({workspace:process.cwd(),env:process.env}),notify:event=>events.push(event),spawn:()=>{const p={pid:123,writes:[],onData(fn){this.data=fn;},onExit(fn){this.exit=fn;},write(v){this.writes.push(v);},resize(){},kill(){this.exit({exitCode:0});}};processes.push(p);return p;},kill:async p=>p.kill()});const create=(title='Server',actor=a)=>manager.create({id:crypto.randomUUID(),title},actor);return {manager,agents,a,b,events,processes,create};}
 const input=(controlVersion=0)=>({requestId:crypto.randomUUID(),data:'echo hello\r',controlVersion});
 const socket=()=>({readyState:1,bufferedAmount:0,messages:[],send(text){this.messages.push(JSON.parse(text));},close(){this.readyState=3;}});
+test('fast output remains readable from the input acknowledgement and identical retries retain the original cursor',()=>{
+ const {manager,a,processes,create}=fixture(),s=create(),request=input();
+ processes[0].data('prompt> ');
+ processes[0].write=data=>{processes[0].writes.push(data);processes[0].data('hello\r\n');};
+ const ack=manager.write(s.id,request,a);
+ assert.equal(ack.inputAccepted,true);assert.equal(ack.completion,'not_tracked');assert.ok(ack.shell);
+ assert.equal(manager.read(s.id,{cursor:ack.outputCursorBeforeWrite}).output,'hello\r\n');
+ assert.equal(manager.read(s.id,{cursor:ack.cursor}).output,'');
+ const retry=manager.write(s.id,request,a);assert.equal(retry.outputCursorBeforeWrite,ack.outputCursorBeforeWrite);assert.equal(processes[0].writes.length,1);
+ assert.ok(ack.lastInputAt&&ack.lastOutputAt);
+});
 test('one agent has distinct hidden sessions, retries do not create duplicates',()=>{const {manager,a,b,events,create}=fixture(),s=create();assert.equal(manager.create({id:s.id,title:'Server'},a).id,s.id);assert.throws(()=>manager.create({id:s.id,title:'Server'},b),/already used/);create('SSH');assert.ok(manager.list().every(v=>v.agentId===a.id));assert.equal(events.some(e=>e.type==='shared-present'),false);manager.present(s.id,{reason:'input',message:'Login'},a);assert.equal(events.at(-1).type,'shared-present');assert.equal(manager.present(s.id,{reason:'input',message:'Login'},a).requested,false);});
 test('another agent cannot spoof user input, take over, kill or delete',async()=>{const {manager,a,b,create}=fixture(),s=create();assert.equal(manager.read(s.id).agentId,a.id);assert.throws(()=>manager.write(s.id,{...input(),actor:'user'},b),/소유자/);assert.throws(()=>manager.control(s.id,'agent',b.id,b,0),/소유자/);await assert.rejects(manager.stop(s.id,b,0),/소유자/);assert.throws(()=>manager.remove(s.id,b,0),/소유자/);});
 test('handoff rejects stale writes even when ownership returns to original agent',()=>{const {manager,a,b,processes,create}=fixture(),s=create(),req=input();manager.write(s.id,req,a);assert.equal(manager.write(s.id,req,a).duplicate,true);manager.control(s.id,'agent',b.id,a,0);assert.throws(()=>manager.write(s.id,input(),a),/소유자/);manager.write(s.id,input(1),b);manager.control(s.id,'agent',a.id,b,1);assert.throws(()=>manager.write(s.id,req,a),/변경/);manager.write(s.id,input(2),a);assert.equal(processes[0].writes.length,3);});

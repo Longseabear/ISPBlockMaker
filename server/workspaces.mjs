@@ -87,7 +87,7 @@ export function openWorkspace(folder, root) {
         fs.writeFileSync(legacySourceCli, 'await import("../.isp/tools/isp.mjs");\n');
     }
     const guidance =
-      "\n<!-- ISP Block Maker workspace -->\nFor ISP graph and implementation work, read `.agents/skills/isp-block-maker/SKILL.md`. Use `node .isp/tools/isp.mjs` from this folder, or the absolute ISP_CLI path in terminals. project/graph.json and implementation code are versioned in project/.git; .isp/ contains local state and work tracking. Run source commands and Git inside project/; input data and workspace tools remain in this folder.\n";
+      "\n<!-- ISP Block Maker workspace -->\nFor ISP graph and implementation work, read `.agents/skills/isp-block-maker/SKILL.md`. Use typed isp-workspace MCP tools first. Only for unsupported operations or unavailable MCP, use `node .isp/tools/isp.mjs` from this folder or the absolute ISP_CLI. project/graph.json and implementation code are versioned in project/.git; .isp/ contains local state and work tracking. Run source commands and Git inside project/; input data and workspace tools remain in this folder.\n";
     for (const name of ["AGENTS.md", "CLAUDE.md"]) {
       const file = path.join(workspace, name);
       if (
@@ -101,7 +101,8 @@ export function openWorkspace(folder, root) {
         const old = fs.readFileSync(file, "utf8");
         const updated = old.replace("graph.json is versioned with implementation code; .isp/ contains local state.",
           "project/graph.json and implementation code are versioned in project/.git; .isp/ contains local state and work tracking. Run source commands and Git inside project/; input data and workspace tools remain in this folder.");
-        if (updated !== old) fs.writeFileSync(file, updated);
+        const routed = updated.replace("Use `node .isp/tools/isp.mjs` from this folder, or the absolute ISP_CLI path in terminals.", "Use typed isp-workspace MCP tools first. Only for unsupported operations or unavailable MCP, use `node .isp/tools/isp.mjs` from this folder or the absolute ISP_CLI.");
+        if (routed !== old) fs.writeFileSync(file, routed);
       }
     }
     // Existing repositories may track project-level guidance. Preserve its text and
@@ -110,7 +111,12 @@ export function openWorkspace(folder, root) {
       const file = path.join(sourceRoot, name);
       const old = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
       if (!old.includes("<!-- ISP Block Maker source layout -->"))
-        fs.appendFileSync(file, "\n<!-- ISP Block Maker source layout -->\nThis is the versioned source folder. The workspace is its parent. Read `../.agents/skills/isp-block-maker/SKILL.md` and the workspace `../AGENTS.md` for current ISP instructions; any copied skill files here are historical. Run `node ../.isp/tools/isp.mjs` or the absolute ISP_CLI. `graph.json` and implementation paths are relative to this source folder. Workspace data, artifacts, JOBs, attempts and tools are in the parent folder; do not copy them into this repository.\n");
+        fs.appendFileSync(file, "\n<!-- ISP Block Maker source layout -->\nThis is the versioned source folder. The workspace is its parent. Read `../.agents/skills/isp-block-maker/SKILL.md` and the workspace `../AGENTS.md` for current ISP instructions; any copied skill files here are historical. Use typed isp-workspace MCP tools first; only for unsupported operations or unavailable MCP, run `node ../.isp/tools/isp.mjs` or the absolute ISP_CLI. `graph.json` and implementation paths are relative to this source folder. Workspace data, artifacts, JOBs, attempts and tools are in the parent folder; do not copy them into this repository.\n");
+    }
+    for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+      const file=path.join(sourceRoot,name), text=fs.readFileSync(file,'utf8');
+      const updated=text.replace("Run `node ../.isp/tools/isp.mjs` or the absolute ISP_CLI.", "Use typed isp-workspace MCP tools first; only for unsupported operations or unavailable MCP, run `node ../.isp/tools/isp.mjs` or the absolute ISP_CLI.");
+      if(updated!==text)fs.writeFileSync(file,updated);
     }
     const ignore = path.join(sourceRoot, ".gitignore");
     const text = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";

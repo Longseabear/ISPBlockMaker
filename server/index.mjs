@@ -1,7 +1,9 @@
+import {createPerformanceDiagnostics} from './performance-diagnostics.mjs';
+import {externalMcpHandler} from './external-mcp.mjs';
+import {withReportNavigation} from './report-navigation.mjs';
 import {SharedTerminals,installSharedTerminals} from './shared-terminals.mjs';
 import {McpAgents} from './mcp-agents.mjs';
 import {WorkspaceSearchService} from './workspace-search-service.mjs';
-import {workspaceMcpHandler} from './workspace-mcp.mjs';
 import {localApiAdapter} from './mcp-local-tools.mjs';
 import {installMcpSharing} from './mcp-sharing.mjs';
 import {McpMutations} from './mcp-mutations.mjs';
@@ -81,6 +83,7 @@ function workspaceInfo() {
 async function stopTerminals() {
   await sharedTerminals.close();
   await interaction?.close();
+  await externalMcp.clear();
   mcpAgents.clear();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
@@ -116,6 +119,8 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
+const performanceDiagnostics=createPerformanceDiagnostics();
+app.use(performanceDiagnostics.middleware);
 app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid, agentApi:1 }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -151,7 +156,7 @@ const mcpMutationStores=new WeakMap();
 function localMcpContext(req){
  const requestToken=token,requestStore=store,requestWorkspace=workspace;
  let ledger=mcpMutationStores.get(store);if(!ledger){ledger=new McpMutations(dataDir);mcpMutationStores.set(store,ledger);}
- return {store,search:workspaceSearch,readArtifact:file=>readArtifactFile(requestWorkspace,file),terminalApi:req?.mcpActor?localApiAdapter({origin,token:()=>req.headers.authorization.slice(7)}):async()=>{throw Error('Shared terminals require a dedicated agent credential. Register /api/mcp/agents and connect with its token.');},localApi:localApiAdapter({origin,token:()=>requestToken}),mutate:(name,input,operation)=>{
+ return {store,observe:performanceDiagnostics.record,search:workspaceSearch,readArtifact:file=>readArtifactFile(requestWorkspace,file),terminalApi:req?.mcpActor?localApiAdapter({origin,token:()=>req.mcpTerminalToken||req.headers.authorization.slice(7)}):async()=>{throw Error('Reconnect isp-workspace MCP to initialize your Terminal Hub identity automatically.');},localApi:localApiAdapter({origin,token:()=>requestToken}),mutate:(name,input,operation)=>{
   if(requestStore!==store||requestToken!==token)throw Error('Workspace changed; reconnect before editing');
   return ledger.execute(name,input,operation);
  }};
@@ -162,7 +167,8 @@ app.post('/api/mcp/agents',(req,res)=>res.json({...mcpAgents.issue(req.body.labe
 app.get('/api/mcp/agents',(_req,res)=>res.json(mcpAgents.list()));
 app.delete('/api/mcp/agents/:id',(req,res)=>{if(sharedTerminals.list().some(s=>s.agentId===req.params.id))return res.status(409).json({error:'먼저 소유 세션을 인계하거나 삭제하세요.'});mcpAgents.forget(req.params.id);res.json({ok:true});});
 app.post('/api/mcp/agents/:id/revoke',(req,res)=>res.json(mcpAgents.revoke(req.params.id)));
-app.post('/mcp',(req,res,next)=>{req.mcpActor=mcpAgents.authenticate(req.headers.authorization?.replace(/^Bearer /,''));if(!authorized(req)&&!req.mcpActor)return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),workspaceMcpHandler(localMcpContext));
+const externalMcp=externalMcpHandler(localMcpContext,{agents:mcpAgents,hasTerminals:id=>sharedTerminals.list().some(s=>s.agentId===id)});
+app.all('/mcp',(req,res,next)=>{req.mcpActor=mcpAgents.authenticate(req.headers.authorization?.replace(/^Bearer /,''));if(!authorized(req)&&!req.mcpActor)return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),externalMcp);
 app.all('/mcp',(_req,res)=>res.status(405).end());
 const mcpSharing=installMcpSharing(app,()=>({store,search:workspaceSearch,sharedImages:{list:()=>sharedImages(workspace),read:id=>sharedImagePreview(workspace,id)}}));
 const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.peek().artifacts}));
@@ -221,6 +227,7 @@ app.get('/api/recipes', (req,res)=>res.json(listRecipes(workspace)));
 app.get('/api/recipes/:id',(req,res)=>res.json(readRecipe(workspace,req.params.id)));
 app.post('/api/recipes', (req,res)=>res.json(saveRecipe(workspace,req.body.recipe,{expectedHash:req.body.expectedHash})));
 app.delete('/api/recipes/:id', (req,res)=>res.json(deleteRecipe(workspace,req.params.id,{expectedHash:req.body.expectedHash})));
+app.post('/api/recipes/:id/plan',(req,res)=>res.json(planRecipeRun(workspace,req.params.id,{parameters:req.body.parameters,expectedHash:req.body.expectedHash})));
 app.post('/api/recipes/:id/launch', (req,res)=>{
   if(process.platform!=='win32')throw Error('Runs terminal requires Windows');
   const plan=planRecipeRun(workspace,req.params.id,{parameters:req.body.parameters,expectedHash:req.body.expectedHash});
@@ -271,8 +278,8 @@ app.get("/api/activity",(req,res)=>res.json(readActivity(dataDir)));
 app.get("/api/versions/commits/:hash",async(req,res)=>res.json(await commitChanges(workspace,req.params.hash)));
 app.post("/api/activity/summaries",(req,res)=>{
  const input=summarySchema.parse(req.body);
- recordActivity(dataDir,{...input,kind:"summary",title:input.title});
- res.status(201).json(readActivity(dataDir)[0]);
+ const saved=recordActivity(dataDir,{...input,kind:"summary",title:input.title});
+ res.status(201).json(saved);
 });
 
 
@@ -317,6 +324,7 @@ app.delete("/api/terminals/:id", (req, res) => {
   if (session) stopTerminalSession(session);
   res.json({ok: true});
 });
+app.get("/api/diagnostics/performance", (_req,res)=>res.json(performanceDiagnostics.snapshot()));
 app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
 app.post("/api/graph-check", async (req,res) => {
   const options=z.object({blockId:z.string().min(1).max(80).optional(),changedFiles:z.array(z.string().min(1).max(1000)).max(200).default([])}).strict().parse(req.body);
@@ -422,6 +430,7 @@ app.post("/api/workspace", async (req, res) => {
   const opened = openWorkspace(input.path, root);
   if (opened.workspace === workspace) return res.json({ workspace });
   await sharedTerminals.close();
+  await externalMcp.clear();
   mcpAgents.clear();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
@@ -545,7 +554,7 @@ app.get("/api/requests", (req, res) => {
       ),
   });
 });
-app.post("/api/blocks/:id/requests/:requestId/consume", (req, res) => {
+app.post(["/api/blocks/:id/requests/:requestId/consume", "/api/global/requests/:requestId/consume"], (req, res) => {
   const input = z
     .object({
       revision: z.number().int().positive(),
@@ -791,7 +800,7 @@ app.post("/api/present", (req, res) => {
       message: z.string().max(500).default(""),
     })
     .parse(req.body);
-  const state = store.get();
+  const state = presentation.view === "artifacts" ? store.peek() : store.get();
   if (presentation.edgeIds.some((id) => !state.edges.some((e) => e.id === id)))
     throw new Error("표시할 간선을 찾을 수 없습니다.");
   if (
@@ -818,9 +827,10 @@ app.post("/api/present", (req, res) => {
   if (presentation.view === "graph" && presentation.artifactId)
     throw new Error("그래프 표시에는 artifactId를 지정할 수 없습니다.");
   let delivered = 0;
+  const event = JSON.stringify({ type: "present", presentation, state });
   for (const client of wss.clients)
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: "present", presentation, state }));
+      client.send(event);
       delivered++;
     }
   res.json({
@@ -846,7 +856,7 @@ app.get("/api/context", (req,res)=>{
  res.json({... (blockId?contextFor(graph,blockId):{...diagramView(graph),block:null}),paths:info,blockDocumentation:blockId?{directory:blockStorageDirectory(info.graphFile,blockId),documents:blockDocuments(info.graphFile,blockId)}:null,projectSkills:listProjectSkills(workspace,root).filter(s=>!s.managed)});
 });
 app.get("/api/mermaid", (req, res) =>
-  res.type("text/plain").send(toMermaid(diagramView(store.get(),req.query.diagramId||undefined))),
+  req.query.format === "json" ? res.json({mermaid:toMermaid(diagramView(store.get(),req.query.diagramId||undefined))}) : res.type("text/plain").send(toMermaid(diagramView(store.get(),req.query.diagramId||undefined))),
 );
 app.patch("/api/blocks/:id", (req, res) => {
   const current = store.get();
@@ -954,6 +964,12 @@ app.get("/artifacts/:file", (req, res) => {
     "Content-Security-Policy",
     "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'",
   );
+  if (artifact.kind === "html") {
+    return fs.readFile(path.join(artifactDir, artifact.file), 'utf8', (error, html) => {
+      if (error) return res.sendStatus(404);
+      res.type('text/html').send(withReportNavigation(html));
+    });
+  }
   res
     .type(artifact.kind === "html" ? "text/html" : `image/${artifact.kind}`)
     .sendFile(path.join(artifactDir, artifact.file), { dotfiles: "allow" });
@@ -1176,6 +1192,8 @@ async function shutdown() {
   clearInterval(terminalStatusTimer);
   await sharedTerminals.close();
   await workspaceSearch.close();
+  await externalMcp.close();
+  performanceDiagnostics.close();
   await mcpSharing.stop();
   await harness?.close();
   await interaction?.close();

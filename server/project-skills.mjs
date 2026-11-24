@@ -9,7 +9,7 @@ import {safeName,writeZip,openZip} from './bundle-zip.mjs';
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const nameSchema=z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(64);
 const versionSchema=z.string().regex(/^[a-f0-9]{64}$/).nullable();
-const payloadSchema=z.object({name:nameSchema,files:z.record(z.string(),z.string()),version:versionSchema});
+export const payloadSchema=z.object({name:nameSchema,files:z.record(z.string(),z.string()),version:versionSchema});
 const MAX_TOTAL=10*1024*1024;
 function safe(w,relative){safeName(relative);let target=path.resolve(w);for(const part of relative.split('/')){target=path.join(target,part);try{if(fs.lstatSync(target).isSymbolicLink())throw Error('Linked skill paths are not supported');}catch(e){if(e.code!=='ENOENT')throw e;}}return target;}
 function checkName(name){nameSchema.parse(name);safeName(name);return name;}

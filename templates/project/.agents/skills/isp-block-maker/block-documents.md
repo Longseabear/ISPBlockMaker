@@ -4,7 +4,7 @@ Pipeline and Harness diagrams use the same layout. The board organizes knowledge
 
 1. Discover `workspace-info`, then `context --block ID` and `block-docs --block ID`. Keep the stable block ID. The returned `blockDocumentation.directory` / `directory` is sourceRoot-relative and authoritative, including for older storage formats.
 2. In storage version 4, each diagram lives at `<sourceRoot>/diagrams/d-<diagram-id>/`. Its `diagram.json` holds the definition, block references and connections; its `README.md` holds the overview detail. Each block lives in `blocks/b-<block-id>/` with `block.json` and `README.md`. Prefixes avoid Windows reserved names; display-name changes never move folders.
-3. Use CLI commands for diagram/block metadata, connections and normal README detail edits. Never overwrite graph.json with the assembled API project response or manually rewrite managed references. graph.json is the index, not an inline copy of every definition.
+3. Use typed MCP tools (CLI fallback only for unsupported operations) for diagram/block metadata, connections and normal README detail edits. Never overwrite graph.json with the assembled API project response or manually rewrite managed references. graph.json is the index, not an inline copy of every definition.
 
 ## What belongs here
 

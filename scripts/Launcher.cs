@@ -33,6 +33,7 @@ class Launcher : Form {
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
     readonly object logLock = new object();
     Launcher(string folder, string workFolder, int port, bool selfTest) {
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         smoke = selfTest;
         root = Path.GetFullPath(folder); workspace = workFolder; url = "http://127.0.0.1:" + port;
         string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ISPBlockMaker", "logs");

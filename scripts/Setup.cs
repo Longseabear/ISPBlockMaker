@@ -13,7 +13,7 @@ class Setup {
         bool unpack = args.Length == 2 && args[0] == "--extract";
         if (unpack) target=Path.GetFullPath(args[1]);
         else if(MessageBox.Show("ISP Block Maker와 전용 Node를 설치하고 사용자 PATH에 실행 명령을 등록합니다.\n\n"+target+"\n\n계속하시겠습니까?","ISP Block Maker 설치",MessageBoxButtons.OKCancel)!=DialogResult.OK) return;
-        var window=new Form {Text="ISP Block Maker 설치",Width=480,Height=140};
+        var window=new Form {Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath),Text="ISP Block Maker 설치",Width=480,Height=140};
         window.Controls.Add(new Label {Text="파일을 준비하고 있습니다…",Dock=DockStyle.Fill,Padding=new Padding(20)});
         bool done=false;
         window.FormClosing+=(s,e)=>{if(!done)e.Cancel=true;};

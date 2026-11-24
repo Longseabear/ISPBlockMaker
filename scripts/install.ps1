@@ -26,10 +26,11 @@ $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($menu)
 $shortcut.TargetPath = Join-Path $appRoot 'ISPBlockMaker.exe'
 $shortcut.WorkingDirectory = [Environment]::GetFolderPath('MyDocuments')
+$shortcut.IconLocation = (Join-Path $appRoot 'ISPBlockMaker.exe') + ',0'
 $shortcut.Save()
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\ISPBlockMaker'
 New-Item -Path $key -Force | Out-Null
-$values = @{ DisplayName='ISP Block Maker'; DisplayVersion=$package.version; Publisher='ISP Block Maker'; InstallLocation=$installRoot; UninstallString=('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installRoot 'uninstall.ps1') + '"') }
+$values = @{ DisplayIcon=((Join-Path $appRoot 'ISPBlockMaker.exe') + ',0'); DisplayName='ISP Block Maker'; DisplayVersion=$package.version; Publisher='ISP Block Maker'; InstallLocation=$installRoot; UninstallString=('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installRoot 'uninstall.ps1') + '"') }
 foreach($entry in $values.GetEnumerator()) { New-ItemProperty -Path $key -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class IspEnvironment { [DllImport("user32.dll",CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr h,int m,IntPtr w,string l,int f,int t,out IntPtr r); }'
 $result = [IntPtr]::Zero

@@ -11,13 +11,13 @@ Read [common.md](common.md) once for this project. These skills apply to the wor
 
 ## Workspace MCP and search
 
-When `isp-workspace` MCP tools are available, prefer their typed operations for supported reads and UI actions. Read [mcp-search.md](mcp-search.md) for tool selection, evidence retrieval, and searchable block documentation. Discover the actual tool catalogue; unavailable operations still use the documented CLI. MCP is automatically supplied only to agents launched by this app. Do not modify global agent settings or assume external terminals have it.
+When `isp-workspace` MCP tools are available, use their typed operations for supported reads, mutations, work summaries and UI actions. Read [mcp-search.md](mcp-search.md) for tool selection, evidence retrieval, and searchable block documentation. Discover the actual tool catalogue; unavailable operations still use the documented CLI. App-launched agents receive MCP automatically; external clients may already be connected and receive their own identity at initialization. Inspect available tools instead of assuming external clients need CLI. Do not modify global agent settings.
 
 ## UI control: show, highlight and fit the Board
 
 Use this section when the user asks to show the block diagram, highlight blocks/connections, zoom in on a block, or fit the graph to the screen. These are UI actions; do not change graph positions or implementation code just to change the view.
 
-Run `node .isp/tools/isp.mjs` from the workspace (or use ISP_CLI). Read `graph-info` / `project` to resolve names to actual IDs and the selected diagram before presenting targets.
+Use `list_diagrams` / `get_diagram` to resolve actual IDs, then `present_board` (empty `block_ids` fits the whole graph) or `present_report`. Use `import_viewer_image` / `control_viewer` for images. The CLI table below is fallback-only when the corresponding MCP tool is unavailable.
 
 | User intent | CLI command after the CLI prefix |
 | --- | --- |

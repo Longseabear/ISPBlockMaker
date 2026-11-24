@@ -58,6 +58,7 @@ class ServerManager : Form {
         catch(WebException e){if(e.Response==null)throw;using(var reader=new StreamReader(e.Response.GetResponseStream())){var error=Json.Deserialize<Dictionary<string,object>>(reader.ReadToEnd());throw new Exception(Convert.ToString(error["error"]));}}
     }
     public ServerManager(string appRoot,string folder) {
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         root=appRoot;initialFolder=folder;
         Text="ISP Block Maker · Workspaces";Size=new Size(1050,680);MinimumSize=new Size(860,600);StartPosition=FormStartPosition.CenterScreen;Font=new Font("맑은 고딕",10);AutoScaleMode=AutoScaleMode.Dpi;BackColor=Color.White;
         var heading=new Label {Text="ISP Block Maker",Dock=DockStyle.Top,Height=56,Padding=new Padding(20,14,20,10),Font=new Font("Segoe UI",13,FontStyle.Bold),BackColor=Color.White,ForeColor=Color.FromArgb(35,42,52)};

@@ -10,6 +10,7 @@ import { once } from "node:events";
 import { WebSocket } from "ws";
 import { createStore } from "../server/store.mjs";
 import {ensureProjectLayout} from '../server/project-layout.mjs';
+import {withReportNavigation} from '../server/report-navigation.mjs';
 
 test(
   "local API authenticates, validates writes, serves isolated artifacts and streams shell I/O",
@@ -634,7 +635,7 @@ test(
         rendered.headers.get("content-security-policy"),
         /connect-src 'none'/,
       );
-      assert.equal(await rendered.text(), "<h1>Result</h1>");
+      assert.equal(await rendered.text(), withReportNavigation("<h1>Result</h1>"));
       ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${token}`, {
         origin: base,
       });

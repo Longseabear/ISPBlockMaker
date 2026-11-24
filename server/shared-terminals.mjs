@@ -19,7 +19,7 @@ export class SharedTerminals {
   }
   process.kill();
  }}){this.context=context;this.agents=agents;this.freeMemory=freeMemory;this.notify=notify;this.spawn=spawn;this.kill=kill;this.sessions=new Map();}
- info(s){return {id:s.id,title:s.title,owner:s.owner,agentId:s.agentId,agent:s.agentId?this.agents?.get(s.agentId):null,controlVersion:s.controlVersion,status:s.status,pid:s.process.pid,createdAt:s.createdAt,exitCode:s.exitCode,cursor:s.end,userInputSequence:s.userInputSequence,bufferChars:s.buffer.length};}
+ info(s){return {id:s.id,title:s.title,owner:s.owner,agentId:s.agentId,agent:s.agentId?this.agents?.get(s.agentId):null,controlVersion:s.controlVersion,status:s.status,pid:s.process.pid,shell:s.shell,lastInputAt:s.lastInputAt,lastOutputAt:s.lastOutputAt,createdAt:s.createdAt,exitCode:s.exitCode,cursor:s.end,userInputSequence:s.userInputSequence,bufferChars:s.buffer.length};}
  list(){return [...this.sessions.values()].map(s=>this.info(s));}
  changed(){this.notify({type:'shared-terminals',sessions:this.list(),agents:this.agents?.list()||[],resources:this.resources()});}
  resources(){return {limits:TERMINAL_LIMITS,sessions:this.sessions.size,running:[...this.sessions.values()].filter(s=>s.status!=='exited').length,bufferChars:[...this.sessions.values()].reduce((n,s)=>n+s.buffer.length,0),agentRequestIds:[...this.sessions.values()].reduce((n,s)=>n+s.writes.size,0),serverRssBytes:process.memoryUsage().rss,systemFreeBytes:this.freeMemory(),systemTotalBytes:os.totalmem(),processMemoryLimited:false};}
@@ -34,9 +34,9 @@ export class SharedTerminals {
   if(this.freeMemory()<TERMINAL_LIMITS.minimumFreeMemoryBytes)throw Error('시스템 여유 메모리가 256 MiB 미만입니다. 새 세션을 만들기 전에 실행 중인 작업을 정리하세요.');
   const {workspace,env}=this.context(),windows=process.platform==='win32';
   const processPty=this.spawn(windows?'cmd.exe':env.SHELL||'/bin/bash',windows?['/d','/q']:['-i'],{name:'xterm-256color',cols:100,rows:28,cwd:workspace,env:{...env,TERM:'xterm-256color'}});
-  const s={...input,owner:caller.kind,agentId:caller.id||null,createdBy:caller.id||'user',controlVersion:0,process:processPty,status:'running',createdAt:new Date().toISOString(),buffer:'',end:0,userInputSequence:0,sockets:new Set(),writes:new Map(),inputWindow:0,inputBytes:0};
+  const s={...input,owner:caller.kind,agentId:caller.id||null,createdBy:caller.id||'user',controlVersion:0,process:processPty,shell:windows?'cmd.exe':env.SHELL||'/bin/bash',lastInputAt:null,lastOutputAt:null,status:'running',createdAt:new Date().toISOString(),buffer:'',end:0,userInputSequence:0,sockets:new Set(),writes:new Map(),inputWindow:0,inputBytes:0};
   this.sessions.set(s.id,s);
-  processPty.onData(data=>{s.buffer=(s.buffer+data).slice(-TERMINAL_LIMITS.outputChars);s.end+=data.length;for(const socket of s.sockets){const pending=socket.sharedPending||0;if(pending+data.length>262144){socket.close(1013,'Terminal renderer too slow');s.sockets.delete(socket);continue;}socket.sharedPending=pending+data.length;send(socket,{type:'shared-output',id:s.id,data});}});
+  processPty.onData(data=>{s.lastOutputAt=new Date().toISOString();s.buffer=(s.buffer+data).slice(-TERMINAL_LIMITS.outputChars);s.end+=data.length;for(const socket of s.sockets){const pending=socket.sharedPending||0;if(pending+data.length>262144){socket.close(1013,'Terminal renderer too slow');s.sockets.delete(socket);continue;}socket.sharedPending=pending+data.length;send(socket,{type:'shared-output',id:s.id,data});}});
   processPty.onExit(({exitCode})=>{s.status='exited';s.exitCode=exitCode;for(const socket of s.sockets)send(socket,{type:'shared-exit',id:s.id,exitCode});this.changed();});
   this.changed();return this.info(s);
  }
@@ -50,15 +50,15 @@ export class SharedTerminals {
   const s=this.get(id),input=writeSchema.parse(raw),hash=crypto.createHash('sha256').update((caller.id||'user')+'\0'+input.controlVersion+'\0'+input.data).digest('hex');
   this.check(s,caller,input.controlVersion);
   if(input.controlVersion!==s.controlVersion)throw Error('제어권이 변경되었습니다. 상태를 다시 읽으세요.');
-  if(s.writes.has(input.requestId)){if(s.writes.get(input.requestId)!==hash)throw Error('Input request ID already used');return {...this.info(s),duplicate:true};}
+  if(s.writes.has(input.requestId)){const previous=s.writes.get(input.requestId);if(previous.hash!==hash)throw Error('Input request ID already used');return {...this.info(s),duplicate:true,inputAccepted:true,completion:'not_tracked',outputCursorBeforeWrite:previous.cursor};}
   if(s.status!=='running')throw Error('터미널이 실행 중이 아닙니다.');
   if(s.owner!==caller.kind)throw Error('직접 조작을 선택한 뒤 입력하세요.');
   // Keep IDs for the lifetime of the session: a lost response must not execute input twice.
   if(caller.kind==='agent'&&s.writes.size>=TERMINAL_LIMITS.agentRequests)throw Error('입력 기록 한도입니다. 새 Terminal Hub을 만드세요.');
   const now=Date.now();if(now-s.inputWindow>=1000){s.inputWindow=now;s.inputBytes=0;}const bytes=Buffer.byteLength(input.data);if(s.inputBytes+bytes>TERMINAL_LIMITS.inputBytesPerSecond)throw Error('터미널 입력 속도 한도입니다. 잠시 후 다시 보내세요.');s.inputBytes+=bytes;
-  s.process.write(input.data);if(caller.kind==='agent')s.writes.set(input.requestId,hash);
+  const cursor=s.end;s.process.write(input.data);s.lastInputAt=new Date().toISOString();if(caller.kind==='agent')s.writes.set(input.requestId,{hash,cursor});
   if(caller.kind==='user')s.userInputSequence++;
-  return this.info(s);
+  return {...this.info(s),inputAccepted:true,completion:'not_tracked',outputCursorBeforeWrite:cursor};
  }
  control(id,owner,agentId,caller=user,version){const s=this.get(id);this.check(s,caller,version);owner=z.enum(['agent','user']).parse(owner);const target=agentId||s.agentId;if(owner==='agent'){if(!target||this.agents?.get(target).status==='disconnected')throw Error('연결된 에이전트를 선택하세요.');if(target!==s.agentId&&[...this.sessions.values()].filter(v=>v.agentId===target).length>=TERMINAL_LIMITS.perAgent)throw Error('받는 에이전트의 터미널 한도는 4개입니다.');s.agentId=target;}s.owner=owner;s.controlVersion++;this.changed();return this.info(s);}
  attach(socket,id){this.detach(socket);const s=this.get(id);if(s.sockets.size>=TERMINAL_LIMITS.subscribers)throw Error('세션당 화면 연결은 최대 4개입니다.');s.sockets.add(socket);socket.sharedId=s.id;socket.sharedPending=s.buffer.length;send(socket,{type:'shared-attached',session:this.info(s),buffer:s.buffer});}

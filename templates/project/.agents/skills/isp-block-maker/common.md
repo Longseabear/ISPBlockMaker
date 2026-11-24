@@ -2,7 +2,13 @@
 
 Read once per project; do not reload for every related skill. Resolve all reference links relative to their containing file, not the shell working directory.
 
-## Local CLI and context
+## MCP first; CLI fallback
+
+Use the typed `isp-workspace` MCP tools for every supported read, mutation and UI action. See [mcp-search.md](mcp-search.md) for the mapping. Start with `get_workspace_info`; use `list_diagrams` and `get_diagram` for actual IDs/revisions. Use `record_work_summary`, `save_run_recipe`, `present_board` and `present_report` directly, without creating temporary JSON or spawning Node. If tools are deferred, discover the named tool once. CLI examples elsewhere in these guides describe the fallback interface, not an instruction to bypass an available MCP tool.
+
+Use the CLI only for operations missing from the actual catalogue (such as standalone archive utilities), or when MCP is genuinely unavailable. Explain an unavailable connection once; do not repeatedly alternate failing CLI and MCP calls. For slow calls inspect `get_runtime_diagnostics`. Server timings exclude the agent tool queue and subprocess startup. For a necessary CLI call, `ISP_TIMING=1` adds timing metadata to stderr without changing JSON stdout or printing credentials.
+
+## CLI fallback and context
 
 From this directory (`<workspace>/.agents/skills/isp-block-maker`), resolve `../../../.isp/tools/isp.mjs` to an absolute path. Run `node "<workspace>/.isp/tools/isp.mjs" COMMAND ...` from anywhere inside the workspace. In its cmd terminal, `isp COMMAND ...` is a shortcut; `"<workspace>/.isp/tools/isp.cmd"` also uses the configured Node executable. The command examples in these skills omit this prefix. `isp-block-maker` is a separate launcher/bundle command, not this bridge CLI.
 

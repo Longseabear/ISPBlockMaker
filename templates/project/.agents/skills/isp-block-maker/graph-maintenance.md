@@ -27,6 +27,6 @@ Keep edges and ports consistent with real stage flow; annotate coordinate conver
 
 ## Write, verify, present
 
-Use partial CLI patches with the inspected revision; preserve user notes and stable IDs. Structured string fields are organizational aids: clear prose, equations, pseudocode and freeform notes are welcome. Keep unknowns and validation limits visible. Store no secrets, private reasoning, raw image arrays, or copied logs.
+Use partial MCP updates (CLI patches only as fallback) with the inspected revision; preserve user notes and stable IDs. Structured string fields are organizational aids: clear prose, equations, pseudocode and freeform notes are welcome. Keep unknowns and validation limits visible. Store no secrets, private reasoning, raw image arrays, or copied logs.
 
 Follow [change-impact.md](change-impact.md) for read-back, evidence identity and coherent checkpoints, then [completion.md](completion.md) for presentation. Mention meaningful graph knowledge changes or concrete unresolved mismatches; no repeated no-change message is required.

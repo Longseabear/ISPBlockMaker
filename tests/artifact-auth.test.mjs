@@ -1,3 +1,4 @@
+import {withReportNavigation} from '../server/report-navigation.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -101,7 +102,7 @@ test("visualization cookies stay valid when another workspace server bootstraps 
     async function assertVisible(server, headers) {
       const response = await fetch(server.url, { headers });
       assert.equal(response.status, 200);
-      assert.equal(await response.text(), server.html);
+      assert.equal(await response.text(), withReportNavigation(server.html));
       assert.match(response.headers.get("content-type"), /^text\/html\b/);
       assert.equal(response.headers.get("cache-control"), "no-store");
       const policy = response.headers.get("content-security-policy");

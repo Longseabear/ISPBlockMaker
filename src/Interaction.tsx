@@ -106,6 +106,7 @@ function InteractionPane({api,token,project,workspace,blockId,onArtifact,panelOp
   const receive=async(event:MessageEvent)=>{
    if(event.origin!==location.origin||event.source!==frame.current?.contentWindow||event.data?.channel!=='isp-cloudcli')return;
    const {id,action:kind,payload={}}=event.data;
+   if(kind==='navigation'){window.dispatchEvent(new CustomEvent('isp-navigation',{detail:payload.action}));return;}
    if(kind==='focus'){latest.current.onActivate();return;}
    if(kind==='ready'){setFrameReady(true);frame.current?.contentWindow?.postMessage({channel:'isp-cloudcli-state',view:latest.current.view},location.origin);return;}
    try{let value:unknown;const current=latest.current.view;

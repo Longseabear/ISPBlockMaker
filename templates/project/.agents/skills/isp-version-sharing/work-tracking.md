@@ -2,6 +2,8 @@
 
 Use this reference for substantial algorithm/JOB work, repeated experiments, or requested work history. A JOB records intent, an attempt records one approach and evidence, and a checkpoint stores the whole graph/code snapshot. Tags remain user-designated completed versions. None of these replaces actual validation.
 
+Use available typed MCP management tools first; see [MCP mapping](../isp-block-maker/mcp-search.md). CLI examples below are fallback syntax. Do not run both interfaces for the same mutation.
+
 ## Start from the actual source
 
 Read `workspace-info`, `project`, relevant scoped JOBs and source diffs. Put command JSON in a task directory under the discovered `tmpDir`; examples below assume its absolute path. Start only the work authorized by the user. Creating a pending JOB alone does not start an attempt.

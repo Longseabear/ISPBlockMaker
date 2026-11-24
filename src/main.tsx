@@ -1,4 +1,5 @@
 import {SharedTerminals} from './SharedTerminals';
+import {installNavigationShortcuts} from './navigation-shortcuts';
 import {PortNames} from './PortNames';
 import {HarnessPanel,HarnessStepEditor,HarnessStatus,harnessStatus} from './Harness';
 import {DiagramTabs} from './DiagramTabs';
@@ -829,6 +830,7 @@ function Inspector({
 type TerminalSession = {sessionId: string; agent: string; blockId: string};
 
 function TerminalPanel(props: {
+  active: boolean;
   launch?: TerminalSession | null;
   token: string; block: Block; api: Api; onState: (state: Project) => void;
   onPresent: (presentation: Presentation) => void; notify: (s: string) => void;
@@ -890,7 +892,7 @@ function TerminalPanel(props: {
     finally { setClosing(''); }
   }
   return <section className="terminal-pane terminal-panel">
-    <div className="terminal-tabs" role="tablist" aria-label="터미널 세션">
+    <div className="terminal-tabs" role="tablist" aria-label="터미널 세션" title="이전/다음 탭: Alt+PageUp/PageDown">
       {tabs.map((tab, i) => <div className="terminal-tab" key={tab.sessionId}>
         <button role="tab" id={'tab-' + tab.sessionId} aria-controls={'pane-' + tab.sessionId} aria-selected={selectedTab === tab.sessionId}
           onClick={() => setSelectedTab(tab.sessionId)} title={tab.blockId}>{tab.agent === 'shell' ? 'Shell' : tab.agent} {i + 1}</button>
@@ -903,7 +905,7 @@ function TerminalPanel(props: {
     {error && <div role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>다시 연결</button></div>}
     {tabs.map((tab, i) => <div key={tab.sessionId} id={'pane-' + tab.sessionId} role="tabpanel" aria-labelledby={'tab-' + tab.sessionId}
       className="terminal-tab-content" hidden={selectedTab !== tab.sessionId}>
-      <TerminalPane {...props} session={tab} visible={selectedTab === tab.sessionId} eventLeader={i === 0}
+      <TerminalPane {...props} session={tab} visible={props.active && selectedTab === tab.sessionId} eventLeader={i === 0}
         onAgent={agent => setTabs(current => current.map(t => t.sessionId === tab.sessionId ? {...t, agent} : t))}/>
     </div>)}
   </section>;
@@ -1248,6 +1250,7 @@ function ArtifactInformation({ artifact, revision, relatedArtifacts, onDelete }:
 }
 
 function App() {
+  useEffect(installNavigationShortcuts, []);
   const [boardMenu,setBoardMenu]=useState<{id:string;x:number;y:number}|null>(null);
   const flowRef = useRef<ReactFlowInstance<FlowNode> | null>(null);
   const boardViewportBeforeDetails=useRef<{diagram:string;viewport:{x:number;y:number;zoom:number}}|null>(null);
@@ -1303,12 +1306,17 @@ function App() {
     [artifactId, setArtifactId] = useState(""),
     [demoBusy, setDemoBusy] = useState(false);
   const [workMode,setWorkMode]=useState<'interaction'|'terminal'>('interaction');
+  const [terminalDock,setTerminalDock]=useState<'cli'|'hub'>('cli');
+  const [terminalHubContainer,setTerminalHubContainer]=useState<HTMLDivElement|null>(null);
+  const lastWorkView=useRef('graph'),hubDockOpened=useRef(false);
+  useEffect(()=>{if(workMode==='terminal'&&terminalDock==='hub'&&!hubDockOpened.current){hubDockOpened.current=true;setPanelSizes(s=>({...s,terminal:Math.max(s.terminal,340)}));}},[workMode,terminalDock]);
+  useEffect(()=>{if(view!=='shared-terminal')lastWorkView.current=view;},[view]);
   const [workPanelOpen,setWorkPanelOpen]=useState(()=>{try{return localStorage.getItem('isp-work-panel-open')!=='false';}catch{return true;}});
   const [workPanelWidth,setWorkPanelWidth]=useState(()=>{try{return Math.max(30,Math.min(70,Number(localStorage.getItem('isp-work-panel-width'))||50));}catch{return 50;}});
   const [workPanelExpanded,setWorkPanelExpanded]=useState(false);
   const panelDrag=useRef(false);
   useEffect(()=>{try{localStorage.setItem('isp-work-panel-open',String(workPanelOpen));localStorage.setItem('isp-work-panel-width',String(workPanelWidth));}catch{}},[workPanelOpen,workPanelWidth]);
-  function changeWorkMode(mode:'interaction'|'terminal'){setWorkMode(mode);setFocus('');setVisualizationExpanded(false);setWorkPanelExpanded(false);if(mode==='terminal')setLayout(l=>({...l,terminal:true}));}
+  function changeWorkMode(mode:'interaction'|'terminal'){setWorkMode(mode);setFocus('');setVisualizationExpanded(false);setWorkPanelExpanded(false);if(mode==='terminal'){setLayout(l=>({...l,terminal:true}));if(view==='shared-terminal'){setView(lastWorkView.current);setTerminalDock('hub');}}}
   const compactPreview = workMode==='terminal'&&(view === "artifacts" || view === "viewer");
   const [runTerminal,setRunTerminal]=useState<TerminalSession|null>(null);
   const [mcpVisited,setMcpVisited]=useState(false);
@@ -1397,6 +1405,8 @@ function App() {
   }, [layout]);
   function switchView(next: string) {
     if(next==='interaction'){changeWorkMode('interaction');return;}
+    if(next==='shared-terminal'&&workMode==='terminal'){setTerminalDock('hub');setLayout(l=>({...l,terminal:true}));setFocus('');setVisualizationExpanded(false);return;}
+    if(next!=='shared-terminal')lastWorkView.current=next;
     setWorkPanelOpen(true);
     setView(next);
     if(next === "graph" && workMode === "interaction")setLayout(current=>({...current,inspector:false}));
@@ -1419,13 +1429,14 @@ function App() {
       if(target.closest('[data-unsaved-dialog],.artifact-info-trigger'))return;
       const destination=target.closest('.diagram-tabs button,.workspace-sidebar > button,.work-panel-tabs button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
       if(!destination)return;
+      if(workMode==='terminal'&&destination.getAttribute('aria-label')==='Terminal Hub')return;
       if(!globalOpen && destination.matches('.react-flow__node') && destination.dataset.id===selected)return;
       e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
     };
     const unload=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};
     document.addEventListener('click',navigation,true);window.addEventListener('beforeunload',unload);
     return()=>{document.removeEventListener('click',navigation,true);window.removeEventListener('beforeunload',unload);};
-  },[dirty,globalOpen,selected]);
+  },[dirty,globalOpen,selected,workMode]);
   async function resolveLeave(saveFirst:boolean){
     if(leaveBusy)return;setLeaveBusy(true);setLeaveError('');
     const destination=leaveTarget;
@@ -1885,7 +1896,7 @@ function App() {
           </div>
           <button
             className={view === "graph" ? "active" : ""}
-            title="Block graph"
+            title="Block graph · Alt+1 (뷰 전환: Alt+←/→)"
             aria-label="Block graph"
             aria-current={view === "graph" ? "page" : undefined}
             onClick={() => switchView("graph")}
@@ -1896,7 +1907,7 @@ function App() {
           </button>
           <button
             className={view === "code" ? "active" : ""}
-            title="Node implementations"
+            title="Node implementations · Alt+4"
             aria-label="Node implementations"
             aria-current={view === "code" ? "page" : undefined}
             onClick={() => switchView("code")}
@@ -1906,7 +1917,7 @@ function App() {
           </button>
           <button
             className={view === "artifacts" ? "active" : ""}
-            title="Visualizations"
+            title="Visualizations · Alt+3"
             aria-label="Visualizations"
             aria-current={view === "artifacts" ? "page" : undefined}
             onClick={() => switchView("artifacts")}
@@ -1916,8 +1927,8 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
-          <button className={view === "viewer" ? "active" : ""} title="Image Viewer" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
-          <button className={view === "shared-terminal" ? "active" : ""} title="Terminal Hub" aria-label="Terminal Hub" aria-current={view === "shared-terminal" ? "page" : undefined} onClick={() => switchView("shared-terminal")}><Terminal size={18}/><span>Terminal Hub</span></button>
+          <button className={view === "viewer" ? "active" : ""} title="Image Viewer · Alt+2" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
+          <button className={(view === "shared-terminal"||(workMode==='terminal'&&terminalDock==='hub'&&layout.terminal)) ? "active" : ""} title="Terminal Hub · Alt+5 · 탭 이동: Alt+PageUp/PageDown" aria-label="Terminal Hub" aria-current={view === "shared-terminal" ? "page" : undefined} onClick={() => switchView("shared-terminal")}><Terminal size={18}/><span>Terminal Hub</span></button>
           <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
           <button aria-label="Runs" className={view==="runs"?"active":""} onClick={()=>switchView("runs")}><Play size={18}/><span>Runs</span></button>
           <button className={view === "mcp" ? "active" : ""} title="MCP Servers" aria-label="MCP Servers" aria-current={view === "mcp" ? "page" : undefined} onClick={() => switchView("mcp")}><Plug size={18}/><span>MCP Servers</span></button>
@@ -1996,11 +2007,11 @@ function App() {
               {(viewerVisited || view === "viewer") && <div style={{display:view === "viewer" ? "contents" : "none"}}>
                 <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} visible={view==="viewer"} expanded={focus==="editor"} onExpand={()=>setFocus(current=>current==="editor"?"":"editor")}/>
               </div>}
-              <SharedTerminals api={api} token={token} visible={view==='shared-terminal'&&(workMode==='terminal'||workPanelOpen)} onPresent={()=>{if(dirtyRef.current){notify('Terminal Hub에 확인할 작업이 있습니다. 현재 편집 후 Terminal Hub을 열어주세요.');return;}switchView('shared-terminal');}}/>
+              <SharedTerminals api={api} token={token} container={workMode==='terminal'?terminalHubContainer:null} visible={workMode==='terminal'?(terminalDock==='hub'&&layout.terminal&&!visualizationExpanded&&!['editor','inspector'].includes(focus)):(view==='shared-terminal'&&workPanelOpen)} onPresent={()=>{if(workMode==='interaction'&&dirtyRef.current){notify('Terminal Hub에 확인할 작업이 있습니다. 현재 편집 후 Terminal Hub을 열어주세요.');return;}switchView('shared-terminal');}}/>
               {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
               {(mcpVisited||view==="mcp")&&<div style={{display:view==="mcp"?"contents":"none"}}><McpServers api={api}/></div>}
               {(searchVisited||view==="search")&&<div style={{display:view==="search"?"contents":"none"}}><WorkspaceSearch api={api} project={project}/></div>}
-              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "shared-terminal" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
+              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);setTerminalDock("cli");changeWorkMode("terminal");}}/>: view === "viewer" || view === "shared-terminal" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {
@@ -2259,7 +2270,15 @@ function App() {
             className="splitter bottom"
             onPointerDown={(e) => resize(e, "bottom")}
           />
-          <TerminalPanel launch={runTerminal}
+          <section className="terminal-pane terminal-dock" aria-label="Terminal dock">
+            <nav className="terminal-dock-tabs" aria-label="터미널 종류">
+              <button aria-pressed={terminalDock==='cli'} onClick={()=>setTerminalDock('cli')}>Agent CLI</button>
+              <button aria-pressed={terminalDock==='hub'} onClick={()=>setTerminalDock('hub')}>Terminal Hub</button>
+              <span>Alt+PageUp / PageDown · 세션 이동</span>
+              <button aria-label="하단 터미널 접기" onClick={()=>{setFocus('');setLayout(l=>({...l,terminal:false}));}}><X size={14}/></button>
+            </nav>
+            <div className="terminal-dock-content" hidden={terminalDock!=='cli'}>
+          <TerminalPanel active={workMode==='terminal'&&terminalDock==='cli'&&layout.terminal&&!visualizationExpanded&&!['editor','inspector'].includes(focus)} launch={runTerminal}
             key={token}
             api={api}
             token={token}
@@ -2268,9 +2287,13 @@ function App() {
             onPresent={result=>present(result)}
             notify={notify}
           />
+            </div>
+            <div className="terminal-dock-content" hidden={terminalDock!=='hub'} ref={setTerminalHubContainer}/>
+          </section>
         </main>
       </div>
       <footer className="statusbar">
+        <span title="Alt+1 Board · Alt+2 Image · Alt+3 Report · Alt+4 Code · Alt+5 Terminal Hub · Alt+←/→ 뷰 전환 · Alt+PageUp/PageDown 터미널 탭">뷰 Alt+1–5 · 터미널 탭 Alt+PgUp/PgDn</span>
 
         <button
           onClick={async () => {

@@ -14,6 +14,45 @@ import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/st
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+test('external MCP uses existing configuration to create and operate isolated real terminals',{timeout:30000},async t=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-external-mcp-'));t.after(()=>fs.rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
+ const {origin}=await startServer(t,temp,'workspace');
+ const boot=await fetch(origin+'/api/bootstrap').then(r=>r.json());
+ const clients=[],transports=[];t.after(()=>Promise.all(clients.map(c=>c.close())));
+ for(let i=0;i<2;i++){
+  const client=new Client({name:'external-codex',version:'1'}),transport=new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+boot.token}}});
+  clients.push(client);transports.push(transport);await client.connect(transport);
+ }
+ assert.ok(transports[0].sessionId);assert.notEqual(transports[0].sessionId,transports[1].sessionId);
+ const info=await clients[0].callTool({name:'get_workspace_info',arguments:{}});assert.equal(info.structuredContent.workspace,path.join(temp,'workspace'));
+ const summary={request_id:crypto.randomUUID(),title:'Private summary title',summary:'PRIVATE_PAYLOAD_NEVER_IN_DIAGNOSTICS'};
+ const recorded=await clients[0].callTool({name:'record_work_summary',arguments:summary});assert.ok(!recorded.isError);
+ const retried=await clients[0].callTool({name:'record_work_summary',arguments:summary});assert.equal(retried.structuredContent.id,recorded.structuredContent.id);
+ const activity=await fetch(origin+'/api/activity',{headers:{Authorization:'Bearer '+boot.token}}).then(r=>r.json());assert.equal(activity.filter(e=>e.id===recorded.structuredContent.id).length,1);
+ const session_id=crypto.randomUUID();
+ const created=await clients[0].callTool({name:'create_shared_terminal',arguments:{session_id,title:'External shell'}});
+ assert.ok(!created.isError,JSON.stringify(created));
+ // The success marker is absent from the submitted line, so terminal input echo
+ // cannot masquerade as command execution.
+ const command=`"${process.execPath}" -e "console.log(['EXTERNAL','MCP','READY'].join('_'))"`;
+ const input={session_id,request_id:crypto.randomUUID(),control_version:created.structuredContent.controlVersion,data:command+'\r'};
+ const submitted=await clients[0].callTool({name:'submit_shared_terminal_command',arguments:{session_id,request_id:input.request_id,control_version:input.control_version,command}});
+ assert.ok(!submitted.isError);assert.equal(submitted.structuredContent.inputAccepted,true);
+ assert.equal((await clients[1].callTool({name:'write_shared_terminal',arguments:{...input,request_id:crypto.randomUUID()}})).isError,true);
+ let output='';const deadline=Date.now()+5000;
+ while(!output.includes('EXTERNAL_MCP_READY')&&Date.now()<deadline){
+  const result=await clients[0].callTool({name:'read_shared_terminal',arguments:{session_id,cursor:submitted.structuredContent.outputCursorBeforeWrite}});assert.ok(!result.isError);output=result.structuredContent.output;
+  if(!output.includes('EXTERNAL_MCP_READY'))await new Promise(r=>setTimeout(r,100));
+ }
+ assert.match(output,/EXTERNAL_MCP_READY/);
+ const diagnostics=await clients[0].callTool({name:'get_runtime_diagnostics',arguments:{}});assert.ok(!diagnostics.isError);
+ assert.ok(diagnostics.structuredContent.recent.some(r=>r.name==='record_work_summary'&&r.kind==='tool'&&r.ms>=0));
+ assert.ok(!JSON.stringify(diagnostics).includes(summary.summary));assert.ok(!JSON.stringify(diagnostics).includes(boot.token));
+ assert.equal((await fetch(origin+'/api/diagnostics/performance')).status,401);
+ assert.ok(!(await clients[0].callTool({name:'stop_shared_terminal',arguments:{session_id,control_version:0}})).isError);
+ await Promise.all(transports.map(transport=>transport.terminateSession()));
+});
+
 test('shared terminal MCP and WebSocket share a real shell without opening a view',{timeout:30000},async t=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-shared-api-'));t.after(()=>fs.rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
  const {origin}=await startServer(t,temp,'workspace');
@@ -238,4 +277,58 @@ test('MCP packs a previewed graph-only bundle locally, rejects stale evidence an
  const stale=await client.callTool({name:'pack_bundle',arguments:{request_id:crypto.randomUUID(),preview_id:full.structuredContent.previewId}});assert.equal(stale.isError,true);assert.match(stale.content[0].text,/stale/);
  const again=await client.callTool({name:'preview_bundle',arguments:{includeSource:true,includeWorkRecords:true}});
  const packed=await client.callTool({name:'pack_bundle',arguments:{request_id:crypto.randomUUID(),preview_id:again.structuredContent.previewId}});assert.equal(packed.isError,undefined,JSON.stringify(packed));
+});
+
+
+test('management MCP preserves retries, skill versions, JOB lineage and checkpoint previews', {timeout:120000}, async t=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-management-mcp-'));
+ t.after(()=>fs.rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
+ const {origin}=await startServer(t,temp,'workspace');
+ const boot=await fetch(origin+'/api/bootstrap').then(r=>r.json());
+ const client=new Client({name:'management-test',version:'1'});t.after(()=>client.close());
+ await client.connect(new StreamableHTTPClientTransport(new URL(origin+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+boot.token}}}));
+ const call=async(name,args={})=>{const r=await client.callTool({name,arguments:args});assert.ok(!r.isError,JSON.stringify(r));return r.structuredContent;};
+ const change=(name,args)=>call(name,{request_id:crypto.randomUUID(),...args});
+ const skill={request_id:crypto.randomUUID(),name:'test-workflow',version:null,files:{'SKILL.md':'---\nname: test-workflow\ndescription: Use for management integration tests.\n---\nRun the fixture.\n'}};
+ const saved=await call('save_project_skill',skill);
+ assert.deepEqual(await call('save_project_skill',skill),saved);
+ assert.equal((await client.callTool({name:'save_project_skill',arguments:{...skill,request_id:crypto.randomUUID()}})).isError,true);
+ assert.equal((await call('get_project_skill',{name:skill.name})).version,saved.version);
+ await change('delete_project_skill',{name:skill.name,version:saved.version});
+ let project=await call('get_project');
+ const userRequests=['consume-me','split-me'].map(id=>({id,text:'Test request',createdAt:new Date().toISOString()}));
+ const seeded=await fetch(origin+'/api/global',{method:'PATCH',headers:{Authorization:'Bearer '+boot.token,'Content-Type':'application/json'},body:JSON.stringify({revision:project.revision,patch:{userRequests}})});assert.equal(seeded.status,200);
+ let requests=await call('list_user_requests');
+ await change('consume_user_request',{revision:requests.revision,user_request_id:'consume-me',resolution:'Validated fixture'});
+ requests=await call('list_user_requests');assert.ok(!requests.requests.some(r=>r.id==='consume-me'));
+ await change('split_user_request',{revision:requests.revision,user_request_id:'split-me',jobs:[{title:'Request child'}]});
+ assert.ok((await call('list_jobs')).jobs.some(j=>j.title==='Request child'&&j.sourceRequestId==='split-me'));
+ project=await call('get_project');
+ await change('create_job',{revision:project.revision,title:'Original global job'});
+ let jobs=await call('list_jobs');const job=jobs.jobs.find(j=>j.title==='Original global job');assert.ok(job);
+ await change('restructure_jobs',{revision:jobs.revision,mode:'split',jobIds:[job.id],jobs:[{title:'Part A'},{title:'Part B'}]});
+ jobs=await call('list_jobs');assert.ok(!jobs.jobs.some(j=>j.id===job.id));
+ const parts=jobs.jobs.filter(j=>['Part A','Part B'].includes(j.title));assert.equal(parts.length,2);
+ await change('restructure_jobs',{revision:jobs.revision,mode:'merge',jobIds:parts.map(j=>j.id),jobs:[{title:'Merged'}]});
+ assert.ok((await call('list_jobs')).jobs.some(j=>j.title==='Merged'));
+ const info=await call('get_workspace_info');
+ const git=(...args)=>execFileSync('git',args,{cwd:info.sourceRoot,windowsHide:true,stdio:'pipe'});
+ git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');git('add','.');git('commit','-m','Fixture');
+ const input={request_id:crypto.randomUUID(),title:'MCP checkpoint'};
+ const checkpoint=await call('create_checkpoint',input);
+ assert.deepEqual(await call('create_checkpoint',input),checkpoint);
+ const tracking=await call('list_work_tracking');assert.equal(tracking.checkpoints.filter(c=>c.id===checkpoint.id).length,1);
+ const preview=await call('preview_checkpoint_restore',{checkpoint_id:checkpoint.id});assert.ok(preview.snapshot);
+ const attempt=await change('create_work_attempt',{title:'MCP attempt',baselineCheckpointId:checkpoint.id});
+ await change('update_work_attempt',{attempt_id:attempt.id,expectedUpdatedAt:attempt.updatedAt,status:'completed',summary:'Validated',validation:['MCP integration'],resultCheckpointId:checkpoint.id});
+ await change('accept_work_attempt',{attempt_id:attempt.id});
+ assert.equal((await call('list_work_tracking')).acceptedAttemptId,attempt.id);
+ assert.ok((await call('export_graph_mermaid',{diagram_id:project.diagrams[0].id})).mermaid);
+ await call('get_version_status');
+ fs.writeFileSync(path.join(info.sourceRoot,'after-preview.txt'),'changed');
+ const stale=await client.callTool({name:'restore_checkpoint',arguments:{request_id:crypto.randomUUID(),checkpoint_id:checkpoint.id,snapshot:preview.snapshot,stopTerminals:true}});
+ assert.equal(stale.isError,true);assert.ok(fs.existsSync(path.join(info.sourceRoot,'after-preview.txt')));
+ const fresh=await call('preview_checkpoint_restore',{checkpoint_id:checkpoint.id});
+ await change('restore_checkpoint',{checkpoint_id:checkpoint.id,snapshot:fresh.snapshot,stopTerminals:true});
+ assert.ok(!fs.existsSync(path.join(info.sourceRoot,'after-preview.txt')));
 });

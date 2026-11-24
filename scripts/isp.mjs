@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import crypto from "node:crypto";
-import { blockSchema } from "../server/model.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function connection() {
@@ -71,22 +70,30 @@ async function waitForCrop(id,seconds){
   } while(true);
 }
 export async function request(endpoint, options = {}) {
+  const started=performance.now();let connected,serverTiming;
+  try {
   const { url, token } = localConnection(connection());
+  connected=performance.now();
   const response = await fetch(`${url}/api${endpoint}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-ISP-Client": "cli",
       ...options.headers,
     },
     signal: options.signal || AbortSignal.timeout(/^\/(?:attempts|checkpoints)/.test(endpoint) ? 120000 : 15000),
     redirect: "error",
   });
+  serverTiming=response.headers.get('server-timing');
   if (!response.ok)
     throw new Error((await response.json()).error || response.statusText);
   return response.headers.get("content-type")?.includes("json")
-    ? response.json()
-    : response.text();
+    ? await response.json()
+    : await response.text();
+  } finally {
+    if(process.env.ISP_TIMING==='1')console.error('[isp timing] '+JSON.stringify({phase:'request',connectionMs:Math.round((connected??performance.now())-started),requestMs:connected===undefined?null:Math.round(performance.now()-connected),serverTiming}));
+  }
 }
 export async function registerArtifact(
   file,
@@ -141,15 +148,13 @@ export async function main() {
     if(!result.ok)process.exitCode=1;
   }
   else if (['recipes','recipe-show','recipe-save','recipe-delete','recipe-plan','recipe-run'].includes(command)) {
-    const {workspace}=await request('/workspace-info');
-    const recipes=await import('../server/recipes.mjs');
-    if(command==='recipes')result=await recipes.listRecipes(workspace);
-    else if(command==='recipe-show')result=await recipes.readRecipe(workspace,decodeURIComponent(requiredId(args[0])));
-    else if(command==='recipe-delete')result=recipes.deleteRecipe(workspace,requiredId(args[0]),{expectedHash:option('hash')});
-    else if(command==='recipe-save'){
-      const input=jsonFile(args[0]);
-      result=await recipes.saveRecipe(workspace,input.recipe,{expectedHash:input.expectedHash});
-    } else {
+    if(command==='recipes')result=await request('/recipes');
+    else if(command==='recipe-show')result=await request('/recipes/'+encodeURIComponent(requiredId(args[0])));
+    else if(command==='recipe-delete')result=await request('/recipes/'+encodeURIComponent(requiredId(args[0])),{method:'DELETE',body:JSON.stringify({expectedHash:option('hash')})});
+    else if(command==='recipe-save')result=await request('/recipes',{method:'POST',body:JSON.stringify(jsonFile(args[0]))});
+    else {
+      const {workspace}=await request('/workspace-info');
+      const recipes=await import('../server/recipes.mjs');
       const id=decodeURIComponent(requiredId(args[0])),parameters=option('params')?jsonFile(option('params')):{};
       const options={parameters,...(option('hash')?{expectedHash:option('hash')}:{})};
       result=await (command==='recipe-plan'?recipes.planRecipeRun(workspace,id,options):recipes.runRecipe(workspace,id,options));
@@ -272,6 +277,7 @@ export async function main() {
   }
   else if(command === "viewer-show") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/show`,{method:"POST",body:"{}"});
   else if(command === "viewer-cancel") result=await request(`/viewer/requests/${encodeURIComponent(args[0])}/cancel`,{method:"POST",body:"{}"});
+  else if (command === "diagnostics") result = await request("/diagnostics/performance");
   else if (command === "summary") result = await request("/activity/summaries", {method:"POST",body:JSON.stringify(JSON.parse(fs.readFileSync(args[0],"utf8")))});
   else if (command === "document") {
     if (!args[0] || !/\.html?$/i.test(args[0]) || !option("revision")) throw new Error('Usage: isp document report.html --revision N [--title TEXT]');
@@ -455,7 +461,7 @@ export async function main() {
       if (!args[0] || args[0].startsWith("--"))
         throw new Error("사용법: isp add-block block.json --revision N");
       const spec = JSON.parse(fs.readFileSync(args[0], "utf8"));
-      const block = blockSchema.parse({
+      const block = (await import("../server/model.mjs")).blockSchema.parse({
         diagramId: state.diagramId,
         description: "",
         principle: "",
@@ -641,6 +647,7 @@ isp artifact result.html --block ID --revision N --title "Comparison"
 isp artifact-update ID result.html --expected-file CURRENT_FILE [--title TITLE]  Update existing result, preserving ID and provenance
 isp mermaid                     Export the graph as Mermaid
 isp summary summary.json        Record work summary, verification and related IDs
+isp diagnostics                 Read bounded server timing diagnostics
 isp demo                        Run the synthetic flat-detection / denoise example
 
 Outside the web terminal: npm run isp -- context
@@ -651,11 +658,13 @@ HTML artifacts must be self-contained; external resources and network access are
     typeof result === "string" ? result : JSON.stringify(result, null, 2),
   );
 }
+if(process.env.ISP_TIMING==='1')process.once('exit',()=>console.error('[isp timing] '+JSON.stringify({phase:'process',uptimeMs:Math.round(process.uptime()*1000)})));
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-)
+) {
   main().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });
+}

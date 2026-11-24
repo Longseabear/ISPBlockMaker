@@ -5,16 +5,19 @@ import {z} from 'zod';
 import {registerLocalTools} from './mcp-local-tools.mjs';
 import {retrieveContext} from './retrieve-context.mjs';
 import {registerEditTools} from './mcp-edit-tools.mjs';
+import {registerManagementTools} from './mcp-management-tools.mjs';
 import {registerWorkTools} from './mcp-work-tools.mjs';
 import {registerArtifactTools} from './mcp-artifact-tools.mjs';
 import {registerSharedImageTools} from './mcp-shared-images.mjs';
 
 const searchFields={query:z.string().min(1).max(500),mode:z.enum(['all','any']).optional(),diagram_id:z.string().optional(),block_id:z.string().optional(),types:z.array(z.enum(['diagram','block','document','source','job'])).optional(),limit:z.number().int().min(1).max(50).optional(),offset:z.number().int().min(0).max(10000).optional()};
-export function createWorkspaceMcp({store,search,scope={},localApi,terminalApi,mutate,readArtifact,sharedImages}){
+export function createWorkspaceMcp({store,search,scope={},localApi,terminalApi,mutate,readArtifact,sharedImages,observe}){
  const server=new McpServer({name:'isp-workspace',version:'1.0.0'});
  const tool=(name,description,inputSchema,fn,readOnly=true,destructive=false,openWorld=false)=>server.registerTool(name,{description,inputSchema,annotations:{readOnlyHint:readOnly,destructiveHint:destructive,openWorldHint:openWorld}},async input=>{
+  const started=performance.now();let status='ok';
   try{const result=await fn(input),value=result&&typeof result==='object'&&!Array.isArray(result)?result:{result};return {content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value};}
-  catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
+  catch(e){status='error';return {isError:true,content:[{type:'text',text:e.message}]};}
+  finally{observe?.('tool',name,performance.now()-started,status);}
  });
  tool('list_diagrams','List diagram IDs and roles. Use explicit IDs for subsequent requests.',{},()=>{const p=store.get();return {revision:p.revision,diagrams:p.diagrams.map(d=>({id:d.id,name:d.name,kind:d.kind,description:d.overview.description}))};});
  tool('search_workspace','Search Board descriptions and documents with BM25. Quotes select phrases. Results include source excerpts and content hashes.',searchFields,input=>search.search(input,scope));
@@ -24,7 +27,7 @@ export function createWorkspaceMcp({store,search,scope={},localApi,terminalApi,m
  if(localApi&&!scope.public)registerLocalTools(tool,localApi,mutate);
  if(localApi&&!scope.public)registerTerminalTools(tool,terminalApi||localApi);
  if(localApi&&mutate&&!scope.public)registerEditTools(tool,localApi,mutate);
- if(localApi&&mutate&&!scope.public)registerWorkTools(tool,localApi,mutate);
+ if(localApi&&mutate&&!scope.public){registerWorkTools(tool,localApi,mutate);registerManagementTools(tool,localApi,mutate);}
  if(localApi&&mutate&&readArtifact&&!scope.public)registerArtifactTools(tool,{api:localApi,mutate,readFile:readArtifact,artifacts:()=>(store.peek?.()||store.get()).artifacts});
  if(scope.public&&scope.imageIds?.length&&sharedImages)registerSharedImageTools(server,{scope,...sharedImages});
  return server;

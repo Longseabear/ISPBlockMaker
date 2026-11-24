@@ -12,13 +12,13 @@ const execute = promisify(execFile);
 const queues = new Map();
 const identifier = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 const refsSchema = z.array(z.object({ blockId: identifier.nullable(), jobId: identifier }).strict()).max(200);
-const checkpointInput = z.object({ title: z.string().trim().min(1).max(200), kind: z.enum(['manual', 'baseline', 'result', 'safety']).default('manual') }).strict();
-const attemptInput = z.object({
+export const checkpointInput = z.object({ title: z.string().trim().min(1).max(200), kind: z.enum(['manual', 'baseline', 'result', 'safety']).default('manual') }).strict();
+export const attemptInput = z.object({
   title: z.string().trim().min(1).max(200), approach: z.string().max(12000).default(''),
   jobRefs: refsSchema.default([]), blockIds: z.array(identifier).max(200).default([]),
   inputConditions: z.string().max(12000).default(''), baselineCheckpointId: identifier.nullable().optional(),
 }).strict();
-const updateInput = z.object({
+export const updateInput = z.object({
   expectedUpdatedAt: z.iso.datetime().optional(),
   title: z.string().trim().min(1).max(200).optional(), approach: z.string().max(12000).optional(),
   inputConditions: z.string().max(12000).optional(), summary: z.string().max(12000).optional(),

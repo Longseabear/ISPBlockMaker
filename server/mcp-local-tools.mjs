@@ -11,6 +11,8 @@ const segment=value=>encodeURIComponent(value);
 export function registerLocalTools(tool,api,mutate){
  const get=(route)=>api('GET',route);
  const post=(route,body)=>api('POST',route,body);
+ tool('get_workspace_info','Read authoritative workspace, sourceRoot and scratch paths. Use this instead of launching the CLI for workspace-info.',{},()=>get('/api/workspace-info'));
+ tool('get_runtime_diagnostics','Inspect bounded server request/tool timings and event-loop delay when an operation seems slow. Excludes client queueing and process startup. No credentials, payloads or terminal output.',{},()=>get('/api/diagnostics/performance'));
  const bundleSelection={includeSource:z.boolean(),includeWorkRecords:z.boolean(),includeGit:z.boolean().default(false),includeImages:z.boolean().default(false),includeViewer:z.boolean().default(false),includeData:z.boolean().default(false),includeVisualizations:z.boolean().default(false),artifactIds:z.array(id).max(10000).optional(),excludedData:z.array(z.string().max(2000)).max(10000).optional()};
  tool('preview_bundle','Preview a portable .bundle. Graph/specifications are mandatory. Choose source and work records explicitly; excluding source also excludes Git. Reports or graph prose can contain code. Returns a 10-minute previewId bound to file contents. No upload.',bundleSelection,input=>post('/api/bundle/agent-preview',input));
  if(mutate)tool('pack_bundle','Create the exact previewed .bundle locally in the workspace root. Requires a fresh previewId; changed contents are rejected. Returns its file path, never uploads. Retry with the same request_id to recover the same result.',{request_id:z.string().uuid(),preview_id:z.string().uuid()},input=>mutate('pack_bundle',input,()=>post('/api/bundle/pack',{previewId:input.preview_id})),false);
@@ -45,7 +47,7 @@ export function localApiAdapter({origin,token,fetchImpl=fetch}){
   if(!route.startsWith('/api/')||route.includes('\\'))throw Error('Invalid local API route');
   const url=new URL(route,base);
   if(url.origin!==base.origin)throw Error('Invalid local API origin');
-  const response=await fetchImpl(url,{method,headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(route==='/api/bundle/pack'||route==='/api/bundle/agent-preview'?300000:30000)});
+  const response=await fetchImpl(url,{method,headers:{Authorization:`Bearer ${token()}`,'Content-Type':'application/json','X-ISP-Client':'mcp'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(route==='/api/bundle/pack'||route==='/api/bundle/agent-preview'?300000:/^\/api\/(attempts|checkpoints|versions)(\/|$)/.test(route)?120000:30000)});
   const reader=response.body.getReader();let size=0;const chunks=[];
   try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>512*1024)throw Error('Response exceeds MCP limit; use a narrower query');chunks.push(value);}}
   finally{await reader.cancel();reader.releaseLock();}

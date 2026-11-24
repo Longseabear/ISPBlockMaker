@@ -6,9 +6,10 @@ $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $release = Split-Path $Archive -Parent
 # Relative compiler paths also work in folders with Korean characters.
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Setup.cs') -Destination (Join-Path $release 'Setup.cs')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\docs\assets\app.ico') -Destination (Join-Path $release 'app.ico')
 Push-Location -LiteralPath $release
 try {
     $resource='/resource:' + (Split-Path $Archive -Leaf) + ',payload.zip'
-    & $compiler /nologo /target:winexe /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll /out:ISPBlockMaker-Setup.exe $resource .\Setup.cs
+    & $compiler /nologo /target:winexe /codepage:65001 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll /win32icon:app.ico /out:ISPBlockMaker-Setup.exe $resource .\Setup.cs
     if($LASTEXITCODE -ne 0) { throw 'Setup build failed' }
 } finally { Pop-Location }

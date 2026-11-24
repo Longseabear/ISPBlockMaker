@@ -1,3 +1,4 @@
+import {navigationShortcut} from '../../../src/navigation-shortcuts';
 import React,{useCallback,memo,useEffect,useMemo,useRef,useState,startTransition} from 'react';
 import {createRoot} from 'react-dom/client';
 import i18n from 'i18next';
@@ -11,6 +12,8 @@ import {request} from './bridge';
 import {Approval} from './Approval';
 import 'katex/dist/katex.min.css';
 import './adapter.css';
+
+window.addEventListener('keydown',event=>{const action=navigationShortcut(event);if(!action)return;event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)parent.postMessage({channel:'isp-cloudcli',action:'navigation',payload:{action}},location.origin);},true);
 
 void i18n.use(initReactI18next).init({lng:'en',fallbackLng:'en',resources:{en:{chat:chatEnglish,common:commonEnglish}},interpolation:{escapeValue:false}});
 type Options={model?:string;effort?:string;permissionMode?:string};

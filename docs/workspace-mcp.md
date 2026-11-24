@@ -1,5 +1,14 @@
 # 기본 MCP, 검색, LAN 공유
 
+## v0.1.39 agent workflow
+
+External Claude Code/Codex connections receive a distinct Terminal Hub identity during MCP initialization. Reconnect once after updating. No per-command CLI process or manual token registration is required. Managed agent prompts and skills prefer typed MCP tools.
+
+The catalogue now covers work attempts, checkpoints, version preview/switch, request consumption/splitting, JOB restructuring, project skill CRUD, graph checks, harness import/export and Run planning, in addition to graph/report/viewer/terminal operations. See the [tool mapping](../templates/project/.agents/skills/isp-block-maker/mcp-search.md). Mutations retain UUID retry records and existing revision/hash checks. Restore/switch finishes its response before invalidating its MCP session; reconnect before continuing.
+
+MCP uses a persistent transport and the existing internal loopback API. Human CLI commands and standalone offline/archive utilities remain available. The [bridge audit](agent-bridge-audit.md) records measurements and how to distinguish server stalls from client delays.
+
+
 ## 로컬 에이전트 연결
 
 ISP Block Maker에서 새로 실행하는 Claude Code/Codex의 Interaction 및 Terminal 세션에는 `isp-workspace` MCP를 런타임 설정으로 추가한다. 같은 앱 서버의 인증된 `/mcp`를 사용하며 별도 공용 서버는 필요 없다. 전역 에이전트 설정이나 회사 Claude Code 실행 파일을 바꾸지 않는다. 이미 실행 중인 세션에는 소급 적용되지 않는다.

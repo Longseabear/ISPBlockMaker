@@ -7,6 +7,8 @@ description: Track ISP work attempts and graph/code checkpoints, compare or rest
 
 Read [shared rules](../isp-block-maker/common.md) once and discover `sourceRoot` with `workspace-info`. The independent source repository owns `graph.json`, implementation sources and required helpers/tests, normally in `<workspace>/project/`. The framework repository is separate. Workspace `.isp/` holds persistent requests, JOBs, attempts, checkpoint metadata, artifacts and session state; data and generated outputs stay outside the source repository.
 
+Use available typed MCP management tools first; see [MCP mapping](../isp-block-maker/mcp-search.md). CLI examples below are fallback syntax. Do not run both interfaces for the same mutation.
+
 ## Checkpoint coherent implementation changes
 
 For substantial algorithm/JOB work, read [work-tracking.md](work-tracking.md). Attempts connect intention, baseline, execution conditions, validation and result; checkpoints preserve the whole graph/code state. A JOB can have several attempts and an attempt can cover several scoped JOBs. Registration-only, context lookup and minor text edits do not need an artificial experiment.

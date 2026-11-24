@@ -2,6 +2,8 @@
 
 Use a recipe when a project command is worth repeating with different inputs or parameters. First inspect existing recipes, graph entry points and relevant project skills. A recipe may exercise several blocks, and a block may have several recipes; it is not a required per-node executor. Ordinary one-off commands need no recipe.
 
+Prefer MCP `list_runs`, `get_run_recipe`, `save_run_recipe` and `launch_run`. Pass `recipe`, `expected_hash` and a UUID `request_id` directly to save; do not create an intermediate JSON file or call CLI when MCP is available. Saving does not execute the recipe. The CLI commands below are fallback equivalents; `recipe-plan` remains available for explicit planning.
+
 ```text
 recipes
 recipe-show RECIPE_ID
@@ -53,7 +55,7 @@ Keep reusable execution mechanics in the recipe, the verified graph entry point 
 Use this workflow when the user asks to save a Python/run/check script for rerunning, expose its main parameters, or register/update/remove an item in Runs. Inspect the actual script and CLI arguments first. Choose only meaningful user-facing inputs (image path, threshold, strength, output destination, etc.). Give every parameter a clear description, a valid default when appropriate, and required=true only when needed. Do not expose implementation internals or credentials.
 
 1. Read existing recipes. Reuse the same ID when updating the same task.
-2. Save the complete recipe using recipe-save and the observed hash (null for new). Use explicit interpreter + script argv and {{parameter}} placeholders; cwd is relative to sourceRoot. Set timeoutMs to the expected workload.
+2. Save the complete recipe using MCP `save_run_recipe` (CLI fallback: `recipe-save`) and the observed hash (null for new). Use explicit interpreter + script argv and {{parameter}} placeholders; cwd is relative to sourceRoot. Set timeoutMs to the expected workload.
 3. Run recipe-plan with representative parameters to verify resolution. Registering does not execute the script. Only run when requested; distinguish a checked plan from an executed validation.
 4. The user opens Runs, selects the script, edits exposed values, and clicks 터미널에서 실행. The app opens a new cmd terminal, switches to Terminal mode, and streams stdout/stderr. It executes argv without shell interpolation and writes the usual recipe-run manifest/logs. The terminal remains after completion; repeated clicks intentionally start separate runs.
 5. To remove a registration: recipe-delete ID --hash OBSERVED_HASH. This retains the script and previous run outputs. A stale hash fails; re-read instead of overwriting concurrent changes.

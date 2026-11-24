@@ -2,9 +2,9 @@
 
 For graph-related work, finish the applicable [change-impact checks](change-impact.md). Save coherent implementation changes through [version rules](../isp-version-sharing/SKILL.md), then finish an existing relevant [attempt](../isp-version-sharing/work-tracking.md) with evidence and its tested checkpoint. A simple crop calculation or read-only inspection needs no artificial attempt/checkpoint. Record failure/cancellation honestly; do not adopt a result or create a tag on the user's behalf.
 
-Write one work-summary JSON under the discovered `tmpDir` and call `summary FILE`. Include `title` and `summary`; useful optional fields are `reason`, `changes`, `validation`, `limitations`, verified `commit`, and actual `blockIds`, `jobIds`, `artifactIds` arrays. Mention attempt/checkpoint IDs in the summary when applicable; do not put a checkpoint ID into the Git `commit` field. Explain outcome and evidence, not raw diffs. Stopped work should state what remains. This activity record does not complete JOBs; their lifecycle is separate.
+Call MCP `record_work_summary` with a fresh UUID `request_id` and the summary fields directly. Only if that tool is unavailable, write one work-summary JSON under `tmpDir` and call CLI `summary FILE`. Include `title` and `summary`; useful optional fields are `reason`, `changes`, `validation`, `limitations`, verified `commit`, and actual `blockIds`, `jobIds`, `artifactIds` arrays. Mention attempt/checkpoint IDs in the summary when applicable; do not put a checkpoint ID into the Git `commit` field. Explain outcome and evidence, not raw diffs. Stopped work should state what remains. This activity record does not complete JOBs; their lifecycle is separate.
 
-Leave the user looking at the most useful result, unless they asked to keep their current view. Use actual saved IDs and choose one final view:
+Leave the user looking at the most useful result, unless they asked to keep their current view. Use actual saved IDs and choose one final view. Prefer MCP `present_board` / `present_report`; the CLI equivalents below are fallback syntax, not extra steps:
 
 | Result | Presentation |
 | --- | --- |

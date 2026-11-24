@@ -6,6 +6,21 @@
 
 | Intent | Local MCP tools |
 | --- | --- |
+| Discover authoritative workspace/source/scratch paths | `get_workspace_info` |
+| Inspect attempts and checkpoints | `list_work_tracking`, `compare_checkpoints` |
+| Record attempts and tested snapshots | `create_work_attempt`, `update_work_attempt`, `create_checkpoint`, `accept_work_attempt` |
+| Restore a checkpoint | `preview_checkpoint_restore`, then `restore_checkpoint` |
+| Inspect or switch Git versions | `get_version_status`, `get_commit_changes`, `preview_version_switch`, `switch_version` |
+| Read / consume / split user requests | `list_user_requests`, `consume_user_request`, `split_user_request` |
+| Split / merge pending JOBs | `restructure_jobs` |
+| Manage project skills | `list_project_skills`, `get_project_skill`, `save_project_skill`, `delete_project_skill` |
+| Check graph/source consistency | `check_graph` |
+| Export / import harness definitions | `export_harness`, `import_harness` |
+| Inspect all diagrams / export Mermaid | `get_project`, `export_graph_mermaid` |
+| Preview a Run without execution | `plan_run` |
+| Record completion and validation | `record_work_summary` |
+| Diagnose slow server/tool calls | `get_runtime_diagnostics` |
+| Operate a shared SSH/server terminal | `list_shared_terminals`, `create_shared_terminal`, `submit_shared_terminal_command`, `read_shared_terminal` |
 | Find a diagram / inspect its structure | `list_diagrams`, `get_diagram` |
 | Read a block contract and document locations | `get_block_context` |
 | Find relevant facts | `search_workspace`, `retrieve_context`, `count_matches`, `read_document` |
@@ -64,3 +79,11 @@ Image display tools return text metadata, never model image input. A text-only c
 ## Shared MCP
 
 A LAN share is a read-only documentation interface. It offers search and document retrieval, not local viewer control, jobs, shell access or agent execution. The capability URL grants access; do not print it into reports or share it unless requested. Sources are excluded unless the owner selects individual referenced files in the sharing UI. Selected source content is live, so later changes are shared too. Image data is not included by default. If the owner selects images, `list_shared_images` returns only their metadata and `read_shared_image` explicitly returns a native image preview (maximum 512 pixels per side). This requires a vision-capable model; it neither opens the owner's viewer nor provides numerical RAW samples. Local-only tool absence in a shared connection is expected; do not try alternative API paths to bypass its scope.
+
+## Version and management operations
+
+Checkpoint restoration and version switching require the current preview snapshot and explicit `stopTerminals: true`. They stop active terminals and rotate workspace credentials; reconnect after success before further calls. A lost response is not permission to repeat with a new ID. Inspect state after reconnecting, and reuse the identical request ID to retrieve a completed mutation. Acceptance marks a result; it does not restore its implementation.
+
+Management tools use existing API validation and the mutation ledger. Skill updates require the version hash read (`null` only on creation); framework skills remain read-only. JOB split/merge retains request lineage and only accepts pending jobs. Omit `block_id` for global work. Creation/registration never implies execution or successful validation.
+
+The CLI remains available for human use and standalone filesystem operations (offline report generation, archive import/export, local recipe execution, launcher/setup). These are not an extra step after a successful MCP call. MCP connects persistently to the server; its internal loopback API adapter preserves existing validation without launching a CLI process for each tool.
