@@ -62,6 +62,38 @@ test("new workspace initializes an isolated source repository without inventing 
   assert.equal(fs.existsSync(path.join(source, "project")), false);
 });
 
+test('existing project layout reopens initialized submodules without moving or rewriting their Git data',t=>{
+  const root=fixture(t),dependency=fixture(t);repo(root);repo(dependency);
+  const source=ensureProjectLayout(root);
+  git(source,'-c','protocol.file.allow=always','submodule','add',dependency,'vendor/dependency');
+  const paths=['.git/index','.gitmodules','vendor/dependency/.git'];
+  const before=paths.map(file=>fs.readFileSync(path.join(source,file)));
+  const head=git(source,'rev-parse','HEAD');
+  assert.equal(planProjectLayout(root).kind,'ready');
+  assert.equal(ensureProjectLayout(root),source);
+  assert.equal(ensureProjectLayout(source),source);
+  assert.equal(git(source,'rev-parse','HEAD'),head);
+  paths.forEach((file,i)=>assert.deepEqual(fs.readFileSync(path.join(source,file)),before[i]));
+  assert.equal(fs.existsSync(path.join(source,'project')),false);
+  // Re-adopting an already separated tree also does not relocate the repository.
+  fs.unlinkSync(path.join(root,'.isp/workspace.json'));
+  assert.equal(planProjectLayout(root).kind,'adopt');
+  assert.equal(ensureProjectLayout(root),source);
+  paths.forEach((file,i)=>assert.deepEqual(fs.readFileSync(path.join(source,file)),before[i]));
+});
+
+test('existing project layout permits an uninitialized gitlink but legacy relocation still refuses it',t=>{
+  const root=fixture(t);repo(root);const source=ensureProjectLayout(root);
+  git(source,'update-index','--add','--cacheinfo','160000',git(source,'rev-parse','HEAD').trim(),'vendor/uninitialized');
+  const index=fs.readFileSync(path.join(source,'.git/index'));
+  assert.equal(ensureProjectLayout(root),source);
+  assert.deepEqual(fs.readFileSync(path.join(source,'.git/index')),index);
+  const legacy=fixture(t);repo(legacy);
+  git(legacy,'update-index','--add','--cacheinfo','160000',git(legacy,'rev-parse','HEAD').trim(),'vendor/uninitialized');
+  assert.throws(()=>planProjectLayout(legacy),/submodules require manual migration/);
+  assert.equal(fs.existsSync(path.join(legacy,'project')),false);
+});
+
 test("a bundle restored without history gets an empty Git repository even when its layout marker exists", t => {
   const root = fixture(t);
   put(root, "project/graph.json", "{}");

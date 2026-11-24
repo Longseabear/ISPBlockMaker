@@ -87,7 +87,7 @@ function checkGit(root, moving = true) {
   if (!exists(directory)) return false;
   if (!fs.lstatSync(directory).isDirectory() || fs.lstatSync(directory).isSymbolicLink())
     throw new Error("Linked Git worktrees/submodules cannot be moved automatically. Use an independent workspace clone.");
-  for (const name of ["commondir", "worktrees", "modules", "index.lock", "objects/info/alternates"])
+  for (const name of ["commondir", "worktrees", ...(moving ? ["modules"] : []), "index.lock", "objects/info/alternates"])
     if (exists(path.join(directory, name)))
       throw new Error(`Git layout requires manual migration (${name}); no workspace files were moved.`);
   if (git(root, ["config", "--get", "core.worktree"], true).trim())
@@ -95,7 +95,9 @@ function checkGit(root, moving = true) {
   if (!samePath(fs.realpathSync(git(root, ["rev-parse", "--show-toplevel"]).trim()), root))
     throw new Error("The workspace must own its Git repository; an ancestor repository cannot be migrated.");
   const entries = git(root, ["ls-files", "--stage", "-z"]).split("\0").filter(Boolean);
-  if (entries.some(entry => entry.startsWith("160000 ")))
+  // Gitlinks and .git/modules prevent relocating a repository, not reopening it
+  // in its existing project/ location. Keep the migration guard for actual moves.
+  if (moving && entries.some(entry => entry.startsWith("160000 ")))
     throw new Error("Git submodules require manual migration; no workspace files were moved.");
   // Splitting tracked local data would change the index/worktree relationship.
   // Refuse rather than silently delete it from the new source repository.
