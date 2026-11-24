@@ -50,6 +50,18 @@ test('server restart preserves pending instructions but requires explicit resume
  assert.equal(app.chats[0].queuePaused,true);assert.equal(app.chats[0].queue[0].text,'B');assert.match(app.chats[0].queueReason,/불확실/);
  await app.queue.drain();assert.equal(app.chats[0].busy,false);
 });
+
+test('new conversation names the blocking whole-project chat and starts after it fails',async t=>{
+ const {m,queue,sent}=fixture(t);
+ await queue.submit({text:'Existing project work'});
+ await queue.submit({text:'New conversation'});
+ assert.equal(sent.length,1);
+ assert.match(m.chats[1].queueReason,/Existing project work/);
+ m.chats[0].busy=false;m.chats[0].status='failed';
+ await queue.drain();
+ assert.deepEqual(sent.map(v=>v.text),['Existing project work','New conversation']);
+ assert.equal(m.chats[1].queueReason,'');
+});
 test('storage failure prevents execution and preserves the request for recovery',async t=>{
  const {m,queue,sent}=fixture(t);m.save=async()=>{throw Error('disk full');};
  await assert.rejects(queue.submit({text:'A'}),/disk full/);assert.equal(sent.length,0);assert.equal(m.chats[0].queue[0].text,'A');

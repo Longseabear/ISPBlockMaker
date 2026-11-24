@@ -13,12 +13,13 @@ import crypto from 'node:crypto';
 import {spawn,execFile} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {z} from 'zod';
-import {resolveAgent,prepareMcpLaunch} from './mcp-settings.mjs';
+import {resolveAgent,prepareMcpLaunch,agentMcpConfig,effectiveMcpServers} from './mcp-settings.mjs';
 
 class RequestMap extends Map {set(k,v){super.set(k,v);this.changed?.();return this;}delete(k){const result=super.delete(k);this.changed?.();return result;}}
 const bounded=value=>String(value??'').slice(-100000);
 export class Interaction {
- constructor({workspace,env,launch,claudeQuery}){
+ constructor({workspace,env,launch,claudeQuery,agentIdentity,releaseAgent}){
+  this.agentIdentity=agentIdentity;this.releaseAgent=releaseAgent;this.agentIdentities=new Map();
   this.claudeQuery=claudeQuery;this.claudeRuns=new Map();this.workspace=workspace;this.env=env;this.launch=launch;this.pending=new Map();this.requests=new RequestMap();this.listeners=new Set();this.requests.changed=()=>this.changed();this.claudePrompts=new ClaudePrompts(this.requests);this.seq=0;this.child=null;this.ready=null;this.account=null;this.models=[];this.error='';this.chats=[];this.closed=false;
   this.queue=new InteractionQueue(this);this.declaredSettings=[];void claudeDeclaredSettings(workspace,env).then(value=>{this.declaredSettings=value;this.changed();});
   const base=path.join(workspace,'.isp');fs.mkdirSync(base,{recursive:true});
@@ -63,7 +64,7 @@ export class Interaction {
   const child=spawn(launch.command,[...launch.args,'app-server','--listen','stdio://'],{cwd:this.workspace,env:this.env,windowsHide:true,stdio:['pipe','pipe','pipe']});this.child=child;
   child.stdin.on('error',()=>{});child.stderr.on('data',()=>{});
   const lines=createInterface({input:child.stdout});lines.on('line',line=>{try{this.receive(JSON.parse(line));}catch(e){this.error=e.message;}});
-  const failed=e=>{if(this.child!==child)return;this.error=e?.message||'Codex 연결이 종료되었습니다. 다시 연결하세요.';this.child=null;this.ready=null;this.account=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error(this.error));}this.pending.clear();for(const [id,r] of this.requests)if(r.provider!=='claude')this.requests.delete(id);for(const c of this.chats.filter(c=>c.provider!=='claude'))if(c.busy){c.queuePaused=true;c.busy=false;c.status='interrupted';c.turnId=null;}this.save();};
+  const failed=e=>{if(this.child!==child)return;this.error=e?.message||'Codex 연결이 종료되었습니다. 다시 연결하세요.';this.child=null;this.ready=null;this.account=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error(this.error));}this.pending.clear();for(const c of this.chats.filter(c=>c.provider!=='claude')){this.releaseIdentity(c.id);c.loaded=false;}for(const [id,r] of this.requests)if(r.provider!=='claude')this.requests.delete(id);for(const c of this.chats.filter(c=>c.provider!=='claude'))if(c.busy){c.queuePaused=true;c.busy=false;c.status='interrupted';c.turnId=null;}this.save();};
   child.on('error',failed);child.on('exit',()=>failed());
   await this.rpc('initialize',{clientInfo:{name:'isp_block_maker',title:'ISP Block Maker',version:'0.1.23'},capabilities:{experimentalApi:true}});this.write({method:'initialized',params:{}});
   const account=await this.rpc('account/read',{refreshToken:false});this.account=account.account||{type:'signedOut'};
@@ -98,6 +99,8 @@ export class Interaction {
   if(method==='error'){c.error=p.error?.message||'Codex 실행 오류';}
   if(method==='turn/plan/updated')c.plan=p.plan;
  }
+ identityFor(chat){if(this.agentIdentities.has(chat.id))return this.agentIdentities.get(chat.id);const identity=this.agentIdentity?.(chat.id,`${chat.provider==='claude'?'Claude':'Codex'} · ${chat.title}`);if(identity)this.agentIdentities.set(chat.id,identity);return identity;}
+ releaseIdentity(id){const identity=this.agentIdentities.get(id);if(identity)this.releaseAgent?.(identity.id);this.agentIdentities.delete(id);}
  async send(input){return this.queue.submit(input);}
  async sendNow(input){
   if(this.closing)throw Error('서버 종료 중입니다.');
@@ -110,7 +113,8 @@ export class Interaction {
   if(!c){if(this.chats.length>=50)throw Error('대화는 최대 50개입니다. 종료된 대화를 정리하세요.');c={id:crypto.randomUUID(),title:text.slice(0,60),blockId,model:model||null,threadId:null,items:[],status:'idle',createdAt:new Date().toISOString()};this.chats.push(c);}
   c.updatedAt=new Date().toISOString();c.busy=true;c.error='';c.status='starting';this.save();
   try{
-   const params={cwd:this.workspace,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(c.model?{model:c.model}:{}),developerInstructions:`You are working in the ISP Block Maker workspace ${this.workspace}. Read AGENTS.md and project skills. Use node .isp/tools/isp.mjs for graph/context/artifacts. Pinned diagram: ${c.diagramId||'none'}. When a diagram is pinned, always use isp project --diagram ID and explicit --diagram ID for that diagram, regardless of UI selection. Otherwise run isp project or graph-info to discover the current diagram. Capture its diagramId and use --diagram ID for subsequent graph edits in that task. JOBs are project-global. The pinned block for this conversation is ${c.blockId||'whole project'}; do not silently change targets when UI selection changes. GPU simulator and Reference I/O features have been retired. Use Image Viewer for source inspection and Visualizations for reports. Respond in the user's language. Never print local API credentials.`};
+   const identity=this.identityFor(c);
+   const params={...(identity?{config:{mcp_servers:agentMcpConfig(effectiveMcpServers(this.workspace,{...this.env,ISP_MCP_AGENT_TOKEN:identity.token}),'codex')}}:{}),cwd:this.workspace,approvalPolicy:'on-request',approvalsReviewer:'user',sandbox:'workspace-write',...(c.model?{model:c.model}:{}),developerInstructions:`You are working in the ISP Block Maker workspace ${this.workspace}. Read AGENTS.md and project skills. Use node .isp/tools/isp.mjs for graph/context/artifacts. Pinned diagram: ${c.diagramId||'none'}. When a diagram is pinned, always use isp project --diagram ID and explicit --diagram ID for that diagram, regardless of UI selection. Otherwise run isp project or graph-info to discover the current diagram. Capture its diagramId and use --diagram ID for subsequent graph edits in that task. JOBs are project-global. The pinned block for this conversation is ${c.blockId||'whole project'}; do not silently change targets when UI selection changes. GPU simulator and Reference I/O features have been retired. Use Image Viewer for source inspection and Visualizations for reports. Respond in the user's language. Never print local API credentials.`};
    if(!c.loaded){const r=await this.rpc(c.threadId?'thread/resume':'thread/start',{...params,...(c.threadId?{threadId:c.threadId}:{})});c.threadId=r.thread.id;c.loaded=true;}
    c.items.push({id:crypto.randomUUID(),type:'userMessage',text});
    const r=await this.rpc('turn/start',{threadId:c.threadId,input:[{type:'text',text,text_elements:[]}],...(c.model?{model:c.model}:{})});
@@ -124,7 +128,7 @@ export class Interaction {
   if(!c){if(this.chats.length>=50)throw Error('대화는 최대 50개입니다.');c={id:crypto.randomUUID(),provider:'claude',title:text.slice(0,60),blockId,threadId:null,items:[],createdAt:new Date().toISOString()};this.chats.push(c);}
   if(claudeOptions!==undefined)c.claudeOptions=claudeOptions;
   c.updatedAt=new Date().toISOString();c.busy=true;c.error='';c.status='starting';c.phase='starting';c.items.push({id:crypto.randomUUID(),type:'userMessage',text});this.save();
-  try{const runtime=await claudeRuntimeAsync(this.env);if(this.closed||!c.busy)return {id:c.id};this.claude={ready:true,sdkVersion:runtime.sdkVersion,engineVersion:runtime.engineVersion,validated:runtime.validated};c.status='inProgress';this.claudeRuns.set(c.id,runClaude({workspace:this.workspace,env:this.env,chat:c,text,runtime,queryImpl:this.claudeQuery,changed:()=>this.changed(),ask:(...args)=>this.claudePrompts.ask(...args),cancelPrompts:id=>this.claudePrompts.cancelChat(id),save:()=>{if(!c.busy)c.updatedAt=new Date().toISOString();if(!c.busy&&c.status!=='completed')c.queuePaused=true;if(!c.busy)this.claudeRuns.delete(c.id);return this.save();}}));return {id:c.id};}
+  try{const runtime=await claudeRuntimeAsync(this.env);if(this.closed||!c.busy)return {id:c.id};this.claude={ready:true,sdkVersion:runtime.sdkVersion,engineVersion:runtime.engineVersion,validated:runtime.validated};c.status='inProgress';const identity=this.identityFor(c);this.claudeRuns.set(c.id,runClaude({workspace:this.workspace,env:identity?{...this.env,ISP_MCP_AGENT_TOKEN:identity.token}:this.env,chat:c,text,runtime,queryImpl:this.claudeQuery,changed:()=>this.changed(),ask:(...args)=>this.claudePrompts.ask(...args),cancelPrompts:id=>this.claudePrompts.cancelChat(id),save:()=>{if(!c.busy)c.updatedAt=new Date().toISOString();if(!c.busy&&c.status!=='completed'){c.queuePaused=true;this.releaseIdentity(c.id);}if(!c.busy)this.claudeRuns.delete(c.id);return this.save();}}));return {id:c.id};}
   catch(e){c.busy=false;c.status='failed';c.error=e.message;this.save();throw e;}
  }
  async recoverImage(id){const c=this.chats.find(c=>c.id===id);if(!c)throw Error('대화를 찾을 수 없습니다.');recoverImageSession(c);await this.save();return {ok:true};}
@@ -136,9 +140,9 @@ export class Interaction {
   this.write({id:r.id,result});this.requests.delete(String(id));return {ok:true};
  }
  rename(id,title){const c=this.chats.find(c=>c.id===id);if(!c)throw Error('대화를 찾을 수 없습니다.');c.title=z.string().trim().min(1).max(100).parse(title);this.save();return {id:c.id,title:c.title};}
- remove(id){const c=this.chats.find(c=>c.id===id);if(c?.busy)throw Error('실행 중인 대화는 삭제할 수 없습니다.');for(const run of Object.values(this.apiRuns))if(run.session_id===id&&['queued','dispatching'].includes(run.status)){run.status='cancelled';run.error='Session deleted';this.apiEvent(run);}this.chats=this.chats.filter(c=>c.id!==id);this.save();return {ok:true};}
- disconnect(){const child=this.child;this.child=null;this.ready=null;this.account=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('연결이 종료되었습니다.'));}this.pending.clear();for(const [id,r] of this.requests)if(r.provider!=='claude')this.requests.delete(id);for(const c of this.chats.filter(c=>c.provider!=='claude')){c.loaded=false;if(c.busy){c.queuePaused=true;c.busy=false;c.status='interrupted';c.turnId=null;}}this.save();if(child){child.stdin.end();return new Promise(resolve=>{const timer=setTimeout(resolve,5000);child.once('exit',()=>{clearTimeout(timer);resolve();});if(process.platform==='win32')execFile('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true},()=>{});else child.kill();});}return Promise.resolve();}
- async close(){this.closing=true;this.queue.stop();for(const c of this.chats)if(c.provider==='claude'&&c.status==='starting'){c.busy=false;c.status='interrupted';}const runs=[...this.claudeRuns.values()].map(r=>r.stop());this.claudeRuns.clear();const done=this.disconnect();await Promise.all([...runs,done]);await this.save();await this.flushSaves();this.closed=true;clearTimeout(this.notifyTimer);clearTimeout(this.checkpointTimer);for(const fn of this.listeners)fn(true);this.listeners.clear();}
+ remove(id){const c=this.chats.find(c=>c.id===id);if(c?.busy)throw Error('실행 중인 대화는 삭제할 수 없습니다.');for(const run of Object.values(this.apiRuns))if(run.session_id===id&&['queued','dispatching'].includes(run.status)){run.status='cancelled';run.error='Session deleted';this.apiEvent(run);}this.releaseIdentity(id);this.chats=this.chats.filter(c=>c.id!==id);this.save();return {ok:true};}
+ disconnect(){const child=this.child;this.child=null;this.ready=null;this.account=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('연결이 종료되었습니다.'));}this.pending.clear();for(const [id,r] of this.requests)if(r.provider!=='claude')this.requests.delete(id);for(const c of this.chats.filter(c=>c.provider!=='claude')){this.releaseIdentity(c.id);c.loaded=false;if(c.busy){c.queuePaused=true;c.busy=false;c.status='interrupted';c.turnId=null;}}this.save();if(child){child.stdin.end();return new Promise(resolve=>{const timer=setTimeout(resolve,5000);child.once('exit',()=>{clearTimeout(timer);resolve();});if(process.platform==='win32')execFile('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true},()=>{});else child.kill();});}return Promise.resolve();}
+ async close(){this.closing=true;for(const id of this.agentIdentities.keys())this.releaseIdentity(id);this.queue.stop();for(const c of this.chats)if(c.provider==='claude'&&c.status==='starting'){c.busy=false;c.status='interrupted';}const runs=[...this.claudeRuns.values()].map(r=>r.stop());this.claudeRuns.clear();const done=this.disconnect();await Promise.all([...runs,done]);await this.save();await this.flushSaves();this.closed=true;clearTimeout(this.notifyTimer);clearTimeout(this.checkpointTimer);for(const fn of this.listeners)fn(true);this.listeners.clear();}
 }
 export function installInteraction(app,current){
  let manager;

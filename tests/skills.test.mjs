@@ -52,14 +52,15 @@ function copiedFramework(parent) {
   return framework;
 }
 
-test("workspace setup supplies seven discoverable skills for both agents with valid local references", t => {
+test("workspace setup supplies eight discoverable skills for both agents with valid local references", t => {
   const temp = temporary(t);
   const workspace = makeWorkspace(temp, "프로젝트 A");
   const unrelated = makeWorkspace(temp, "프로젝트 B");
   const result = installWorkspaceSkills(workspace, root);
   const names = fs.readdirSync(path.join(templateRoot, ".agents/skills"), { withFileTypes: true })
     .filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
-  assert.equal(names.length, 7);
+  assert.equal(names.length, 8);
+  assert.ok(names.includes("isp-shared-terminal"));
   assert.ok(names.includes("isp-block-maker"));
 
   for (const kind of [".agents", ".claude"]) {

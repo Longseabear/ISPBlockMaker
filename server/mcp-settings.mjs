@@ -49,7 +49,7 @@ export function effectiveMcpServers(workspace,env=process.env){
  if(path.resolve(env.ISP_WORKSPACE).toLowerCase()!==path.resolve(workspace).toLowerCase())throw Error('Built-in MCP workspace mismatch');
  const url=new URL(env.ISP_API_URL);if(url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname)||url.username||url.password)throw Error('Built-in MCP requires a local server');
  if(servers.some(s=>s.name.toLowerCase()==='isp-workspace'))throw Error('MCP 이름 isp-workspace는 기본 제공 서버와 충돌합니다. 사용자 서버 이름을 변경하세요.');
- return [...servers,{name:'isp-workspace',enabled:true,agents:['claude','codex'],transport:'http',url:new URL('/mcp',url).href,headers:{Authorization:'Bearer '+env.ISP_API_TOKEN}}];
+ return [...servers,{name:'isp-workspace',enabled:true,agents:['claude','codex'],transport:'http',url:new URL('/mcp',url).href,headers:{Authorization:'Bearer '+(env.ISP_MCP_AGENT_TOKEN||env.ISP_API_TOKEN)}}];
 }
 // Launch executables directly: MCP args never become cmd/PowerShell source code.
 export function resolveAgent(agent,env=process.env,platform=process.platform){

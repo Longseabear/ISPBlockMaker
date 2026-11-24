@@ -35,6 +35,7 @@ Choose the workflow from the user's intended outcome. Read only the relevant ski
 
 | Request | Workflow |
 | --- | --- |
+| Shared SSH, server logs, long-running shells, or user/agent terminal handoff | [isp-shared-terminal](../isp-shared-terminal/SKILL.md) |
 | Create/name/select block-diagram tabs, implement/change blocks, wiring, descriptions, contracts, graph overview, or check graph/source consistency | [isp-block-development](../isp-block-development/SKILL.md) |
 | “JOB 등록해”, split/merge work, implement block memos, process queued work | [isp-job-management](../isp-job-management/SKILL.md) |
 | “리포트 발행해”, “시각화해”, compare or explain measured results | [isp-visualizations](../isp-visualizations/SKILL.md) → Visualizations |

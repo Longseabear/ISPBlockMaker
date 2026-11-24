@@ -20,6 +20,7 @@ for(const name of ["dist","server","templates","package.json","ISPBlockMaker.exe
 fs.mkdirSync(path.join(app,"scripts"));
 fs.mkdirSync(path.join(app,"docs"));
 fs.copyFileSync(path.join(root,"docs","personal-agent-api.md"),path.join(app,"docs","personal-agent-api.md"));
+fs.copyFileSync(path.join(root,"docs","shared-terminals.md"),path.join(app,"docs","shared-terminals.md"));
 for(const name of ["isp.mjs","start-local.mjs","workspace-cli.mjs","recipe-terminal.mjs"]) fs.copyFileSync(path.join(root,"scripts",name),path.join(app,"scripts",name));
 fs.copyFileSync(process.execPath,path.join(app,"node.exe"));
 const lock=JSON.parse(fs.readFileSync(path.join(root,"package-lock.json"),"utf8"));

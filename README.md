@@ -346,7 +346,7 @@ CLI: `isp skill-export NAME,NAME --out FILE.bundle`, `isp skill-import-preview F
 
 ### 에이전트 지식과 그래프 유지 지침
 
-기본 스킬은 공통 진입점과 블록 개발·JOB·시각화·Image Viewer·SDD·버전/공유의 7개입니다. 시각화는 **isp-visualizations**이며 Project Skills에서 `시각화`로 검색할 수 있습니다. 사용자 질문 → 비교 조건 → 적절한 그림/표 → 실제 검증 → 등록/표시의 방법론을 따릅니다. 구체적인 실행 명령과 형식 제약은 실행 가능한 도구 계약으로 유지합니다.
+기본 스킬은 공통 진입점과 블록 개발·JOB·시각화·Image Viewer·SDD·버전/공유·Terminal Hub의 8개입니다. 시각화는 **isp-visualizations**이며 Project Skills에서 `시각화`로 검색할 수 있습니다. 사용자 질문 → 비교 조건 → 적절한 그림/표 → 실제 검증 → 등록/표시의 방법론을 따릅니다. 구체적인 실행 명령과 형식 제약은 실행 가능한 도구 계약으로 유지합니다.
 
 workspace 초기화/열기 시 `.agents/skills`와 `.claude/skills`를 함께 설치하고 `AGENTS.md`와 `CLAUDE.md`로 진입점을 안내합니다. `.claude` 전체나 기존 사용자 설정을 덮어쓰지 않습니다. 별도 주기 실행 훅은 설치하지 않습니다.
 
@@ -505,3 +505,7 @@ Workspace list shortcuts: **Enter** opens/starts the selected workspace, **Delet
 HTML 옆에 이미지·CSS·JavaScript 파일을 두고 상대경로로 참조해도 됩니다. MCP `register_report` / `update_report`와 CLI `artifact` / `artifact-update`가 등록할 사본에 자동으로 포함합니다. 원본은 수정하지 않으며 별도 `report-build`는 필요 없습니다.
 
 이미지 `src`·`srcset`, CSS의 이미지·폰트 URL과 일반/미디어 `@import`, 일반 JavaScript 파일을 지원합니다. 경로는 참조하는 HTML/CSS 파일 기준이며 workspace 내부 파일만 사용합니다. 외부 URL·누락 파일은 구체적인 오류를 반환합니다. ES 모듈 의존성·런타임 `fetch()`는 미리 번들링하거나 인라인 데이터로 준비하세요. 화면 품질 검증 단계는 없습니다. 최종 HTML은 10 MiB 이하이며 임의 리사이즈·압축은 하지 않습니다. 수정 시 원본과 포함 자산의 해시도 갱신됩니다.
+
+## Terminal Hub
+
+Project Skills 위의 **Terminal Hub**에서 사용자와 에이전트가 SSH·서버·빌드 세션을 함께 보고 조작합니다. 기본은 백그라운드 실행이며 필요한 시점에만 에이전트가 화면 표시를 요청합니다. 화면을 숨겨도 실행은 유지됩니다. **직접 조작 / 에이전트에 넘기기**로 입력 충돌을 방지합니다. [사용법·MCP·출력 제한](docs/shared-terminals.md)을 참고하세요.

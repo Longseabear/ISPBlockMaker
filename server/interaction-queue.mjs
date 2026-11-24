@@ -12,6 +12,7 @@ export class InteractionQueue {
   const source=id=>{const value=blocks.find(b=>b.id===id)?.implementation;return typeof value==='string'&&value?path.resolve(this.manager.workspace,'project',value).toLowerCase():null;};
   return this.manager.chats.find(other=>other.id!==chat.id&&other.busy&&(!chat.blockId||!other.blockId||chat.blockId===other.blockId||!source(chat.blockId)||!source(other.blockId)||source(chat.blockId)===source(other.blockId)));
  }
+ conflictReason(chat){const other=this.conflict(chat);return other?`「${other.title||'다른 대화'}」 작업 완료 후 실행 — 작업 범위가 겹칩니다`:'';}
  async submit(raw,{defer=false}={}){
   if(this.stopped)throw Error('서버 종료 중입니다. 다시 연결하세요.');
   const input=inputSchema.parse(raw),m=this.manager;
@@ -25,7 +26,7 @@ export class InteractionQueue {
   const id=input.requestId||crypto.randomUUID();
   const item={id,text:input.text,model:input.model,claudeOptions:input.claudeOptions,createdAt:new Date().toISOString(),state:'queued'};
   (chat.queue||=[])[input.stopFirst?'unshift':'push'](item);
-  chat.queueReason=chat.queuePaused?'중지됨':chat.busy?'현재 작업 완료 후 실행':this.conflict(chat)?'겹치는 작업 완료 후 실행':'';
+  chat.queueReason=chat.queuePaused?'중지됨':chat.busy?'현재 작업 완료 후 실행':this.conflictReason(chat);
   await m.save(true);this.kick();if(!defer)await this.drain();return {id:chat.id,queued:true,queueId:id};
  }
  kick(){if(this.stopped||this.timer)return;this.timer=setTimeout(()=>{this.timer=null;void this.drain().catch(e=>{this.manager.error='대기 지시 처리 실패: '+e.message;});},25);}
@@ -34,7 +35,8 @@ export class InteractionQueue {
   try{for(const chat of this.manager.chats){
    if(this.stopped)break;
    if(chat.busy||chat.queuePaused||!chat.queue?.length)continue;
-   if(this.conflict(chat)){chat.queueReason='겹치는 작업 완료 후 실행';continue;}
+   const reason=this.conflictReason(chat);
+   if(reason){chat.queueReason=reason;continue;}
    const item=chat.queue[0];item.state='dispatching';chat.queueReason='';
    this.manager.beginApiRun?.(chat,item.id);
    try{await this.manager.save(true);if(this.stopped){item.state='queued';break;}await this.manager.sendNow({chatId:chat.id,provider:chat.provider||'codex',blockId:chat.blockId,text:item.text,model:item.model,claudeOptions:item.claudeOptions});

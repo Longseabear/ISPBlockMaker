@@ -1,3 +1,4 @@
+import {SharedTerminals} from './SharedTerminals';
 import {PortNames} from './PortNames';
 import {HarnessPanel,HarnessStepEditor,HarnessStatus,harnessStatus} from './Harness';
 import {DiagramTabs} from './DiagramTabs';
@@ -1400,7 +1401,7 @@ function App() {
     setView(next);
     if(next === "graph" && workMode === "interaction")setLayout(current=>({...current,inspector:false}));
     setFocus("");
-    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "skills", "mcp", "search", "references"].includes(next))
+    if (["artifacts", "code", "jobs", "gpu", "documents", "viewer", "shared-terminal", "skills", "mcp", "search", "references"].includes(next))
       setLayout((current) => ({ ...current, inspector: false }));
   }
   const [message, setMessage] = useState(""),
@@ -1916,6 +1917,7 @@ function App() {
             {project.artifacts.length > 0 && <i />}
           </button>
           <button className={view === "viewer" ? "active" : ""} title="Image Viewer" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
+          <button className={view === "shared-terminal" ? "active" : ""} title="Terminal Hub" aria-label="Terminal Hub" aria-current={view === "shared-terminal" ? "page" : undefined} onClick={() => switchView("shared-terminal")}><Terminal size={18}/><span>Terminal Hub</span></button>
           <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
           <button aria-label="Runs" className={view==="runs"?"active":""} onClick={()=>switchView("runs")}><Play size={18}/><span>Runs</span></button>
           <button className={view === "mcp" ? "active" : ""} title="MCP Servers" aria-label="MCP Servers" aria-current={view === "mcp" ? "page" : undefined} onClick={() => switchView("mcp")}><Plug size={18}/><span>MCP Servers</span></button>
@@ -1984,7 +1986,7 @@ function App() {
             onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(e.clientX-rect.left)/rect.width)));}}
             onPointerUp={()=>{panelDrag.current=false;}} onPointerCancel={()=>{panelDrag.current=false;}} onLostPointerCapture={()=>{panelDrag.current=false;}}/>
           <section className={`work-panel ${workMode === "interaction" && view === "graph" && layout.inspector && (selected || globalOpen) ? "show-block-detail" : ""}`} aria-label="작업 패널">
-          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({skills:'Project Skills',mcp:'MCP Servers',search:'Search',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
+          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({'shared-terminal':'Terminal Hub',skills:'Project Skills',mcp:'MCP Servers',search:'Search',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
             {view==='graph'&&<button disabled={!selected} aria-pressed={layout.inspector} onClick={()=>setLayout(l=>({...l,inspector:!l.inspector}))}>블록 상세</button>}
             <button aria-label={workPanelExpanded?'작업 패널 크기 복원':'작업 패널 최대화'} onClick={()=>setWorkPanelExpanded(v=>!v)}>{workPanelExpanded?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button>
             <button aria-label="작업 패널 숨기기" onClick={()=>{setWorkPanelOpen(false);setWorkPanelExpanded(false);}}><X size={16}/></button>
@@ -1994,10 +1996,11 @@ function App() {
               {(viewerVisited || view === "viewer") && <div style={{display:view === "viewer" ? "contents" : "none"}}>
                 <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} visible={view==="viewer"} expanded={focus==="editor"} onExpand={()=>setFocus(current=>current==="editor"?"":"editor")}/>
               </div>}
+              <SharedTerminals api={api} token={token} visible={view==='shared-terminal'&&(workMode==='terminal'||workPanelOpen)} onPresent={()=>{if(dirtyRef.current){notify('Terminal Hub에 확인할 작업이 있습니다. 현재 편집 후 Terminal Hub을 열어주세요.');return;}switchView('shared-terminal');}}/>
               {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
               {(mcpVisited||view==="mcp")&&<div style={{display:view==="mcp"?"contents":"none"}}><McpServers api={api}/></div>}
               {(searchVisited||view==="search")&&<div style={{display:view==="search"?"contents":"none"}}><WorkspaceSearch api={api} project={project}/></div>}
-              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
+              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "shared-terminal" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {

@@ -1,3 +1,5 @@
+import {SharedTerminals,installSharedTerminals} from './shared-terminals.mjs';
+import {McpAgents} from './mcp-agents.mjs';
 import {WorkspaceSearchService} from './workspace-search-service.mjs';
 import {workspaceMcpHandler} from './workspace-mcp.mjs';
 import {localApiAdapter} from './mcp-local-tools.mjs';
@@ -64,7 +66,10 @@ app.disable("x-powered-by");
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const sessions = new Map();
+const mcpAgents=new McpAgents({changed:()=>sharedTerminals.changed()});
+const sharedTerminals=new SharedTerminals({agents:mcpAgents,context:()=>({workspace,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_WORKSPACE:workspace,ISP_CLI:cliPath}}),notify:event=>{for(const client of wss.clients)if(client.sharedSubscribed&&client.readyState===WebSocket.OPEN){if(client.bufferedAmount>2*1024*1024)client.close(1013,'Client too slow');else client.send(JSON.stringify(event));}}});
 let interaction;
+const terminalStatusTimer=setInterval(()=>sharedTerminals.changed(),30000);terminalStatusTimer.unref();
 let vite;
 let versionChanging = false;
 let workspaceReplacing = false;
@@ -73,8 +78,10 @@ function workspaceInfo() {
   const source = sourceRoot(workspace);
   return {workspace, sourceRoot: source, graphFile: path.join(source, "graph.json"), dataDir, tmpDir: path.join(workspace, "tmp"), layoutVersion: source === workspace ? 0 : 1};
 }
-function stopTerminals() {
-  interaction?.close();
+async function stopTerminals() {
+  await sharedTerminals.close();
+  await interaction?.close();
+  mcpAgents.clear();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
     try { session.pty.kill();session.mcpCleanup?.(); } catch {}
@@ -115,7 +122,7 @@ app.use("/api", (req, res, next) => {
   if (workspaceRecoveryError) return res.status(503).json({error:workspaceRecoveryError});
   if (workspaceReplacing) return res.status(409).json({error:"번들에서 작업 폴더를 복원 중입니다. 잠시 후 다시 시도하세요."});
   if (req.path === "/bootstrap" && req.method === "GET") return next();
-  if (!authorized(req))
+  if (!authorized(req) && !(req.path.startsWith('/shared-terminals')&&(req.mcpActor=mcpAgents.authenticate(req.headers.authorization?.replace(/^Bearer /,'')))))
     return res
       .status(401)
       .json({ error: "Missing or invalid local session token" });
@@ -141,17 +148,21 @@ app.use("/api", (req,res,next)=>{
 });
 const workspaceSearch=new WorkspaceSearchService(()=>({sourceRoot:sourceRoot(workspace),dataDir,store}));
 const mcpMutationStores=new WeakMap();
-function localMcpContext(){
+function localMcpContext(req){
  const requestToken=token,requestStore=store,requestWorkspace=workspace;
  let ledger=mcpMutationStores.get(store);if(!ledger){ledger=new McpMutations(dataDir);mcpMutationStores.set(store,ledger);}
- return {store,search:workspaceSearch,readArtifact:file=>readArtifactFile(requestWorkspace,file),localApi:localApiAdapter({origin,token:()=>requestToken}),mutate:(name,input,operation)=>{
+ return {store,search:workspaceSearch,readArtifact:file=>readArtifactFile(requestWorkspace,file),terminalApi:req?.mcpActor?localApiAdapter({origin,token:()=>req.headers.authorization.slice(7)}):async()=>{throw Error('Shared terminals require a dedicated agent credential. Register /api/mcp/agents and connect with its token.');},localApi:localApiAdapter({origin,token:()=>requestToken}),mutate:(name,input,operation)=>{
   if(requestStore!==store||requestToken!==token)throw Error('Workspace changed; reconnect before editing');
   return ledger.execute(name,input,operation);
  }};
 }
 app.post('/api/search',async(req,res)=>res.json(await workspaceSearch.search(req.body)));
 app.post('/api/search/read',async(req,res)=>res.json(await workspaceSearch.read(req.body)));
-app.post('/mcp',(req,res,next)=>{if(!authorized(req))return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),workspaceMcpHandler(localMcpContext));
+app.post('/api/mcp/agents',(req,res)=>res.json({...mcpAgents.issue(req.body.label),url:origin+'/mcp'}));
+app.get('/api/mcp/agents',(_req,res)=>res.json(mcpAgents.list()));
+app.delete('/api/mcp/agents/:id',(req,res)=>{if(sharedTerminals.list().some(s=>s.agentId===req.params.id))return res.status(409).json({error:'먼저 소유 세션을 인계하거나 삭제하세요.'});mcpAgents.forget(req.params.id);res.json({ok:true});});
+app.post('/api/mcp/agents/:id/revoke',(req,res)=>res.json(mcpAgents.revoke(req.params.id)));
+app.post('/mcp',(req,res,next)=>{req.mcpActor=mcpAgents.authenticate(req.headers.authorization?.replace(/^Bearer /,''));if(!authorized(req)&&!req.mcpActor)return res.status(401).json({error:'Missing or invalid local session token'});if(workspaceRecoveryError||workspaceReplacing||versionChanging)return res.status(409).json({error:'Workspace unavailable'});next();},express.json({limit:'256kb'}),workspaceMcpHandler(localMcpContext));
 app.all('/mcp',(_req,res)=>res.status(405).end());
 const mcpSharing=installMcpSharing(app,()=>({store,search:workspaceSearch,sharedImages:{list:()=>sharedImages(workspace),read:id=>sharedImagePreview(workspace,id)}}));
 const reportSharing = installReportSharing(app, path.join(runtime,'report-shares'),()=>({artifactDir,artifacts:store.peek().artifacts}));
@@ -179,7 +190,7 @@ installBundleImport(app,{
       for(const session of sessions.values()) {
         if(process.platform==='win32')await promisify(execFile)('taskkill.exe',['/PID',String(session.pty.pid),'/T','/F'],{windowsHide:true,timeout:5000}).catch(()=>{});
       }
-      stopTerminals();
+      await stopTerminals();
       return {active:true};
     }catch(error){workspaceReplacing=false;versionChanging=false;throw error;}
   },
@@ -227,7 +238,7 @@ app.post('/api/recipes/:id/launch', (req,res)=>{
   res.json({sessionId,agent:'shell',blockId});
 });
 installMcpSettings(app,()=>workspace,sessions);
-interaction=installInteraction(app,()=>({workspace,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_CLI:cliPath,ISP_WORKSPACE:workspace,ISP_SOURCE_ROOT:sourceRoot(workspace)}}));
+interaction=installInteraction(app,()=>({workspace,agentIdentity:(id,label)=>mcpAgents.issue(label,'chat:'+id),releaseAgent:id=>mcpAgents.revoke(id),env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_CLI:cliPath,ISP_WORKSPACE:workspace,ISP_SOURCE_ROOT:sourceRoot(workspace)}}));
 installPersonalAgentApi(app,{current:()=>({workspace,store,artifactDir}),interaction,authorize:authorized});
 installAppUpdates(app,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
 installProjectSkills(app,{current:()=>({workspace}),root});
@@ -298,6 +309,7 @@ app.post('/api/graph/operations',(req,res)=>{const result=applyGraphOperations(s
 app.get("/api/terminals", (req, res) => res.json(
   [...sessions].map(([sessionId, session]) => ({sessionId, agent: session.agent, blockId: session.blockId})),
 ));
+installSharedTerminals(app,sharedTerminals);
 app.delete("/api/terminals/:id", (req, res) => {
   if (versionChanging) throw new Error("버전 전환 중에는 터미널을 종료할 수 없습니다.");
   const id = z.string().uuid().parse(req.params.id);
@@ -396,7 +408,7 @@ app.post('/api/workspace/open',async(req,res)=>{
  if(target===workspace)return res.json({workspace,url:origin});
  res.json(await openWorkspaceServer(root,target));
 });
-app.post("/api/workspace", (req, res) => {
+app.post("/api/workspace", async (req, res) => {
   const input = z
     .object({ path: z.string().min(1), stopTerminals: z.literal(true) })
     .parse(req.body);
@@ -409,6 +421,8 @@ app.post("/api/workspace", (req, res) => {
   requireLayoutConsent(input.path);
   const opened = openWorkspace(input.path, root);
   if (opened.workspace === workspace) return res.json({ workspace });
+  await sharedTerminals.close();
+  mcpAgents.clear();
   for (const session of sessions.values()) {
     clearTimeout(session.timer);
     try {
@@ -990,7 +1004,10 @@ function startTerminal(socket, message, recipeRequest) {
             : agent,
         ]
       : ["-i"];
-    const mcp=agent==='shell'?null:prepareMcpLaunch(workspace,agent,sessionId,env);
+    const identity=agent==='shell'?null:mcpAgents.issue(agent+' · '+sessionId.slice(0,8),'terminal:'+sessionId);
+    if(identity)env.ISP_MCP_AGENT_TOKEN=identity.token;
+    let mcp;
+    try{mcp=agent==='shell'?null:prepareMcpLaunch(workspace,agent,sessionId,env);}catch(error){if(identity)mcpAgents.revoke(identity.id);throw error;}
     let processPty;
     try { processPty = pty.spawn(mcp?.launch?.command||command, mcp?.launch?.args||args, {
       name: "xterm-256color",
@@ -998,7 +1015,7 @@ function startTerminal(socket, message, recipeRequest) {
       rows: 24,
       cwd: workspace,
       env,
-    }); } catch(error) { mcp?.cleanup();throw error; }
+    }); } catch(error) { mcp?.cleanup();if(identity)mcpAgents.revoke(identity.id);throw error; }
     session = {
       pty: processPty,
       recipeRequest,
@@ -1022,6 +1039,7 @@ function startTerminal(socket, message, recipeRequest) {
     processPty.onExit(({ exitCode }) => {
       clearTimeout(terminal.timer);
       terminal.mcpCleanup?.();
+      if(identity)mcpAgents.revoke(identity.id);
       if(terminal.recipeRequest)fs.unlink(terminal.recipeRequest,()=>{});
       sessions.delete(sessionId);
       for (const client of terminal.sockets)
@@ -1075,6 +1093,12 @@ wss.on("connection", (socket) => {
       if (versionChanging)
         throw new Error("버전 전환 중에는 터미널을 사용할 수 없습니다.");
       const message = JSON.parse(bytes.toString());
+      if(message.type==='shared-subscribe'){socket.sharedSubscribed=true;send(socket,{type:'shared-terminals',sessions:sharedTerminals.list(),agents:mcpAgents.list(),resources:sharedTerminals.resources()});return;}
+      if(message.type==='shared-ack'){if(socket.sharedId===message.id)sharedTerminals.acknowledge(socket,message.chars);return;}
+      if(message.type==='shared-attach'){sharedTerminals.attach(socket,message.id);return;}
+      if(message.type==='shared-detach'){sharedTerminals.detach(socket);return;}
+      if(message.type==='shared-input'){if(!socket.sharedId)throw Error('공유 터미널에 연결하세요.');sharedTerminals.write(socket.sharedId,{requestId:message.requestId,data:message.data,actor:'user',controlVersion:message.controlVersion});return;}
+      if(message.type==='shared-resize'){if(!socket.sharedId)throw Error('공유 터미널에 연결하세요.');sharedTerminals.resize(socket.sharedId,message.cols,message.rows);return;}
       if (message.type === "start") {
         if (socket.sessionId && sessions.has(socket.sessionId))
           throw new Error("이미 터미널에 연결되어 있습니다.");
@@ -1097,6 +1121,7 @@ wss.on("connection", (socket) => {
     }
   });
   socket.on("close", () => {
+    sharedTerminals.detach(socket);
     const session = sessions.get(socket.sessionId);
     if (!session) return;
     session.sockets.delete(socket);
@@ -1148,6 +1173,8 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
 async function shutdown() {
+  clearInterval(terminalStatusTimer);
+  await sharedTerminals.close();
   await workspaceSearch.close();
   await mcpSharing.stop();
   await harness?.close();
