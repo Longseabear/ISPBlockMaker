@@ -66,10 +66,16 @@ REST는 `/api/shared-terminals`와 `/:id/output`, `input`, `control`, `present`,
 
 지연 구간은 `get_runtime_diagnostics`로 조회합니다. 자세한 범위와 재현 방법은 [agent-bridge-audit.md](agent-bridge-audit.md)를 참고하세요.
 
-## Terminal 모드의 하단 사용
+## 에이전트와 Terminal Hub 동시 보기
 
-Terminal 모드 하단의 `Agent CLI / Terminal Hub` 탭으로 전환합니다. Terminal Hub에서 `새 터미널`을 누르면 같은 작업공간의 지속 셸을 만들 수 있고, 에이전트 MCP가 만든 SSH/서버 세션도 같은 목록에서 선택합니다. 위쪽 Board·Image·Report는 그대로 유지됩니다. 사이드바 Terminal Hub 또는 `Alt+5`로 접힌 하단을 다시 열 수 있습니다. `Alt+PageUp/PageDown`은 표시 중인 터미널의 세션을 순환합니다. Runs 실행은 Agent CLI 탭을 선택합니다.
+Terminal Hub는 작업 모드에 관계없이 메인 뷰에서 엽니다. Terminal 모드에서는 위쪽 Hub와 아래쪽 Agent CLI를 동시에 볼 수 있고, Interaction 모드에서는 에이전트 대화와 Hub를 함께 봅니다. 사이드바 Terminal Hub 또는 `Alt+5`로 열고 `새 터미널`로 셸을 만들 수 있습니다. 하단 터미널 표시와 높이는 독립적으로 조절합니다. `Alt+←/→`는 포커스가 있는 대화·터미널 영역의 탭을 순환합니다. 포커스가 밖에 있으면 현재 모드의 에이전트 탭을 선택합니다.
 
 Interaction 모드에서는 기존 작업 패널에 표시합니다. 화면 위치를 옮겨도 메타데이터 연결과 선택 세션은 유지하며 PTY를 새로 만들지 않습니다. 숨긴 화면은 출력을 구독하지 않고, 다시 열면 같은 세션의 보관 출력을 복원합니다. 창/탭 숨기기는 프로세스 종료와 다릅니다.
 
 참고한 외부 설계: [ryamgoh/terminal-mcp](https://github.com/ryamgoh/terminal-mcp)는 지속 세션·커서 출력·명령 완료 대기를 분리하고, [lightos/interactive-shell-mcp](https://github.com/lightos/interactive-shell-mcp)는 PTY와 화면 읽기를 결합합니다. 이번 변경은 세션 수명과 표시 위치의 분리를 적용합니다. 외부 코드를 복사하거나 다른 MCP 서비스를 추가하지 않았으며, 그 구현의 명령 완료 추적이나 headless 화면 에뮬레이션까지 도입한 것은 아닙니다.
+
+## 셸에서 에이전트 직접 실행
+
+앱의 일반 Terminal과 Terminal Hub에서 새 셸을 연 뒤 `claude` 또는 `codex`를 입력하면 현재 워크스페이스 MCP 설정을 자동 전달합니다. `--model`, `--resume` 등 인자도 전달됩니다. 프로젝트 전용 PATH 실행기가 실제 CLI를 찾아 실행하며 사용자 전역 설정은 변경하지 않습니다. CLI 실행 파일은 서버의 원래 PATH에서 찾습니다.
+
+직접 실행한 에이전트는 MCP 초기화마다 독립된 Terminal Hub 소유권을 받습니다. 드롭다운에서 기존 Shell을 중지할 필요가 없습니다. 기존 셸에는 환경이 소급 적용되지 않으므로 업데이트한 서버에서 새 터미널을 여세요. 앱 밖에서 연 터미널이나 실행 파일 절대경로 호출은 이 자동 실행기를 거치지 않습니다. 워크스페이스 밖으로 이동하면 잘못된 프로젝트 연결을 방지하기 위해 실행을 거부합니다.

@@ -892,7 +892,7 @@ function TerminalPanel(props: {
     finally { setClosing(''); }
   }
   return <section className="terminal-pane terminal-panel">
-    <div className="terminal-tabs" role="tablist" aria-label="터미널 세션" title="이전/다음 탭: Alt+PageUp/PageDown">
+    <div className="terminal-tabs" role="tablist" aria-label="터미널 세션" title="이전/다음 탭: Alt+←/→">
       {tabs.map((tab, i) => <div className="terminal-tab" key={tab.sessionId}>
         <button role="tab" id={'tab-' + tab.sessionId} aria-controls={'pane-' + tab.sessionId} aria-selected={selectedTab === tab.sessionId}
           onClick={() => setSelectedTab(tab.sessionId)} title={tab.blockId}>{tab.agent === 'shell' ? 'Shell' : tab.agent} {i + 1}</button>
@@ -1306,17 +1306,12 @@ function App() {
     [artifactId, setArtifactId] = useState(""),
     [demoBusy, setDemoBusy] = useState(false);
   const [workMode,setWorkMode]=useState<'interaction'|'terminal'>('interaction');
-  const [terminalDock,setTerminalDock]=useState<'cli'|'hub'>('cli');
-  const [terminalHubContainer,setTerminalHubContainer]=useState<HTMLDivElement|null>(null);
-  const lastWorkView=useRef('graph'),hubDockOpened=useRef(false);
-  useEffect(()=>{if(workMode==='terminal'&&terminalDock==='hub'&&!hubDockOpened.current){hubDockOpened.current=true;setPanelSizes(s=>({...s,terminal:Math.max(s.terminal,340)}));}},[workMode,terminalDock]);
-  useEffect(()=>{if(view!=='shared-terminal')lastWorkView.current=view;},[view]);
   const [workPanelOpen,setWorkPanelOpen]=useState(()=>{try{return localStorage.getItem('isp-work-panel-open')!=='false';}catch{return true;}});
   const [workPanelWidth,setWorkPanelWidth]=useState(()=>{try{return Math.max(30,Math.min(70,Number(localStorage.getItem('isp-work-panel-width'))||50));}catch{return 50;}});
   const [workPanelExpanded,setWorkPanelExpanded]=useState(false);
   const panelDrag=useRef(false);
   useEffect(()=>{try{localStorage.setItem('isp-work-panel-open',String(workPanelOpen));localStorage.setItem('isp-work-panel-width',String(workPanelWidth));}catch{}},[workPanelOpen,workPanelWidth]);
-  function changeWorkMode(mode:'interaction'|'terminal'){setWorkMode(mode);setFocus('');setVisualizationExpanded(false);setWorkPanelExpanded(false);if(mode==='terminal'){setLayout(l=>({...l,terminal:true}));if(view==='shared-terminal'){setView(lastWorkView.current);setTerminalDock('hub');}}}
+  function changeWorkMode(mode:'interaction'|'terminal'){setWorkMode(mode);setFocus('');setVisualizationExpanded(false);setWorkPanelExpanded(false);if(mode==='terminal'){setLayout(l=>({...l,terminal:true}));}}
   const compactPreview = workMode==='terminal'&&(view === "artifacts" || view === "viewer");
   const [runTerminal,setRunTerminal]=useState<TerminalSession|null>(null);
   const [mcpVisited,setMcpVisited]=useState(false);
@@ -1405,8 +1400,7 @@ function App() {
   }, [layout]);
   function switchView(next: string) {
     if(next==='interaction'){changeWorkMode('interaction');return;}
-    if(next==='shared-terminal'&&workMode==='terminal'){setTerminalDock('hub');setLayout(l=>({...l,terminal:true}));setFocus('');setVisualizationExpanded(false);return;}
-    if(next!=='shared-terminal')lastWorkView.current=next;
+    if(next==='shared-terminal')setVisualizationExpanded(false);
     setWorkPanelOpen(true);
     setView(next);
     if(next === "graph" && workMode === "interaction")setLayout(current=>({...current,inspector:false}));
@@ -1429,7 +1423,6 @@ function App() {
       if(target.closest('[data-unsaved-dialog],.artifact-info-trigger'))return;
       const destination=target.closest('.diagram-tabs button,.workspace-sidebar > button,.work-panel-tabs button,.project-name,.version-badge,.react-flow__node,.react-flow__panel button,.artifact-toolbar button,.work-board button') as HTMLElement|null;
       if(!destination)return;
-      if(workMode==='terminal'&&destination.getAttribute('aria-label')==='Terminal Hub')return;
       if(!globalOpen && destination.matches('.react-flow__node') && destination.dataset.id===selected)return;
       e.preventDefault();e.stopPropagation();setLeaveError('');setLeaveTarget(destination);
     };
@@ -1896,7 +1889,7 @@ function App() {
           </div>
           <button
             className={view === "graph" ? "active" : ""}
-            title="Block graph · Alt+1 (뷰 전환: Alt+←/→)"
+            title="Block graph · Alt+1"
             aria-label="Block graph"
             aria-current={view === "graph" ? "page" : undefined}
             onClick={() => switchView("graph")}
@@ -1907,7 +1900,7 @@ function App() {
           </button>
           <button
             className={view === "code" ? "active" : ""}
-            title="Node implementations · Alt+4"
+            title="Node implementations · Alt+2"
             aria-label="Node implementations"
             aria-current={view === "code" ? "page" : undefined}
             onClick={() => switchView("code")}
@@ -1927,8 +1920,8 @@ function App() {
             <small>{project.artifacts.length}</small>
             {project.artifacts.length > 0 && <i />}
           </button>
-          <button className={view === "viewer" ? "active" : ""} title="Image Viewer · Alt+2" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
-          <button className={(view === "shared-terminal"||(workMode==='terminal'&&terminalDock==='hub'&&layout.terminal)) ? "active" : ""} title="Terminal Hub · Alt+5 · 탭 이동: Alt+PageUp/PageDown" aria-label="Terminal Hub" aria-current={view === "shared-terminal" ? "page" : undefined} onClick={() => switchView("shared-terminal")}><Terminal size={18}/><span>Terminal Hub</span></button>
+          <button className={view === "viewer" ? "active" : ""} title="Image Viewer · Alt+4" aria-label="Image Viewer" aria-current={view === "viewer" ? "page" : undefined} onClick={() => switchView("viewer")}><FileImage size={18}/><span>Image Viewer</span></button>
+          <button className={view === "shared-terminal" ? "active" : ""} title="Terminal Hub · Alt+5 · 탭 이동: Alt+←/→" aria-label="Terminal Hub" aria-current={view === "shared-terminal" ? "page" : undefined} onClick={() => switchView("shared-terminal")}><Terminal size={18}/><span>Terminal Hub</span></button>
           <button className={view === "skills" ? "active" : ""} title="Project Skills" aria-label="Project Skills" aria-current={view === "skills" ? "page" : undefined} onClick={() => switchView("skills")}><BookOpen size={18}/><span>Project Skills</span></button>
           <button aria-label="Runs" className={view==="runs"?"active":""} onClick={()=>switchView("runs")}><Play size={18}/><span>Runs</span></button>
           <button className={view === "mcp" ? "active" : ""} title="MCP Servers" aria-label="MCP Servers" aria-current={view === "mcp" ? "page" : undefined} onClick={() => switchView("mcp")}><Plug size={18}/><span>MCP Servers</span></button>
@@ -1997,7 +1990,7 @@ function App() {
             onPointerMove={e=>{if(!panelDrag.current)return;const rect=e.currentTarget.parentElement!.getBoundingClientRect();setWorkPanelWidth(Math.max(30,Math.min(70,100*(e.clientX-rect.left)/rect.width)));}}
             onPointerUp={()=>{panelDrag.current=false;}} onPointerCancel={()=>{panelDrag.current=false;}} onLostPointerCapture={()=>{panelDrag.current=false;}}/>
           <section className={`work-panel ${workMode === "interaction" && view === "graph" && layout.inspector && (selected || globalOpen) ? "show-block-detail" : ""}`} aria-label="작업 패널">
-          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['artifacts','Report'],['code','Code'],['viewer','Image'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','runs'].includes(view)&&<span>{({'shared-terminal':'Terminal Hub',skills:'Project Skills',mcp:'MCP Servers',search:'Search',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
+          <header className="work-panel-header"><nav className="work-panel-tabs" aria-label="작업 패널 보기">{[['graph','Board'],['code','Code'],['artifacts','Report'],['viewer','Image'],['shared-terminal','Terminal Hub'],['runs','Runs']].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>switchView(id)}>{label}</button>)}{!['graph','artifacts','code','viewer','shared-terminal','runs'].includes(view)&&<span>{({'shared-terminal':'Terminal Hub',skills:'Project Skills',mcp:'MCP Servers',search:'Search',jobs:'JOB Queue',documents:'Documentation'} as Record<string,string>)[view]}</span>}</nav>
             {view==='graph'&&<button disabled={!selected} aria-pressed={layout.inspector} onClick={()=>setLayout(l=>({...l,inspector:!l.inspector}))}>블록 상세</button>}
             <button aria-label={workPanelExpanded?'작업 패널 크기 복원':'작업 패널 최대화'} onClick={()=>setWorkPanelExpanded(v=>!v)}>{workPanelExpanded?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button>
             <button aria-label="작업 패널 숨기기" onClick={()=>{setWorkPanelOpen(false);setWorkPanelExpanded(false);}}><X size={16}/></button>
@@ -2007,11 +2000,11 @@ function App() {
               {(viewerVisited || view === "viewer") && <div style={{display:view === "viewer" ? "contents" : "none"}}>
                 <Viewer api={api} token={token} requestId={viewerRequestId} commandId={viewerCommandId} visible={view==="viewer"} expanded={focus==="editor"} onExpand={()=>setFocus(current=>current==="editor"?"":"editor")}/>
               </div>}
-              <SharedTerminals api={api} token={token} container={workMode==='terminal'?terminalHubContainer:null} visible={workMode==='terminal'?(terminalDock==='hub'&&layout.terminal&&!visualizationExpanded&&!['editor','inspector'].includes(focus)):(view==='shared-terminal'&&workPanelOpen)} onPresent={()=>{if(workMode==='interaction'&&dirtyRef.current){notify('Terminal Hub에 확인할 작업이 있습니다. 현재 편집 후 Terminal Hub을 열어주세요.');return;}switchView('shared-terminal');}}/>
+              <SharedTerminals api={api} token={token} visible={view==='shared-terminal'&&workPanelOpen} onPresent={()=>{if(dirtyRef.current){notify('Terminal Hub에 확인할 작업이 있습니다. 현재 편집 후 Terminal Hub을 열어주세요.');return;}switchView('shared-terminal');}}/>
               {(skillsVisited||view==="skills")&&<div style={{display:view==="skills"?"contents":"none"}}><ProjectSkills api={api} token={token}/></div>}
               {(mcpVisited||view==="mcp")&&<div style={{display:view==="mcp"?"contents":"none"}}><McpServers api={api}/></div>}
               {(searchVisited||view==="search")&&<div style={{display:view==="search"?"contents":"none"}}><WorkspaceSearch api={api} project={project}/></div>}
-              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);setTerminalDock("cli");changeWorkMode("terminal");}}/>: view === "viewer" || view === "shared-terminal" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
+              {view==="runs"?<Runs api={api} onRun={session=>{setRunTerminal(session);changeWorkMode("terminal");}}/>: view === "viewer" || view === "shared-terminal" || view === "skills" || view === "mcp" || view === "search" ? null : view === "documents" ? (
                 <Documents key={artifactId} project={project} api={api} selectedId={artifactId} />
               ) : view === "jobs" ? (
                 <JobsBoard project={project} api={api} onArtifact={id=>{setArtifactId(id);switchView("artifacts");}} onOpen={id => {
@@ -2270,15 +2263,8 @@ function App() {
             className="splitter bottom"
             onPointerDown={(e) => resize(e, "bottom")}
           />
-          <section className="terminal-pane terminal-dock" aria-label="Terminal dock">
-            <nav className="terminal-dock-tabs" aria-label="터미널 종류">
-              <button aria-pressed={terminalDock==='cli'} onClick={()=>setTerminalDock('cli')}>Agent CLI</button>
-              <button aria-pressed={terminalDock==='hub'} onClick={()=>setTerminalDock('hub')}>Terminal Hub</button>
-              <span>Alt+PageUp / PageDown · 세션 이동</span>
-              <button aria-label="하단 터미널 접기" onClick={()=>{setFocus('');setLayout(l=>({...l,terminal:false}));}}><X size={14}/></button>
-            </nav>
-            <div className="terminal-dock-content" hidden={terminalDock!=='cli'}>
-          <TerminalPanel active={workMode==='terminal'&&terminalDock==='cli'&&layout.terminal&&!visualizationExpanded&&!['editor','inspector'].includes(focus)} launch={runTerminal}
+          <section className="terminal-pane">
+          <TerminalPanel active={workMode==='terminal'&&layout.terminal&&!visualizationExpanded&&!['editor','inspector'].includes(focus)} launch={runTerminal}
             key={token}
             api={api}
             token={token}
@@ -2287,13 +2273,11 @@ function App() {
             onPresent={result=>present(result)}
             notify={notify}
           />
-            </div>
-            <div className="terminal-dock-content" hidden={terminalDock!=='hub'} ref={setTerminalHubContainer}/>
           </section>
         </main>
       </div>
       <footer className="statusbar">
-        <span title="Alt+1 Board · Alt+2 Image · Alt+3 Report · Alt+4 Code · Alt+5 Terminal Hub · Alt+←/→ 뷰 전환 · Alt+PageUp/PageDown 터미널 탭">뷰 Alt+1–5 · 터미널 탭 Alt+PgUp/PgDn</span>
+        <span title="Alt+1 Board · Alt+2 Code · Alt+3 Report · Alt+4 Image · Alt+5 Terminal Hub · Alt+←/→ 대화·터미널 탭">뷰 Alt+1–5 · 대화·터미널 탭 Alt+←/→</span>
 
         <button
           onClick={async () => {

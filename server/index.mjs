@@ -1,3 +1,4 @@
+import {agentShellEnvironment} from './agent-shell.mjs';
 import {createPerformanceDiagnostics} from './performance-diagnostics.mjs';
 import {externalMcpHandler} from './external-mcp.mjs';
 import {withReportNavigation} from './report-navigation.mjs';
@@ -69,7 +70,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const sessions = new Map();
 const mcpAgents=new McpAgents({changed:()=>sharedTerminals.changed()});
-const sharedTerminals=new SharedTerminals({agents:mcpAgents,context:()=>({workspace,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_WORKSPACE:workspace,ISP_CLI:cliPath}}),notify:event=>{for(const client of wss.clients)if(client.sharedSubscribed&&client.readyState===WebSocket.OPEN){if(client.bufferedAmount>2*1024*1024)client.close(1013,'Client too slow');else client.send(JSON.stringify(event));}}});
+const sharedTerminals=new SharedTerminals({agents:mcpAgents,context:()=>({workspace,env:agentShellEnvironment(workspace,{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:token,ISP_WORKSPACE:workspace,ISP_CLI:cliPath})}),notify:event=>{for(const client of wss.clients)if(client.sharedSubscribed&&client.readyState===WebSocket.OPEN){if(client.bufferedAmount>2*1024*1024)client.close(1013,'Client too slow');else client.send(JSON.stringify(event));}}});
 let interaction;
 const terminalStatusTimer=setInterval(()=>sharedTerminals.changed(),30000);terminalStatusTimer.unref();
 let vite;
@@ -1008,6 +1009,7 @@ function startTerminal(socket, message, recipeRequest) {
       PATH: `${path.dirname(cliPath)}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH || ""}`,
       TERM: "xterm-256color",
     };
+    if(agent==='shell'){Object.assign(env,agentShellEnvironment(workspace,env));delete env.Path;}
     if(recipeRequest)Object.assign(env,{ISP_RECIPE_REQUEST:recipeRequest,ISP_RECIPE_RUNNER:path.join(root,"scripts","recipe-terminal.mjs"),ISP_NODE:process.execPath,PYTHONUNBUFFERED:"1"});
     const windows = process.platform === "win32";
     const command = windows ? "cmd.exe" : process.env.SHELL || "/bin/bash";

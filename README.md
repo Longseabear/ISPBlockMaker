@@ -241,9 +241,9 @@ isp checkpoint-compare BASELINE_ID RESULT_ID
 
 ## 활동 기록과 편집 단축키
 
-화면 이동: **Alt+1** Board, **Alt+2** Image Viewer, **Alt+3** Report, **Alt+4** Code, **Alt+5** Terminal Hub. **Alt+←/→**는 이 순서대로 이전/다음 뷰를 순환합니다. 미저장 편집은 기존 저장 확인을 거칩니다.
+화면 이동: **Alt+1** Board, **Alt+2** Code, **Alt+3** Report, **Alt+4** Image Viewer, **Alt+5** Terminal Hub. 사이드바와 작업 패널에 표시된 순서와 같습니다. 미저장 편집은 기존 저장 확인을 거칩니다.
 
-터미널 탭 이동: **Alt+PageUp/PageDown**으로 이전/다음 세션을 순환합니다. 포커스가 있는 터미널 패널을 우선하며, 그렇지 않으면 표시 중인 Terminal Hub → 하단 터미널 순서로 선택합니다. 숨긴 터미널은 조작하지 않습니다. 채팅 입력창과 앱 HTML 리포트 안에서도 동작하며, Ctrl+C/V 등 터미널 기본 키는 유지합니다. 리포트 키 전달은 로컬 미리보기에만 적용하며 원본·내보내기는 변경하지 않습니다.
+대화·터미널 탭 이동: **Alt+←/→**로 이전/다음 탭을 순환합니다. Interaction 대화, Agent CLI, Terminal Hub 중 포커스가 있는 영역을 우선하며, 포커스가 밖에 있으면 현재 모드의 대화 또는 Agent CLI를 선택합니다. 기존 Alt+PageUp/PageDown도 같은 동작을 합니다. 숨긴 터미널은 조작하지 않습니다. 채팅 입력창과 앱 HTML 리포트 안에서도 동작하며, Ctrl+C/V 등 터미널 기본 키는 유지합니다. 리포트 키 전달은 로컬 미리보기에만 적용하며 원본·내보내기는 변경하지 않습니다.
 
 JOB Queue의 **활동 기록** 탭에서 최근 API 변경·오류, JOB 완료, 시각화와 프로젝트 Git 커밋을 확인합니다. 새 API 활동은 프로젝트 `.isp/activity.json`에 최대 1,000개 보관하고 화면에는 최근 300개를 표시합니다. 도입 이전의 모든 작업/터미널 출력을 복원하는 기능은 아니며, 기존 JOB 완료·시각화·Git 기록을 함께 조회합니다.
 

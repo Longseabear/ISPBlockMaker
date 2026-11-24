@@ -7,6 +7,10 @@ description: Use ISP shared terminal sessions for SSH, development servers, long
 
 Use the local `isp-workspace` MCP shared-terminal tools when a task benefits from a persistent shell that the user can inspect and take over. Ordinary short file reads need not use a shared terminal. If tools are deferred, discover `list_shared_terminals` and `create_shared_terminal` directly; do not search application source or build a separate MCP server to connect SSH. External Claude Code/Codex connections get their own Terminal Hub identity automatically during MCP initialization. No manual token registration is needed.
 
+## Direct agent commands in app shells
+
+In newly opened app Terminal/Terminal Hub shells, `claude` and `codex` automatically receive this workspace's MCP configuration. Arguments are passed through, and each MCP connection gets its own identity. No global configuration edit or dropdown switch is needed. Existing shells require reopening after an update. Absolute executable paths and terminals opened outside the app bypass these launchers. This capability does not itself request or authorize launching another agent.
+
 ## SSH quick path
 
 1. Use the host/SSH alias the user supplied. If the target is missing, ask for it; do not guess a host. Call `list_shared_terminals` once. Reuse only a suitable session you own whose current foreground state is understood; otherwise call `create_shared_terminal` with a new UUID and title `SSH · <host>`.

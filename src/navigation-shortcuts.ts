@@ -1,9 +1,9 @@
-export const navigationViews = ['Block graph', 'Image Viewer', 'Visualizations', 'Node implementations', 'Terminal Hub'];
+export const navigationViews = ['Block graph', 'Node implementations', 'Visualizations', 'Image Viewer', 'Terminal Hub'];
 
 export function navigationShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing' | 'key'>): string | null {
   if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return null;
   if (/^[1-5]$/.test(event.key)) return `view:${Number(event.key) - 1}`;
-  return ({ArrowLeft: 'view:previous', ArrowRight: 'view:next', PageUp: 'terminal:previous', PageDown: 'terminal:next'} as Record<string, string>)[event.key] || null;
+  return ({ArrowLeft: 'terminal:previous', ArrowRight: 'terminal:next', PageUp: 'terminal:previous', PageDown: 'terminal:next'} as Record<string, string>)[event.key] || null;
 }
 
 export function nextNavigationIndex(length: number, current: number, direction: number): number {
@@ -23,8 +23,8 @@ export function performNavigationShortcut(action: string): void {
     return;
   }
   if (action !== 'terminal:previous' && action !== 'terminal:next') return;
-  const panels = Array.from(document.querySelectorAll<HTMLElement>('.shared-terminals, .terminal-panel')).filter(panel => panel.getClientRects().length && getComputedStyle(panel).visibility !== 'hidden');
-  const panel = panels.find(panel => panel.contains(document.activeElement)) || panels[0];
+  const panels = Array.from(document.querySelectorAll<HTMLElement>('.interaction-workspace, .terminal-panel, .shared-terminals')).filter(panel => panel.getClientRects().length && getComputedStyle(panel).visibility !== 'hidden');
+  const panel = panels.find(panel => panel.contains(document.activeElement)) || panels.find(panel => panel.matches('.interaction-workspace, .terminal-panel')) || panels[0];
   if (!panel) return;
   const tabs = Array.from(panel.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
   const index = nextNavigationIndex(tabs.length, tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true'), action === 'terminal:next' ? 1 : -1);
@@ -32,7 +32,7 @@ export function performNavigationShortcut(action: string): void {
   tabs[index]?.focus();
   if (index >= 0) requestAnimationFrame(() => {
     // React commits the new selection before returning input to its terminal.
-    const input = panel.querySelector<HTMLTextAreaElement>('.terminal-tab-content:not([hidden]) .xterm textarea, .shared-screen .xterm textarea');
+    const input = panel.querySelector<HTMLElement>('.terminal-tab-content:not([hidden]) .xterm textarea, .shared-screen .xterm textarea, .conversation-pane.active textarea, .conversation-pane.active iframe');
     input?.focus();
   });
 }

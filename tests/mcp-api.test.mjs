@@ -332,3 +332,38 @@ test('management MCP preserves retries, skill versions, JOB lineage and checkpoi
  await change('restore_checkpoint',{checkpoint_id:checkpoint.id,snapshot:fresh.snapshot,stopTerminals:true});
  assert.ok(!fs.existsSync(path.join(info.sourceRoot,'after-preview.txt')));
 });
+
+
+test('typing claude inside Terminal Hub connects MCP without the agent dropdown',{skip:process.platform!=='win32',timeout:30000},async t=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-shell-mcp-live-'));
+ t.after(()=>fs.rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100}));
+ const bin=path.join(temp,'fake-cli'),entry=path.join(bin,'node_modules/@anthropic-ai/claude-code/cli.js');fs.mkdirSync(path.dirname(entry),{recursive:true});
+ // A small CLI fixture consumes exactly the injected configuration and makes
+ // real protocol requests. No provider credentials or model invocation needed.
+ fs.writeFileSync(entry,`const fs=require('fs');(async()=>{
+ const args=process.argv.slice(2),config=JSON.parse(fs.readFileSync(args[args.indexOf('--mcp-config')+1],'utf8')).mcpServers['isp-workspace'];
+ const headers={...config.headers,'Content-Type':'application/json',Accept:'application/json, text/event-stream'};
+ const response=await fetch(config.url,{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'shell-fixture',version:'1'}}})});
+ if(!response.ok)throw Error('Initialize failed');headers['Mcp-Session-Id']=response.headers.get('mcp-session-id');await response.json();
+ const result=await fetch(config.url,{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_workspace_info',arguments:{}}})}).then(r=>r.json());
+ fs.writeFileSync(process.env.TEST_SHELL_RESULT,JSON.stringify({session:headers['Mcp-Session-Id'],workspace:result.result.structuredContent.workspace}));
+ await fetch(config.url,{method:'DELETE',headers});
+ })().catch(e=>{console.error(e.message);process.exitCode=1;});`);
+ const resultFile=path.join(temp,'result.json');
+ const {origin}=await startServer(t,temp,'workspace',{PATH:bin+path.delimiter+process.env.PATH,TEST_SHELL_RESULT:resultFile});
+ const boot=await fetch(origin+'/api/bootstrap').then(r=>r.json());
+ const headers={Authorization:'Bearer '+boot.token,'Content-Type':'application/json'};
+ const request=async(route,body)=>{const r=await fetch(origin+'/api'+route,{method:'POST',headers,body:JSON.stringify(body)});assert.ok(r.ok,await r.clone().text());return r.json();};
+ const id=crypto.randomUUID();await request('/shared-terminals',{id,title:'Direct CLI',owner:'user'});
+ const sessions=[];
+ for(let i=0;i<2;i++){
+  if(fs.existsSync(resultFile))fs.unlinkSync(resultFile);
+  await request('/shared-terminals/'+id+'/input',{requestId:crypto.randomUUID(),controlVersion:0,data:'claude --resume\r'});
+  const deadline=Date.now()+8000;while(!fs.existsSync(resultFile)&&Date.now()<deadline)await new Promise(r=>setTimeout(r,50));
+  assert.ok(fs.existsSync(resultFile),'CLI did not complete its MCP call');
+  const result=JSON.parse(fs.readFileSync(resultFile,'utf8'));assert.equal(result.workspace,path.join(temp,'workspace'));assert.ok(result.session);sessions.push(result.session);
+  await new Promise(r=>setTimeout(r,250));
+ }
+ assert.notEqual(sessions[0],sessions[1]);
+ await request('/shared-terminals/'+id+'/stop',{controlVersion:0});
+});
