@@ -513,3 +513,8 @@ HTML 옆에 이미지·CSS·JavaScript 파일을 두고 상대경로로 참조�
 ## Terminal Hub
 
 Project Skills 위의 **Terminal Hub**에서 사용자와 에이전트가 SSH·서버·빌드 세션을 함께 보고 조작합니다. 기본은 백그라운드 실행이며 필요한 시점에만 에이전트가 화면 표시를 요청합니다. 화면을 숨겨도 실행은 유지됩니다. **직접 조작 / 에이전트에 넘기기**로 입력 충돌을 방지합니다. [사용법·MCP·출력 제한](docs/shared-terminals.md)을 참고하세요.
+
+
+### 버전 확인
+
+`isp-block-maker --version`은 해당 명령이 사용하는 설치 버전을 표시합니다. 워크스페이스 셸의 `isp --version`은 CLI 버전만 표시하고, `isp version`은 `cliVersion`, `serverVersion`, `serverRoot`, `serverPid`, `matches`를 출력해 실제 실행 중인 서버와 비교합니다. 서버에 연결할 수 없으면 `serverVersion: null`과 오류를 표시합니다. 에이전트는 MCP `get_runtime_version`으로 실행 중인 서버 버전을 확인할 수 있습니다. 버전이 다르면 프로젝트 서버를 종료하고 새 설치 버전에서 다시 여세요.

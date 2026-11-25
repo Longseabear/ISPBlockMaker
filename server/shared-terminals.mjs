@@ -19,18 +19,18 @@ export class SharedTerminals {
   }
   process.kill();
  }}){this.context=context;this.agents=agents;this.freeMemory=freeMemory;this.notify=notify;this.spawn=spawn;this.kill=kill;this.sessions=new Map();}
- info(s){return {id:s.id,title:s.title,owner:s.owner,agentId:s.agentId,agent:s.agentId?this.agents?.get(s.agentId):null,controlVersion:s.controlVersion,status:s.status,pid:s.process.pid,shell:s.shell,lastInputAt:s.lastInputAt,lastOutputAt:s.lastOutputAt,createdAt:s.createdAt,exitCode:s.exitCode,cursor:s.end,userInputSequence:s.userInputSequence,bufferChars:s.buffer.length};}
+ info(s){return {id:s.id,title:s.title,owner:s.owner,agentId:s.agentId,agent:s.agentId?this.agents?.get(s.agentId):null,controlVersion:s.controlVersion,status:s.status,pid:s.process.pid,shell:s.shell,lastInputAt:s.lastInputAt,lastOutputAt:s.lastOutputAt,createdAt:s.createdAt,exitCode:s.exitCode,cursor:s.end,userInputSequence:s.userInputSequence,userInputPending:s.owner==='user'&&!!(s.userLineOpen||Date.now()<(s.userInputUntil||0)),bufferChars:s.buffer.length};}
  list(){return [...this.sessions.values()].map(s=>this.info(s));}
  changed(){this.notify({type:'shared-terminals',sessions:this.list(),agents:this.agents?.list()||[],resources:this.resources()});}
  resources(){return {limits:TERMINAL_LIMITS,sessions:this.sessions.size,running:[...this.sessions.values()].filter(s=>s.status!=='exited').length,bufferChars:[...this.sessions.values()].reduce((n,s)=>n+s.buffer.length,0),agentRequestIds:[...this.sessions.values()].reduce((n,s)=>n+s.writes.size,0),serverRssBytes:process.memoryUsage().rss,systemFreeBytes:this.freeMemory(),systemTotalBytes:os.totalmem(),processMemoryLimited:false};}
- check(s,caller,version){if(caller.kind==='user')return;if(s.agentId!==caller.id||s.owner!=='agent')throw Error('이 터미널의 입력 소유자가 아닙니다. 명시적인 인계를 기다리세요.');if(version!==s.controlVersion)throw Error('제어권이 변경되었습니다. 상태를 다시 읽고 새 요청으로 보내세요.');}
+ check(s,caller,version){if(caller.kind==='user')return;if(s.agentId!==caller.id||s.owner!=='agent')throw Error('이 터미널의 입력 소유자가 아닙니다. 사용자가 제공한 키로 연결하세요.');if(version!==s.controlVersion)throw Error('제어권이 변경되었습니다. 상태를 다시 읽고 새 요청으로 보내세요.');}
  get(id){const s=this.sessions.get(uuid.parse(id));if(!s)throw Error('Terminal Hub을 찾을 수 없습니다.');return s;}
  create(raw,caller=user){
   if(this.closing)throw Error('Terminal Hub 종료 중입니다. 잠시 후 다시 시도하세요.');
   const input=createSchema.parse(raw),existing=this.sessions.get(input.id);
   if(existing){if(existing.title!==input.title||existing.createdBy!==(caller.id||'user'))throw Error('Session ID already used');return this.info(existing);}
   if(this.sessions.size>=TERMINAL_LIMITS.sessions)throw Error('Terminal Hub은 최대 16개입니다. 종료된 세션을 삭제하세요.');
-  if(caller.kind==='agent'&&[...this.sessions.values()].filter(s=>s.agentId===caller.id).length>=TERMINAL_LIMITS.perAgent)throw Error('에이전트별 터미널 한도는 4개입니다. 종료된 세션을 삭제하거나 인계하세요.');
+  if(caller.kind==='agent'&&[...this.sessions.values()].filter(s=>s.agentId===caller.id).length>=TERMINAL_LIMITS.perAgent)throw Error('에이전트별 터미널 한도는 4개입니다. 사용하지 않는 종료 세션을 삭제하세요.');
   if(this.freeMemory()<TERMINAL_LIMITS.minimumFreeMemoryBytes)throw Error('시스템 여유 메모리가 256 MiB 미만입니다. 새 세션을 만들기 전에 실행 중인 작업을 정리하세요.');
   const {workspace,env}=this.context(),windows=process.platform==='win32';
   const processPty=this.spawn(windows?'cmd.exe':env.SHELL||'/bin/bash',windows?['/d','/q']:['-i'],{name:'xterm-256color',cols:100,rows:28,cwd:workspace,env:{...env,TERM:'xterm-256color'}});
@@ -48,19 +48,51 @@ export class SharedTerminals {
  }
  write(id,raw,caller=user){
   const s=this.get(id),input=writeSchema.parse(raw),hash=crypto.createHash('sha256').update((caller.id||'user')+'\0'+input.controlVersion+'\0'+input.data).digest('hex');
-  this.check(s,caller,input.controlVersion);
-  if(input.controlVersion!==s.controlVersion)throw Error('제어권이 변경되었습니다. 상태를 다시 읽으세요.');
+  if(caller.kind==='agent'){
+   if(s.agentId!==caller.id)throw Error('이 터미널의 입력 소유자가 아닙니다.');
+   if(input.controlVersion!==s.controlVersion)throw Error('제어권이 변경되었습니다. 사용자 입력을 확인하고 새 상태를 읽으세요.');
+   if(s.owner==='user'&&(s.userLineOpen||Date.now()<(s.userInputUntil||0)))throw Error('사용자가 입력 중입니다. 입력이 제출된 뒤 상태와 출력을 다시 읽으세요.');
+  }
   if(s.writes.has(input.requestId)){const previous=s.writes.get(input.requestId);if(previous.hash!==hash)throw Error('Input request ID already used');return {...this.info(s),duplicate:true,inputAccepted:true,completion:'not_tracked',outputCursorBeforeWrite:previous.cursor};}
   if(s.status!=='running')throw Error('터미널이 실행 중이 아닙니다.');
-  if(s.owner!==caller.kind)throw Error('직접 조작을 선택한 뒤 입력하세요.');
   // Keep IDs for the lifetime of the session: a lost response must not execute input twice.
   if(caller.kind==='agent'&&s.writes.size>=TERMINAL_LIMITS.agentRequests)throw Error('입력 기록 한도입니다. 새 Terminal Hub을 만드세요.');
   const now=Date.now();if(now-s.inputWindow>=1000){s.inputWindow=now;s.inputBytes=0;}const bytes=Buffer.byteLength(input.data);if(s.inputBytes+bytes>TERMINAL_LIMITS.inputBytesPerSecond)throw Error('터미널 입력 속도 한도입니다. 잠시 후 다시 보내세요.');s.inputBytes+=bytes;
-  const cursor=s.end;s.process.write(input.data);s.lastInputAt=new Date().toISOString();if(caller.kind==='agent')s.writes.set(input.requestId,{hash,cursor});
+  const cursor=s.end;s.process.write(input.data);
+  const previousOwner=s.owner;
+  s.owner=caller.kind;
+  if(caller.kind==='user'){
+   s.controlVersion++;s.userInputUntil=Date.now()+2000;
+   // A pause in typing is not a submitted line. Keep agent input blocked until
+   // Enter or an explicit terminal cancel/end key, even after the grace period.
+   for(const char of input.data)s.userLineOpen=!['\r','\n','\u0003','\u0004'].includes(char);
+  }
+    s.lastInputAt=new Date().toISOString();if(caller.kind==='agent')s.writes.set(input.requestId,{hash,cursor});
   if(caller.kind==='user')s.userInputSequence++;
+  if(caller.kind==='user'||previousOwner!==s.owner)this.changed();
   return {...this.info(s),inputAccepted:true,completion:'not_tracked',outputCursorBeforeWrite:cursor};
  }
- control(id,owner,agentId,caller=user,version){const s=this.get(id);this.check(s,caller,version);owner=z.enum(['agent','user']).parse(owner);const target=agentId||s.agentId;if(owner==='agent'){if(!target||this.agents?.get(target).status==='disconnected')throw Error('연결된 에이전트를 선택하세요.');if(target!==s.agentId&&[...this.sessions.values()].filter(v=>v.agentId===target).length>=TERMINAL_LIMITS.perAgent)throw Error('받는 에이전트의 터미널 한도는 4개입니다.');s.agentId=target;}s.owner=owner;s.controlVersion++;this.changed();return this.info(s);}
+ issueJoinKey(id,caller=user){
+  if(caller.kind!=='user')throw Error('Only the user can copy a terminal join key');
+  const s=this.get(id);if(s.status!=='running')throw Error('터미널이 실행 중이 아닙니다.');
+  const key='sth_'+crypto.randomBytes(32).toString('hex');
+  s.joinGrant={hash:crypto.createHash('sha256').update(key).digest('hex'),version:s.controlVersion};
+  return {key,sessionId:s.id};
+ }
+ join(key,caller){
+  if(caller?.kind!=='agent')throw Error('Connect through agent MCP to join a terminal');
+  z.string().regex(/^sth_[a-f0-9]{64}$/).parse(key);
+  const hash=crypto.createHash('sha256').update(key).digest('hex');
+  const s=[...this.sessions.values()].find(s=>s.joinGrant?.hash===hash);
+  if(!s||s.status!=='running')throw Error('Invalid or expired terminal key; ask the user to copy a new key');
+  const grant=s.joinGrant;
+  if(grant.claimedBy===caller.id&&grant.version===s.controlVersion&&s.owner==='agent'&&s.agentId===caller.id)return this.info(s);
+  if(grant.claimedBy||grant.version!==s.controlVersion)throw Error('Terminal key already used or control changed; ask for a new key');
+  const result=this.control(s.id,'agent',caller.id,user);
+  grant.claimedBy=caller.id;grant.version=s.controlVersion;
+  return result;
+ }
+ control(id,owner,agentId,caller=user,version){const s=this.get(id);this.check(s,caller,version);owner=z.enum(['agent','user']).parse(owner);const target=agentId||s.agentId;if(owner==='agent'){if(!target||this.agents?.get(target).status==='disconnected')throw Error('연결된 에이전트를 선택하세요.');if(target!==s.agentId&&[...this.sessions.values()].filter(v=>v.agentId===target).length>=TERMINAL_LIMITS.perAgent)throw Error('받는 에이전트의 터미널 한도는 4개입니다.');s.agentId=target;}s.owner=owner;if(owner==='user')s.userLineOpen=true;s.controlVersion++;this.changed();return this.info(s);}
  attach(socket,id){this.detach(socket);const s=this.get(id);if(s.sockets.size>=TERMINAL_LIMITS.subscribers)throw Error('세션당 화면 연결은 최대 4개입니다.');s.sockets.add(socket);socket.sharedId=s.id;socket.sharedPending=s.buffer.length;send(socket,{type:'shared-attached',session:this.info(s),buffer:s.buffer});}
  acknowledge(socket,chars){socket.sharedPending=Math.max(0,(socket.sharedPending||0)-z.number().int().min(0).max(262144).parse(chars));}
  detach(socket){this.sessions.get(socket.sharedId)?.sockets.delete(socket);socket.sharedId=null;}
@@ -76,9 +108,10 @@ export function installSharedTerminals(app,manager){
  app.get('/api/shared-terminals/resources',(_req,res)=>res.json(manager.resources()));
  app.get('/api/shared-terminals',(_req,res)=>res.json(manager.list()));
  app.post('/api/shared-terminals',(req,res)=>res.json(manager.create(req.body,req.mcpActor)));
+ app.post('/api/shared-terminals/join',(req,res)=>res.json(manager.join(req.body.key,req.mcpActor)));
+ app.post('/api/shared-terminals/:id/join-key',(req,res)=>res.json(manager.issueJoinKey(req.params.id,req.mcpActor)));
  app.get('/api/shared-terminals/:id/output',(req,res)=>res.json(manager.read(req.params.id,req.query)));
  app.post('/api/shared-terminals/:id/input',(req,res)=>res.json(manager.write(req.params.id,req.body,req.mcpActor)));
- app.post('/api/shared-terminals/:id/control',(req,res)=>res.json(manager.control(req.params.id,req.body.owner,req.body.agentId,req.mcpActor,req.body.controlVersion)));
  app.post('/api/shared-terminals/:id/present',(req,res)=>res.json(manager.present(req.params.id,req.body,req.mcpActor)));
  app.post('/api/shared-terminals/:id/stop',async(req,res)=>res.json(await manager.stop(req.params.id,req.mcpActor,req.body.controlVersion)));
  app.delete('/api/shared-terminals/:id',(req,res)=>res.json(manager.remove(req.params.id,req.mcpActor,Number(req.query.controlVersion))));

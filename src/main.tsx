@@ -1,3 +1,4 @@
+import {useTerminalKeyboard} from './terminal-keyboard';
 import {SharedTerminals} from './SharedTerminals';
 import {installNavigationShortcuts} from './navigation-shortcuts';
 import {PortNames} from './PortNames';
@@ -941,6 +942,7 @@ function TerminalPane({
     [starting, setStarting] = useState(false);
   const [agent, setAgent] = useState("shell"),
     [pinned, setPinned] = useState("");
+  const keyboard=useTerminalKeyboard(session.sessionId);
   const stateCallback = useRef(onState);
   stateCallback.current = onState;
   const presentationCallback = useRef(onPresent);
@@ -986,6 +988,7 @@ function TerminalPane({
     terminal.loadAddon(fitter);
     terminal.open(host.current!);
     terminal.attachCustomKeyEventHandler(terminalClipboardHandler({
+      deleteWord: () => terminal.input(keyboard.deleteWord(),true),
       selection: () => terminal.getSelection(),
       copySelection: () => document.execCommand("copy"),
       selectAll: () => terminal.selectAll(),
@@ -1150,6 +1153,7 @@ function TerminalPane({
           {running ? `Pinned · ${pinned}` : `Next session · ${block.id}`}
         </span>
         <div className="terminal-actions">
+          <select aria-label="터미널 키 입력" title="Ctrl+Backspace: Windows는 Ctrl+H, SSH·Linux는 Ctrl+W" value={keyboard.mode} onChange={e=>keyboard.change(e.target.value)}><option value="windows">Windows 키</option><option value="unix">SSH·Linux 키</option></select>
           <select
             aria-label="Terminal agent"
             value={agent}

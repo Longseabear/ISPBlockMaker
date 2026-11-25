@@ -11,6 +11,7 @@ const segment=value=>encodeURIComponent(value);
 export function registerLocalTools(tool,api,mutate){
  const get=(route)=>api('GET',route);
  const post=(route,body)=>api('POST',route,body);
+ tool('get_runtime_version','Read the version, location and PID of the running workspace server. Installation updates do not update an already-running process.',{},()=>get('/api/version'));
  tool('get_workspace_info','Read authoritative workspace, sourceRoot and scratch paths. Use this instead of launching the CLI for workspace-info.',{},()=>get('/api/workspace-info'));
  tool('get_runtime_diagnostics','Inspect bounded server request/tool timings and event-loop delay when an operation seems slow. Excludes client queueing and process startup. No credentials, payloads or terminal output.',{},()=>get('/api/diagnostics/performance'));
  const bundleSelection={includeSource:z.boolean(),includeWorkRecords:z.boolean(),includeGit:z.boolean().default(false),includeImages:z.boolean().default(false),includeViewer:z.boolean().default(false),includeData:z.boolean().default(false),includeVisualizations:z.boolean().default(false),artifactIds:z.array(id).max(10000).optional(),excludedData:z.array(z.string().max(2000)).max(10000).optional()};

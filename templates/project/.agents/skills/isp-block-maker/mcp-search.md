@@ -43,7 +43,7 @@
 
 ## Changes and execution
 
-Mutation tools require a UUID `request_id`. Retrying the same logical request uses the same ID and payload; the server returns the recorded result without repeating the operation. Reusing the ID for different input is a conflict. After an uncertain outcome (for example, server termination during a call), inspect current state before deciding whether a new request is necessary. Do not switch IDs blindly to force a retry.
+Use a UUID `request_id` only when the actual tool input schema declares it. Graph/work/report mutations use this field; several terminal and presentation tools do not. Do not add REST field names or inferred fields to MCP inputs. For tools with `request_id`, retrying the same logical request uses the same ID and payload; the server returns the recorded result without repeating the operation. Reusing the ID for different input is a conflict. After an uncertain outcome (for example, server termination during a call), inspect current state before deciding whether a new request is necessary. Do not switch IDs blindly to force a retry.
 
 Graph changes require the revision actually read. Reconcile revision conflicts before creating a new request. Use `edit_graph` for a batch that must succeed or fail together; deleting a block with connections requires explicit `remove_connected_edges`. It does not authorize deleting related source files. `update_block` preserves omitted top-level fields; nested contract objects must retain all values that should survive. Jobs and user requests use their separate workflow.
 

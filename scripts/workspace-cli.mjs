@@ -1,3 +1,4 @@
+import {appVersion} from '../server/app-version.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -18,7 +19,8 @@ async function exportFromRunning(workspace,output,options){
  const response=await fetch(new URL('/api/bundle/export',url),{method:'POST',headers:{Authorization:'Bearer '+c.token,'Content-Type':'application/json'},body:JSON.stringify(options),redirect:'error',signal:AbortSignal.timeout(180000)});if(!response.ok)throw new Error((await response.json()).error||'Bundle export failed');let created=false;const out=createWriteStream(output,{flags:'wx'});out.once('open',()=>created=true);try{await pipeline(Readable.fromWeb(response.body),out);}catch(e){if(created)await fs.rm(output,{force:true});throw e;}return true;
 }
 export async function main(args=process.argv.slice(2)){
- const {positional:p,options:o}=parseArgs(args);if(o['--help']){console.log('isp-block-maker [folder]\nisp-block-maker init [folder] [--dry-run | --migrate-layout]\nisp-block-maker serve [folder] | serve --hub\nisp-block-maker pack [folder] -o project.bundle [--without-images] [--without-viewer] [--without-data] [--without-source] [--without-work-records] [--without-visualizations | --visualizations ID,ID] [--with-git] [--dry-run]\nisp-block-maker open project.bundle --into FOLDER [--overwrite] [--no-open]\n--overwrite replaces an existing workspace after preserving a sibling backup. Stop its server first.');return;}
+ if(args.length===1&&['--version','-v','version'].includes(args[0])){console.log('isp-block-maker '+appVersion);return;}
+ const {positional:p,options:o}=parseArgs(args);if(o['--help']){console.log('isp-block-maker --version\nisp-block-maker [folder]\nisp-block-maker init [folder] [--dry-run | --migrate-layout]\nisp-block-maker serve [folder] | serve --hub\nisp-block-maker pack [folder] -o project.bundle [--without-images] [--without-viewer] [--without-data] [--without-source] [--without-work-records] [--without-visualizations | --visualizations ID,ID] [--with-git] [--dry-run]\nisp-block-maker open project.bundle --into FOLDER [--overwrite] [--no-open]\n--overwrite replaces an existing workspace after preserving a sibling backup. Stop its server first.');return;}
  if(p[0]==='init'){
   if(p.length>2||Object.keys(o).some(k=>!['--dry-run','--migrate-layout'].includes(k)))throw Error('Use init [folder] [--dry-run | --migrate-layout]');
   const folder=normalizeWorkspaceFolder(p[1]||'.');

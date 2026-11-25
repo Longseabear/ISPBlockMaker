@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {appVersion} from '../server/app-version.mjs';
 import { serverPaths } from "../server/paths.mjs";
 import fs from "node:fs";
 import path from "node:path";
@@ -137,7 +138,12 @@ export async function main() {
     if (!value || value.startsWith('--')) throw new Error('ID를 지정하세요.');
     return encodeURIComponent(value);
   };
-  if (command === "workspace-info") result = await request('/workspace-info');
+  if (command === '--version' || command === '-v') result='isp '+appVersion;
+  else if(command === 'version'){
+    try{const server=await request('/version');result={cliVersion:appVersion,serverVersion:server.version,serverRoot:server.root,serverPid:server.pid,matches:server.version===appVersion};}
+    catch(error){result={cliVersion:appVersion,serverVersion:null,matches:null,error:String(error.message)};}
+  }
+  else if (command === "workspace-info") result = await request('/workspace-info');
 
   else if (command === "graph-check") {
     const [{workspace},project]=await Promise.all([request('/workspace-info'),request('/project')]);
@@ -555,7 +561,7 @@ export async function main() {
     result = `ISP Block Maker bridge — HTTP, no MCP required
 
 isp context                     Read the terminal's pinned block and neighbors
-isp workspace-info              Read workspace/sourceRoot/graphFile/dataDir/tmpDir paths
+isp --version                   Show this CLI version without connecting\nisp version                     Compare CLI and running workspace server versions\nisp workspace-info              Read workspace/sourceRoot/graphFile/dataDir/tmpDir paths
 isp attempts                    Read work attempts, accepted result and current source
 isp attempt-start tmp/attempt.json
 isp attempt-update ATTEMPT_ID tmp/result.json

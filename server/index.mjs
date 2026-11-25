@@ -1,3 +1,4 @@
+import {appVersion} from './app-version.mjs';
 import {agentShellEnvironment} from './agent-shell.mjs';
 import {createPerformanceDiagnostics} from './performance-diagnostics.mjs';
 import {externalMcpHandler} from './external-mcp.mjs';
@@ -122,7 +123,7 @@ app.use((req, res, next) => {
 });
 const performanceDiagnostics=createPerformanceDiagnostics();
 app.use(performanceDiagnostics.middleware);
-app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", root, workspace, instance, pid: process.pid, agentApi:1 }));
+app.get("/health", (req, res) => res.json({ app: "ISPBlockMaker", version:appVersion, root, workspace, instance, pid: process.pid, agentApi:1 }));
 app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   if (workspaceRecoveryError) return res.status(503).json({error:workspaceRecoveryError});
@@ -326,6 +327,7 @@ app.delete("/api/terminals/:id", (req, res) => {
   res.json({ok: true});
 });
 app.get("/api/diagnostics/performance", (_req,res)=>res.json(performanceDiagnostics.snapshot()));
+app.get("/api/version", (_req,res)=>res.json({version:appVersion,root,pid:process.pid,workspace}));
 app.get("/api/workspace-info", (req, res) => res.json(workspaceInfo()));
 app.post("/api/graph-check", async (req,res) => {
   const options=z.object({blockId:z.string().min(1).max(80).optional(),changedFiles:z.array(z.string().min(1).max(1000)).max(200).default([])}).strict().parse(req.body);

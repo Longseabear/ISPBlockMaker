@@ -38,3 +38,14 @@ test('Ctrl+Shift+C uses the native copy command before permission-based fallback
  const event=key({key:'c',shiftKey:true});assert.equal(handler(event),false);assert.equal(event.prevented,true);assert.equal(copies,1);
  handler(key({key:'c',shiftKey:true,repeat:true}));handler(key({key:'c',shiftKey:true,type:'keyup'}));assert.equal(copies,1);
 });
+
+
+test('Ctrl+Backspace uses configured terminal word erase once per keydown and preserves other keys',()=>{
+ let count=0,ready=true;
+ const handler=terminalClipboardHandler({readText:async()=>'',paste:assert.fail,ready:()=>ready,error:assert.fail,deleteWord:()=>count++});
+ assert.equal(handler(key({key:'Backspace'})),false);assert.equal(count,1);
+ handler(key({key:'Backspace',type:'keyup'}));assert.equal(count,1);
+ handler(key({key:'Backspace',repeat:true}));assert.equal(count,2);
+ for(const extra of [{ctrlKey:false},{altKey:true},{shiftKey:true},{metaKey:true},{isComposing:true}])assert.equal(handler(key({key:'Backspace',...extra})),true);
+ ready=false;handler(key({key:'Backspace'}));assert.equal(count,2);
+});

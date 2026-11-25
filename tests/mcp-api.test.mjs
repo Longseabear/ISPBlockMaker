@@ -25,6 +25,8 @@ test('external MCP uses existing configuration to create and operate isolated re
  }
  assert.ok(transports[0].sessionId);assert.notEqual(transports[0].sessionId,transports[1].sessionId);
  const info=await clients[0].callTool({name:'get_workspace_info',arguments:{}});assert.equal(info.structuredContent.workspace,path.join(temp,'workspace'));
+ const version=await clients[0].callTool({name:'get_runtime_version',arguments:{}});assert.equal(version.structuredContent.version,JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version);
+ const reported=JSON.parse(execFileSync(process.execPath,[path.join(root,'scripts/isp.mjs'),'version'],{encoding:'utf8',windowsHide:true,env:{...process.env,ISP_API_URL:origin,ISP_API_TOKEN:boot.token}}));assert.equal(reported.matches,true);assert.equal(reported.serverVersion,version.structuredContent.version);
  const summary={request_id:crypto.randomUUID(),title:'Private summary title',summary:'PRIVATE_PAYLOAD_NEVER_IN_DIAGNOSTICS'};
  const recorded=await clients[0].callTool({name:'record_work_summary',arguments:summary});assert.ok(!recorded.isError);
  const retried=await clients[0].callTool({name:'record_work_summary',arguments:summary});assert.equal(retried.structuredContent.id,recorded.structuredContent.id);
@@ -49,7 +51,11 @@ test('external MCP uses existing configuration to create and operate isolated re
  assert.ok(diagnostics.structuredContent.recent.some(r=>r.name==='record_work_summary'&&r.kind==='tool'&&r.ms>=0));
  assert.ok(!JSON.stringify(diagnostics).includes(summary.summary));assert.ok(!JSON.stringify(diagnostics).includes(boot.token));
  assert.equal((await fetch(origin+'/api/diagnostics/performance')).status,401);
- assert.ok(!(await clients[0].callTool({name:'stop_shared_terminal',arguments:{session_id,control_version:0}})).isError);
+ const keyResponse=await fetch(origin+'/api/shared-terminals/'+session_id+'/join-key',{method:'POST',headers:{Authorization:'Bearer '+boot.token,'Content-Type':'application/json'},body:'{}'});assert.equal(keyResponse.status,200);
+ const {key}=await keyResponse.json();
+ const joined=await clients[1].callTool({name:'join_shared_terminal',arguments:{key}});assert.ok(!joined.isError);assert.equal(joined.structuredContent.id,session_id);
+ assert.equal((await clients[0].callTool({name:'write_shared_terminal',arguments:{...input,request_id:crypto.randomUUID()}})).isError,true);
+ assert.ok(!(await clients[1].callTool({name:'stop_shared_terminal',arguments:{session_id,control_version:joined.structuredContent.controlVersion}})).isError);
  await Promise.all(transports.map(transport=>transport.terminateSession()));
 });
 
@@ -69,22 +75,23 @@ test('shared terminal MCP and WebSocket share a real shell without opening a vie
  const agentRequest=async(credential,suffix,body)=>fetch(origin+'/api/shared-terminals/'+session_id+suffix,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+credential.token},body:JSON.stringify(body)});
  const forbidden=await agentRequest(secondCredential,'/input',{requestId:crypto.randomUUID(),data:'echo FORGED\r',actor:'user',controlVersion:0});assert.equal(forbidden.status,400);
  assert.equal((await agentRequest(secondCredential,'/stop',{controlVersion:0})).status,400);
- assert.equal((await agentRequest(secondCredential,'/control',{owner:'agent',agentId:secondCredential.id,controlVersion:0})).status,400);
+ assert.equal((await agentRequest(secondCredential,'/control',{owner:'agent',agentId:secondCredential.id,controlVersion:0})).status,404);
  const request_id=crypto.randomUUID(),command='echo SHARED_TERMINAL_OK\r';
  const written=await client.callTool({name:'write_shared_terminal',arguments:{session_id,request_id,control_version:0,data:command}});assert.equal(written.isError,undefined);
  const wait=async check=>{const start=Date.now();while(!await check()){if(Date.now()-start>8000)throw Error('Shared terminal condition timed out');await new Promise(r=>setTimeout(r,40));}};
  await wait(async()=>{const r=await request('/api/shared-terminals/'+session_id+'/output');return r.value.output.includes('SHARED_TERMINAL_OK');});
  assert.equal(events.some(e=>e.type==='shared-present'),false);assert.equal(events.some(e=>e.type==='shared-output'),false);
  ws.send(JSON.stringify({type:'shared-attach',id:session_id}));await wait(()=>events.some(e=>e.type==='shared-attached'&&e.buffer.includes('SHARED_TERMINAL_OK')));
- await request('/api/shared-terminals/'+session_id+'/control',{owner:'user'});
+ await request('/api/shared-terminals/'+session_id+'/input',{requestId:crypto.randomUUID(),controlVersion:0,data:'echo USER_INPUT_OK\r'});
  const denied=await client.callTool({name:'write_shared_terminal',arguments:{session_id,control_version:0,request_id:crypto.randomUUID(),data:'echo blocked\r'}});assert.equal(denied.isError,true);
- ws.send(JSON.stringify({type:'shared-input',controlVersion:1,requestId:crypto.randomUUID(),data:'echo USER_INPUT_OK\r'}));await wait(()=>events.some(e=>e.type==='shared-output'&&e.data.includes('USER_INPUT_OK')));
+ await wait(()=>events.some(e=>e.type==='shared-output'&&e.data.includes('USER_INPUT_OK')));
  assert.equal((await request('/api/shared-terminals/'+session_id+'/output')).value.userInputSequence,1);
  await client.callTool({name:'present_shared_terminal',arguments:{session_id,reason:'inspect',message:'Inspect the shared test output'}});await wait(()=>events.some(e=>e.type==='shared-present'));
  ws.send(JSON.stringify({type:'shared-detach'}));await new Promise(r=>setTimeout(r,50));
- await request('/api/shared-terminals/'+session_id+'/control',{owner:'agent'});
+ await wait(async()=>!(await request('/api/shared-terminals/'+session_id+'/output')).value.userInputPending);
+ const resumed=await request('/api/shared-terminals/'+session_id+'/output');
  const serverCommand=`"${process.execPath}" -e "const s=require('node:http').createServer((q,r)=>r.end('shared server'));s.listen(0,'127.0.0.1',()=>console.log('SERVER_PORT:'+s.address().port));"\r`;
- await client.callTool({name:'write_shared_terminal',arguments:{session_id,control_version:2,request_id:crypto.randomUUID(),data:serverCommand}});
+ await client.callTool({name:'write_shared_terminal',arguments:{session_id,control_version:resumed.value.controlVersion,request_id:crypto.randomUUID(),data:serverCommand}});
  let serverPort;await wait(async()=>{const r=await request('/api/shared-terminals/'+session_id+'/output');serverPort=r.value.output.match(/SERVER_PORT:(\d+)/)?.[1];return !!serverPort;});
  assert.equal(await fetch('http://127.0.0.1:'+serverPort).then(r=>r.text()),'shared server');
  await request('/api/shared-terminals/'+session_id+'/stop',{});await wait(async()=>(await request('/api/shared-terminals/'+session_id+'/output')).value.status==='exited');

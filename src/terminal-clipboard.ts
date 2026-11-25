@@ -7,9 +7,15 @@ export function terminalClipboardHandler(options: {
   writeText?: (text: string) => Promise<void>;
   copySelection?: () => boolean;
   selectAll?: () => void;
+  deleteWord?: () => void;
 }) {
   let pending = false;
   return (event: KeyboardEvent): boolean => {
+    if(event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey&&!event.isComposing&&event.key==='Backspace'&&options.deleteWord){
+      event.preventDefault();event.stopPropagation();
+      if(event.type==='keydown'&&options.ready())options.deleteWord();
+      return false;
+    }
     const modifier=event.ctrlKey||event.metaKey;
     if(modifier&&!event.altKey&&event.shiftKey&&event.key.toLowerCase()==="a") {
       event.preventDefault();event.stopPropagation();

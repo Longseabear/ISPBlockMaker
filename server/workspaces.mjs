@@ -69,7 +69,7 @@ export function openWorkspace(folder, root) {
   {
     fs.mkdirSync(path.dirname(cli), { recursive: true });
     const bridgeModule = JSON.stringify(pathToFileURL(path.join(root, "scripts/isp.mjs")).href);
-    const bridgeSetup = `import fs from 'node:fs';\nimport path from 'node:path';\nconst workspace = ${JSON.stringify(workspace)};\nconst relative = path.relative(workspace, fs.realpathSync(process.cwd()));\nif (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('Run this bridge inside its workspace');\nif (!process.env.ISP_API_TOKEN) { const c = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dataDir, "connection.json"))}, 'utf8')); process.env.ISP_API_URL = c.url; process.env.ISP_API_TOKEN = c.token; }\n`;
+    const bridgeSetup = `import fs from 'node:fs';\nimport path from 'node:path';\nconst workspace = ${JSON.stringify(workspace)};\nconst relative = path.relative(workspace, fs.realpathSync(process.cwd()));\nif (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('Run this bridge inside its workspace');\nif (!process.env.ISP_API_TOKEN && !['--version','-v','version'].includes(process.argv[2])) { const c = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dataDir, "connection.json"))}, 'utf8')); process.env.ISP_API_URL = c.url; process.env.ISP_API_TOKEN = c.token; }\n`;
     fs.writeFileSync(
       cli,
       bridgeSetup + `const {main} = await import(${bridgeModule});\nawait main().catch(e=>{console.error(e.message);process.exitCode=1;});\n`,
