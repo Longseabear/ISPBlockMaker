@@ -3,9 +3,14 @@ set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 if [ -f ./offline.json ]; then
  command -v git >/dev/null 2>&1 || { echo 'Git is required.' >&2; exit 1; }
- chmod +x ./isp-block-maker ./runtime/node
- export PATH="$PWD/runtime:$PATH"
- ./runtime/node scripts/start-local.mjs --check
+ chmod +x ./isp-block-maker
+ if [ -f ./runtime/node ]; then
+  chmod +x ./runtime/node
+  export PATH="$PWD/runtime:$PATH"
+ fi
+ command -v node >/dev/null 2>&1 || { echo 'This slim package requires the existing Node.js 22.16+ (22.x).' >&2; exit 1; }
+ node -e 'const m=require("./offline.json");if(m.nodeModuleVersion&&m.nodeModuleVersion!==process.versions.modules){console.error("Native module ABI mismatch. Use Node "+m.node+" (same major) or a matching package.");process.exit(1)}'
+ node scripts/start-local.mjs --check
  echo 'Offline setup complete. No npm install or network request was made.'
  echo 'Run: ./isp-block-maker /absolute/path/to/workspace'
  exit 0

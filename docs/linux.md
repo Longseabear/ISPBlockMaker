@@ -65,6 +65,10 @@ Node.js 22.16.0에서도 Linux 의존성 설치와 서버·MCP·Bash·Recipe·�
 
 ## 오프라인 패키지 만들기
 
+용량이 제한된 RHEL 8 x86_64 환경에서 이미 Node 22.16.0을 사용 중이면 `-offline-slim.tar.gz`를 선택하세요. 내장 Node와 SDK 내장 Claude, 다른 OS의 터미널 바이너리 및 브라우저 빌드에만 필요한 npm 패키지를 제외합니다. npm 설치는 여전히 필요 없으며, 네이티브 모듈 때문에 Node의 주 버전(22.x)이 빌드 버전과 일치해야 합니다. `setup.sh`에서 ABI를 검사합니다. 기존 작업 폴더는 유지하고 새 압축파일을 별도 폴더에 푸세요.
+
+경량 빌드: `ISP_LINUX_TARGET=rhel8 node scripts/build-linux.mjs --offline --system-node`. 기존 내장 Node형도 같은 서버 의존성 정리를 적용합니다. UI 파일과 라이선스, 서버 실행 의존성 및 Linux 터미널 모듈은 유지합니다.
+
 인터넷에 연결된, 대상과 호환되는 Linux 환경에서 웹 UI를 빌드한 뒤 `node scripts/build-linux.mjs --offline`을 실행합니다. `ISPBlockMaker-<version>-linux-<arch>-offline.tar.gz`에 빌드 머신의 Node 실행 파일과 런타임 npm 의존성을 포함합니다. `ISP_NODE_LICENSE`는 사용한 Node 배포본의 LICENSE 파일로 지정할 수 있습니다 (기본: Node의 bin 폴더 상위 LICENSE).
 
 대상에서는 압축을 풀고 `bash setup.sh`를 실행한 뒤 `./isp-block-maker <workspace>`로 시작합니다. 이 패키지의 setup은 npm, 컴파일러 또는 다운로드를 사용하지 않으며, 런처는 내장 Node를 선택합니다. `offline.json`에서 Node 버전, CPU 아키텍처와 빌드 환경의 glibc를 확인할 수 있습니다. glibc가 오래된 다른 배포판에서는 호환되는 환경에서 다시 빌드해야 할 수 있습니다.
