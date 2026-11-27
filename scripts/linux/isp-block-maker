@@ -1,4 +1,8 @@
 #!/bin/sh
 set -eu
 app_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$app_root/offline.json" ]; then
+ export PATH="$app_root/runtime:$PATH"
+ exec "$app_root/runtime/node" "$app_root/scripts/workspace-cli.mjs" "$@"
+fi
 exec node "$app_root/scripts/workspace-cli.mjs" "$@"

@@ -1,6 +1,15 @@
 #!/bin/sh
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+if [ -f ./offline.json ]; then
+ command -v git >/dev/null 2>&1 || { echo 'Git is required.' >&2; exit 1; }
+ chmod +x ./isp-block-maker ./runtime/node
+ export PATH="$PWD/runtime:$PATH"
+ ./runtime/node scripts/start-local.mjs --check
+ echo 'Offline setup complete. No npm install or network request was made.'
+ echo 'Run: ./isp-block-maker /absolute/path/to/workspace'
+ exit 0
+fi
 command -v node >/dev/null 2>&1 || { echo 'Install Node.js 22.16+ and npm first.' >&2; exit 1; }
 node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(process.platform!=="linux"||major<22||(major===22&&minor<16)){console.error("Linux with Node.js 22.16+ is required");process.exit(1)}'
 command -v npm >/dev/null 2>&1 || { echo 'npm is required.' >&2; exit 1; }

@@ -7,7 +7,11 @@ import {execFileSync} from 'node:child_process';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const version=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
-const name=`ISPBlockMaker-${version}-linux`;
+const offline=process.argv.includes('--offline');
+if(offline&&process.platform!=='linux')throw Error('Build the offline package on the target-compatible Linux architecture.');
+const target=process.env.ISP_LINUX_TARGET||'';
+if(target&&!/^[a-z0-9-]+$/.test(target))throw Error('Invalid Linux target label');
+const name=`ISPBlockMaker-${version}-linux${offline?'-'+process.arch+(target?'-'+target:'')+'-offline':''}`;
 const release=path.resolve(process.env.ISP_BUILD_OUTPUT||path.join(root,'release'));
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-linux-package-'));
 try {
@@ -25,10 +29,21 @@ try {
  for(const [source,target] of [['setup.sh','setup.sh'],['isp-block-maker','isp-block-maker']]) {
   fs.writeFileSync(path.join(app,target),fs.readFileSync(path.join(root,'scripts/linux',source),'utf8').replaceAll('\r\n','\n'),{mode:0o755});
  }
+ if(offline){
+  // Install into a clean stage: never package a developer's node_modules or npm credentials.
+  execFileSync('npm',['ci','--omit=dev','--no-audit','--no-fund','--foreground-scripts'],{cwd:app,stdio:'inherit',env:{...process.env,PATH:path.dirname(process.execPath)+path.delimiter+process.env.PATH}});
+  fs.mkdirSync(path.join(app,'runtime'));
+  fs.copyFileSync(process.execPath,path.join(app,'runtime/node'));fs.chmodSync(path.join(app,'runtime/node'),0o755);
+  const license=process.env.ISP_NODE_LICENSE||path.resolve(path.dirname(process.execPath),'../LICENSE');
+  if(!fs.existsSync(license))throw Error('Set ISP_NODE_LICENSE to the LICENSE from this exact Node distribution.');
+  fs.copyFileSync(license,path.join(app,'runtime/LICENSE'));
+  const header=process.report.getReport().header;
+  fs.writeFileSync(path.join(app,'offline.json'),JSON.stringify({version,node:process.version,architecture:process.arch,target:target||null,glibcBuild:header.glibcVersionRuntime||null},null,2)+'\n');
+ }
  fs.mkdirSync(release,{recursive:true});
  const archive=path.join(release,name+'.tar.gz');
  execFileSync('tar',['-czf',name+'.tar.gz',name],{cwd:temp,stdio:'inherit'});
  fs.copyFileSync(path.join(temp,name+'.tar.gz'),archive);
  fs.writeFileSync(archive+'.sha256',crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex')+'  '+path.basename(archive)+'\n');
- console.log(`Linux package: ${archive}\nInstall: bash setup.sh (Node.js 22.16+, npm, Git required)`);
+ console.log(`Linux package: ${archive}\nInstall: bash setup.sh (${offline?'bundled Node and runtime dependencies; Git required':'Node.js 22.16+, npm, Git required'})`);
 } finally {fs.rmSync(temp,{recursive:true,force:true});}
