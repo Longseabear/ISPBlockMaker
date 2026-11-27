@@ -231,7 +231,6 @@ app.post('/api/recipes', (req,res)=>res.json(saveRecipe(workspace,req.body.recip
 app.delete('/api/recipes/:id', (req,res)=>res.json(deleteRecipe(workspace,req.params.id,{expectedHash:req.body.expectedHash})));
 app.post('/api/recipes/:id/plan',(req,res)=>res.json(planRecipeRun(workspace,req.params.id,{parameters:req.body.parameters,expectedHash:req.body.expectedHash})));
 app.post('/api/recipes/:id/launch', (req,res)=>{
-  if(process.platform!=='win32')throw Error('Runs terminal requires Windows');
   const plan=planRecipeRun(workspace,req.params.id,{parameters:req.body.parameters,expectedHash:req.body.expectedHash});
   const sessionId=crypto.randomUUID();
   const directory=path.join(dataDir,'recipe-requests');
@@ -1014,7 +1013,7 @@ function startTerminal(socket, message, recipeRequest) {
     if(agent==='shell'){Object.assign(env,agentShellEnvironment(workspace,env));delete env.Path;}
     if(recipeRequest)Object.assign(env,{ISP_RECIPE_REQUEST:recipeRequest,ISP_RECIPE_RUNNER:path.join(root,"scripts","recipe-terminal.mjs"),ISP_NODE:process.execPath,PYTHONUNBUFFERED:"1"});
     const windows = process.platform === "win32";
-    const command = windows ? "cmd.exe" : process.env.SHELL || "/bin/bash";
+    const command = windows ? "cmd.exe" : recipeRequest ? process.execPath : process.env.SHELL || "/bin/bash";
     const args = windows && recipeRequest ? '/d /s /k ""%ISP_NODE%" "%ISP_RECIPE_RUNNER%""' : windows
       ? [
           "/d",
@@ -1023,7 +1022,7 @@ function startTerminal(socket, message, recipeRequest) {
             ? "echo ISP workspace ready. Run: isp context"
             : agent,
         ]
-      : ["-i"];
+      : recipeRequest ? [env.ISP_RECIPE_RUNNER] : ["-i"];
     const identity=agent==='shell'?null:mcpAgents.issue(agent+' · '+sessionId.slice(0,8),'terminal:'+sessionId);
     if(identity)env.ISP_MCP_AGENT_TOKEN=identity.token;
     let mcp;

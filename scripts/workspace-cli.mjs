@@ -11,7 +11,13 @@ import {openWorkspace} from '../server/workspaces.mjs';
 import {normalizeWorkspaceFolder,requireLayoutConsent,planProjectLayout,ensureProjectLayout} from '../server/project-layout.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export function parseArgs(args){const flags=new Set(['--hub','--migrate-layout','--without-images','--without-visualizations','--without-viewer','--without-data','--without-source','--without-work-records','--with-git','--dry-run','--no-open','--overwrite','--help']),values=new Set(['-o','--into','--visualizations']);const positional=[],options={};for(let i=0;i<args.length;i++){const a=args[i];if(flags.has(a)){options[a]=true;}else if(values.has(a)){if(!args[i+1]||args[i+1].startsWith('--'))throw new Error('Missing value for '+a);options[a]=args[++i];}else if(a.startsWith('-'))throw new Error('Unknown option: '+a);else positional.push(a);}return {positional,options};}
-async function launch(folder){const executable=path.join(root,'ISPBlockMaker.exe');await fs.access(executable);const child=spawn(executable,folder?[folder]:[],{cwd:process.cwd(),detached:true,stdio:'ignore',windowsHide:false});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();}
+async function launch(folder){
+ if(process.platform!=='win32'){
+  if(folder)process.env.ISP_WORKSPACE=path.resolve(folder);
+  await import('./start-local.mjs');return;
+ }
+ const executable=path.join(root,'ISPBlockMaker.exe');await fs.access(executable);const child=spawn(executable,folder?[folder]:[],{cwd:process.cwd(),detached:true,stdio:'ignore',windowsHide:false});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
+}
 async function exportFromRunning(workspace,output,options){
  let c;try{c=JSON.parse(await fs.readFile(path.join(workspace,'.isp/connection.json'),'utf8'));}catch{return false;}
  let url;try{url=new URL(c.url);}catch{return false;}if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.username||url.password)throw new Error('Invalid local bridge URL');
@@ -53,6 +59,9 @@ export async function main(args=process.argv.slice(2)){
  if(p[0]==='open'||p[0]?.toLowerCase().endsWith('.bundle')){
   const file=p[0]==='open'?p[1]:p[0];if(!file||p.length>(p[0]==='open'?2:1)||!o['--into']||Object.keys(o).some(key=>!['--into','--no-open','--overwrite'].includes(key)))throw new Error('Use open file.bundle --into FOLDER [--overwrite] [--no-open]');const result=await unpackBundle(path.resolve(file),o['--into'],{overwrite:!!o['--overwrite'],prepare:stage=>openWorkspace(stage,root),finalize:destination=>openWorkspace(destination,root)});console.log('Bundle restored: '+result.workspace);if(result.backupPath)console.log('Original workspace backup: '+result.backupPath);if(!result.manifest.includeImages)console.log('Viewer originals omitted; existing crops remain available.');if(!o['--no-open'])await launch(result.workspace);return;
  }
- if(p.length>1||Object.keys(o).length)throw new Error('Unknown command or option. Run --help.');if(p.length===0){await launch(null);return;}const folder=normalizeWorkspaceFolder(p[0]);requireLayoutConsent(folder);await launch(folder);
+ if(p.length>1||Object.keys(o).length)throw new Error('Unknown command or option. Run --help.');
+ if(p.length===0){await launch(null);return;}
+ if(process.platform==='linux')await fs.mkdir(path.resolve(p[0]),{recursive:true});
+ const folder=normalizeWorkspaceFolder(p[0]);requireLayoutConsent(folder);await launch(folder);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error(e.message);process.exitCode=1;});

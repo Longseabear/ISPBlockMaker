@@ -1,6 +1,6 @@
 {
   "name": "isp-block-maker",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,9 @@
     "build:installer": "npm run build && npm run build:launcher && node scripts/build-installer.mjs",
     "test": "node --test tests/*.test.mjs",
     "isp": "node scripts/isp.mjs",
-    "setup:chat": "npm --prefix vendor/cloudcli ci --ignore-scripts --no-audit --no-fund"
+    "setup:chat": "npm --prefix vendor/cloudcli ci --ignore-scripts --no-audit --no-fund",
+    "build:linux": "npm run build && node scripts/build-linux.mjs",
+    "start:checked": "node scripts/start-local.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.306",

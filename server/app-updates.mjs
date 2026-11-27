@@ -26,7 +26,7 @@ export async function queryRelease(current,{fetchRelease=fetch,platform=process.
   if(platform==='win32'&&!error.status){try{release=await nativeRelease();}catch(nativeError){throw Error(updateFailure(nativeError.status?nativeError:error));}}
   else throw Error(updateFailure(error));
  }
- return releaseInfo(current,release);
+ return releaseInfo(current,release,platform);
 }
 export const releasesUrl='https://github.com/Longseabear/ISPBlockMaker/releases/latest';
 export function newerVersion(current,latest){
@@ -34,11 +34,12 @@ export function newerVersion(current,latest){
  const a=parse(current),b=parse(latest);if(!a||!b)return false;
  for(let i=0;i<3;i++){if(a[i]!==b[i])return b[i]>a[i];}return false;
 }
-export function releaseInfo(current,release){
+export function releaseInfo(current,release,platform=process.platform){
  if(release.draft||release.prerelease||typeof release.tag_name!=='string')throw Error('안정 릴리스 정보를 확인할 수 없습니다.');
- const asset=release.assets?.find(a=>a.name==='ISPBlockMaker-Setup.exe');
+ const name=platform==='linux'?`ISPBlockMaker-${release.tag_name.replace(/^v/,'')}-linux.tar.gz`:'ISPBlockMaker-Setup.exe';
+ const asset=release.assets?.find(a=>a.name===name);
  const url=asset?.browser_download_url;
- const downloadUrl=typeof url==='string'&&/^https:\/\/github\.com\/Longseabear\/ISPBlockMaker\/releases\/download\/[^/]+\/ISPBlockMaker-Setup\.exe$/.test(url)?url:null;
+ const downloadUrl=url===`https://github.com/Longseabear/ISPBlockMaker/releases/download/${release.tag_name}/${name}`?url:null;
  return {current,latest:release.tag_name,available:newerVersion(current,release.tag_name),releasesUrl,downloadUrl};
 }
 export function installAppUpdates(app,current){

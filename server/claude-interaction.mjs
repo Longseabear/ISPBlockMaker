@@ -10,11 +10,11 @@ import {query} from '@anthropic-ai/claude-agent-sdk';
 import {readMcpSettings,agentMcpConfig,resolveAgent,effectiveMcpServers} from './mcp-settings.mjs';
 const require=createRequire(import.meta.url);
 function runtimeFiles(env){
- if(process.platform!=='win32')throw Error('Claude SDK 연결은 Windows 환경을 대상으로 합니다.');
  const launch=env.ISP_CLAUDE_PATH?{command:path.resolve(env.ISP_CLAUDE_PATH),args:[]}:resolveAgent('claude',env);
  // Use the company installation only. Never fall back to the SDK's bundled CLI.
- if(launch.args.length||path.extname(launch.command).toLowerCase()!=='.exe')throw Error('회사 Claude Code의 claude.exe 경로를 ISP_CLAUDE_PATH 또는 PATH에 지정하세요.');
+ if(launch.args.length||(process.platform==='win32'&&path.extname(launch.command).toLowerCase()!=='.exe'))throw Error('Claude Code 실행 파일 경로를 ISP_CLAUDE_PATH 또는 PATH에 지정하세요.');
  const file=fs.realpathSync(launch.command);
+ fs.accessSync(file,process.platform==='win32'?fs.constants.F_OK:fs.constants.X_OK);
  const sdk=JSON.parse(fs.readFileSync(path.join(path.dirname(require.resolve('@anthropic-ai/claude-agent-sdk')),'package.json'),'utf8'));
  return {file,sdkVersion:sdk.version};
 }
