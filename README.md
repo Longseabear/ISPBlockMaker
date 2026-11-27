@@ -43,7 +43,7 @@ ISPBlockMaker/                  # 프레임워크 Git
 
 ### Linux 배포
 
-Linux는 명령어로 서버를 실행하고 브라우저 UI를 사용합니다. `ISPBlockMaker-<version>-linux.tar.gz`를 풀고 `bash setup.sh`, `./isp-block-maker ~/ISPWorkspaces/my-project` 순서로 실행하세요. Node.js 24 이상과 npm, Git이 필요합니다. 로컬 브라우저 또는 SSH 포트 포워딩으로 접속합니다. [설치·원격 접속·소스 빌드 안내](docs/linux.md)를 참고하세요.
+Linux는 명령어로 서버를 실행하고 브라우저 UI를 사용합니다. `ISPBlockMaker-<version>-linux.tar.gz`를 풀고 `bash setup.sh`, `./isp-block-maker ~/ISPWorkspaces/my-project` 순서로 실행하세요. Node.js 22.16 이상과 npm, Git이 필요합니다. 로컬 브라우저 또는 SSH 포트 포워딩으로 접속합니다. [설치·원격 접속·소스 빌드 안내](docs/linux.md)를 참고하세요.
 
 ### Windows 배포
 
@@ -53,7 +53,7 @@ Linux는 명령어로 서버를 실행하고 브라우저 UI를 사용합니다.
 
 `ISPBlockMaker-Setup.exe.sha256`으로 설치파일 무결성을 확인할 수 있습니다. 설치파일은 코드 서명되지 않은 초기 버전입니다.
 
-Node.js 24 이상이 필요합니다. Windows와 Ubuntu 24.04(WSL2)에서 서버 실행을 검증했습니다.
+Node.js 22.16 이상이 필요합니다. Windows와 Ubuntu 24.04(WSL2)에서 서버 실행을 검증했습니다.
 
 ```sh
 npm install

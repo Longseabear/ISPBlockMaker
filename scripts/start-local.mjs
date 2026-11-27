@@ -8,7 +8,8 @@ const require = createRequire(import.meta.url);
 try {
   const port = Number(process.env.PORT || 4310);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("PORT must be an integer from 1 to 65535.");
-  if (Number(process.versions.node.split(".")[0]) < 24) throw new Error("Node.js 24 or newer is required.");
+  const [major,minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 16)) throw new Error("Node.js 22.16 or newer is required.");
   for (const file of ["dist/index.html", "server/index.mjs", "templates/project/.agents/skills/isp-block-maker/SKILL.md"])
     if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing ${file}. Use the complete distribution folder; the executable alone is not sufficient.`);
   for (const dependency of ["express", "ws", "zod", "node-pty", "prismjs", "katex"]) require.resolve(dependency);

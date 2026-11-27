@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-command -v node >/dev/null 2>&1 || { echo 'Install Node.js 24+ and npm first.' >&2; exit 1; }
-node -e 'if(process.platform!=="linux"||Number(process.versions.node.split(".")[0])<24){console.error("Linux with Node.js 24+ is required");process.exit(1)}'
+command -v node >/dev/null 2>&1 || { echo 'Install Node.js 22.16+ and npm first.' >&2; exit 1; }
+node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(process.platform!=="linux"||major<22||(major===22&&minor<16)){console.error("Linux with Node.js 22.16+ is required");process.exit(1)}'
 command -v npm >/dev/null 2>&1 || { echo 'npm is required.' >&2; exit 1; }
 command -v git >/dev/null 2>&1 || { echo 'Git is required.' >&2; exit 1; }
 for tool in python3 make g++; do

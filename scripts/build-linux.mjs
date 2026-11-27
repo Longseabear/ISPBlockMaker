@@ -30,5 +30,5 @@ try {
  execFileSync('tar',['-czf',name+'.tar.gz',name],{cwd:temp,stdio:'inherit'});
  fs.copyFileSync(path.join(temp,name+'.tar.gz'),archive);
  fs.writeFileSync(archive+'.sha256',crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex')+'  '+path.basename(archive)+'\n');
- console.log(`Linux package: ${archive}\nInstall: bash setup.sh (Node.js 24+, npm, Git required)`);
+ console.log(`Linux package: ${archive}\nInstall: bash setup.sh (Node.js 22.16+, npm, Git required)`);
 } finally {fs.rmSync(temp,{recursive:true,force:true});}

@@ -4,7 +4,7 @@ Linux에서는 명령어로 서버를 실행하고 기존 브라우저 UI로 작
 
 ## 설치
 
-Node.js 24 이상, npm, Git과 Bash가 필요합니다. 터미널용 `node-pty`를 빌드할 Python 3, make, C++ 컴파일러도 준비하세요 (Ubuntu/Debian: `sudo apt-get install git python3 build-essential`). Node와 에이전트 CLI는 Linux용으로 설치해야 합니다. WSL에서 Windows의 node.exe/npm을 재사용하지 마세요.
+Node.js 22.16 이상, npm, Git과 Bash가 필요합니다. 터미널용 `node-pty`를 빌드할 Python 3, make, C++ 컴파일러도 준비하세요 (Ubuntu/Debian: `sudo apt-get install git python3 build-essential`). Node와 에이전트 CLI는 Linux용으로 설치해야 합니다. WSL에서 Windows의 node.exe/npm을 재사용하지 마세요.
 
 `ISPBlockMaker-<version>-linux.tar.gz`와 `.sha256` 파일을 같은 폴더에 놓고:
 
@@ -58,3 +58,7 @@ npm run build:linux
 ## 검증 범위
 
 Ubuntu 24.04.3 LTS(WSL2 x64), Linux Node.js 24.18.0에서 패키지 의존성 설치, 시작 검사, 새 workspace 서버 실행, 웹 UI 응답, 실제 MCP 연결 및 Bash 명령 실행, Recipe 실행과 중단 시 자식 프로세스 종료, 서버 SIGTERM 종료를 검증했습니다. Claude 실행 파일 선택·실행 권한 검사는 테스트용 CLI로 검증했으며 실제 모델 호출은 수행하지 않았습니다. ARM64와 다른 Linux 배포판은 아직 실행 검증하지 않았습니다.
+
+Node.js 22.16.0에서도 Linux 의존성 설치와 서버·MCP·Bash·Recipe·검색(SQLite FTS)·이미지 관련 테스트 32개를 통과했습니다. v0.1.43부터 설치 및 시작 검사의 최소 버전은 22.16입니다. v0.1.42에 게시된 기존 패키지는 Node 24 제한을 포함하므로 v0.1.43 이상 패키지를 사용하세요.
+
+폐쇄망에서 npm 레지스트리 또는 사내 미러에 접속할 수 없다면 `setup.sh`만으로 설치할 수 없습니다. 같은 Linux CPU 아키텍처·libc 및 Node 버전 환경에서 설치한 런타임 의존성을 함께 반입하는 별도 패키지가 필요합니다.
