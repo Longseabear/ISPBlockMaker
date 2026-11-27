@@ -14,6 +14,12 @@ export function parseArgs(args){const flags=new Set(['--hub','--migrate-layout',
 async function launch(folder){
  if(process.platform!=='win32'){
   if(folder)process.env.ISP_WORKSPACE=path.resolve(folder);
+  const {serverPaths}=await import('../server/paths.mjs');
+  const {initialFolder}=serverPaths(root);
+  await fs.mkdir(initialFolder,{recursive:true});
+  const {findWorkspaceServer}=await import('../server/workspace-open.mjs');
+  const existing=await findWorkspaceServer(initialFolder);
+  if(existing){console.log('Workspace server already running: '+existing);return;}
   await import('./start-local.mjs');return;
  }
  const executable=path.join(root,'ISPBlockMaker.exe');await fs.access(executable);const child=spawn(executable,folder?[folder]:[],{cwd:process.cwd(),detached:true,stdio:'ignore',windowsHide:false});await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
@@ -48,6 +54,7 @@ export async function main(args=process.argv.slice(2)){
   }
   const folder=normalizeWorkspaceFolder(p[1]||'.');const plan=requireLayoutConsent(folder);
   if(plan.kind!=='ready'&&plan.kind!=='adopt')throw Error('Initialize this workspace first: isp-block-maker init .');
+  if(process.platform==='linux'){await launch(folder);return;}
   process.env.ISP_WORKSPACE=folder;await import('../server/index.mjs');return;
  }
  if(o['--hub']||o['--migrate-layout'])throw Error('--hub is only for serve; --migrate-layout is only for init.');

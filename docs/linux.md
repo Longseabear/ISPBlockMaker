@@ -19,7 +19,7 @@ bash setup.sh
 
 압축 파일에는 빌드된 웹 UI, 서버와 프로젝트 템플릿이 포함됩니다. Node 및 node_modules는 포함하지 않으며 설치 시 npm 레지스트리에 접속합니다. CPU별 네이티브 의존성은 설치하는 Linux 환경에서 준비합니다. 기존 workspace는 별도 경로에 두고 업데이트할 때 새 패키지에서 같은 경로를 지정하세요.
 
-출력되는 `http://127.0.0.1:4310`을 브라우저에서 엽니다. 서버는 포그라운드로 동작하며 Ctrl+C로 종료합니다. 포트는 `PORT=4320 ./isp-block-maker ~/ISPWorkspaces/my-project`처럼 지정합니다. 로그는 실행한 터미널에 출력됩니다. `ISP_STATE_HOME`으로 서버 상태 저장 위치를 변경할 수 있으며 기본값은 `~/.local/share/ISPBlockMaker/state`입니다.
+출력되는 로컬 주소를 브라우저에서 엽니다. 기본 포트 4310이 사용 중이면 운영체제가 빈 포트를 자동 할당합니다. 프로젝트마다 다른 터미널에서 실행하면 포트를 직접 지정할 필요가 없습니다. 같은 workspace가 실행 중이면 새 서버를 만들지 않고 기존 주소를 안내합니다. 서버는 포그라운드로 동작하며 Ctrl+C로 종료합니다. 고정 포트가 필요하면 `env PORT=4320 ./isp-block-maker ~/ISPWorkspaces/my-project`처럼 지정합니다. 명시한 포트가 사용 중이면 다른 포트로 바꾸지 않고 오류를 안내합니다. 로그는 실행한 터미널에 출력됩니다. `ISP_STATE_HOME`으로 서버 상태 저장 위치를 변경할 수 있으며 기본값은 `~/.local/share/ISPBlockMaker/state`입니다.
 
 실행 파일을 PATH에 추가하려면 패키지 폴더를 PATH에 넣으세요. 예: `export PATH="$HOME/apps/ISPBlockMaker-<version>-linux:$PATH"`. 실행 스크립트만 다른 폴더로 복사하면 서버 파일을 찾을 수 없습니다.
 
@@ -30,7 +30,7 @@ bash setup.sh
 ```sh
 ssh -L 4310:127.0.0.1:4310 user@linux-host
 # 연결된 Linux 셸에서:
-~/apps/ISPBlockMaker-<version>-linux/isp-block-maker ~/ISPWorkspaces/my-project
+env PORT=4310 ~/apps/ISPBlockMaker-<version>-linux/isp-block-maker ~/ISPWorkspaces/my-project
 ```
 
 접속 PC의 브라우저에서 `http://127.0.0.1:4310`을 엽니다. 터미널·에이전트·파일 경로는 모두 Linux 서버 기준입니다. SSH 세션이 종료되어도 서버를 유지하려면 tmux 또는 사용자 서비스에서 실행하세요.
@@ -78,8 +78,8 @@ Git, 기본 Linux 셸과 시스템 라이브러리는 대상 환경에 필요합
 RHEL 8 x86_64용 패키지는 Red Hat UBI 8.10(glibc 2.28)에서 Node 22.16.0을 사용하여 `ISP_LINUX_TARGET=rhel8 node scripts/build-linux.mjs --offline`으로 생성했습니다. 빌드 환경에는 GCC C++, make, Git, Python 3.9 및 인터넷 접근이 필요하며 `npm_config_python=/usr/bin/python3.9`로 Python을 선택했습니다. 생성된 패키지는 네트워크를 차단한 UBI 8.10에서 npm·컴파일러 호출을 막고 설치·서버·MCP·터미널·Recipe·검색·이미지 테스트 32개를 통과했습니다. 사용자의 실제 RHEL 호스트 검증은 별도입니다.
 
 ```sh
-tar -xzf ISPBlockMaker-0.1.43-linux-x64-rhel8-offline.tar.gz
-cd ISPBlockMaker-0.1.43-linux-x64-rhel8-offline
+tar -xzf ISPBlockMaker-0.1.44-linux-x64-rhel8-offline.tar.gz
+cd ISPBlockMaker-0.1.44-linux-x64-rhel8-offline
 bash setup.sh
 ./isp-block-maker ~/ISPWorkspaces/my-project
 ```

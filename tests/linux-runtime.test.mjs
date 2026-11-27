@@ -6,7 +6,8 @@ import path from 'node:path';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import {once} from 'node:events';
-import {spawn} from 'node:child_process';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -14,6 +15,38 @@ import {claudeRuntime} from '../server/claude-interaction.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const until=async predicate=>{for(let i=0;i<200;i++){if(await predicate())return;await new Promise(r=>setTimeout(r,100));}throw Error('Timed out');};
+
+test('Linux CLI automatically assigns ports, reuses workspace URL and honors explicit ports',{skip:process.platform!=='linux',timeout:60000},async()=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-linux-ports-')),children=[];
+ const env={...process.env,ISP_STATE_HOME:path.join(temp,'state')};delete env.PORT;delete env.ISP_NO_DISCOVERY;delete env.ISP_WORKSPACE;
+ const cli=path.join(root,'scripts/workspace-cli.mjs');
+ const start=async(name)=>{
+  const folder=path.join(temp,name),child=spawn(process.execPath,[cli,folder],{env,stdio:['ignore','pipe','pipe']});children.push(child);
+  let log='';child.stdout.on('data',b=>log+=b);child.stderr.on('data',b=>log+=b);
+  await until(()=>{if(child.exitCode!==null)throw Error(log);return log.includes('ISP Block Maker →');});
+  const url=log.match(/ISP Block Maker → (http:\/\/127\.0\.0\.1:\d+)/)[1];
+  return {folder,url,child};
+ };
+ try{
+  const a=await start('a'),b=await start('b');assert.notEqual(a.url,b.url);
+  for(const s of [a,b]){
+   const health=await fetch(s.url+'/health').then(r=>r.json());assert.equal(health.pid,s.child.pid);
+   const connection=JSON.parse(fs.readFileSync(path.join(s.folder,'.isp/connection.json'),'utf8'));assert.equal(connection.url,s.url);
+   const boot=await fetch(s.url+'/api/bootstrap').then(r=>r.json());
+   const client=new Client({name:'auto-port-test',version:'1'});
+   try{await client.connect(new StreamableHTTPClientTransport(new URL(s.url+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+boot.token}}}));
+    const info=await client.callTool({name:'get_workspace_info',arguments:{}});assert.equal(info.structuredContent.workspace,s.folder);
+   }finally{await client.close();}
+  }
+  for(const args of [[a.folder],['serve',a.folder]]){
+   const {stdout}=await promisify(execFile)(process.execPath,[cli,...args],{env,timeout:10000});assert.ok(stdout.includes('already running: '+a.url));
+  }
+  await assert.rejects(promisify(execFile)(process.execPath,[cli,path.join(temp,'explicit')],{env:{...env,PORT:new URL(a.url).port},timeout:10000}),e=>{assert.equal(e.code,1);assert.match(e.stderr,/already in use/);return true;});
+ }finally{
+  for(const child of children)if(child.exitCode===null&&child.signalCode===null){const done=once(child,'exit');child.kill();await done;}
+  fs.rmSync(temp,{recursive:true,force:true});
+ }
+});
 
 test('Linux CLI starts browser server, MCP PTY executes, Recipe launches and SIGTERM exits',{skip:process.platform!=='linux',timeout:60000},async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'isp-linux-test-'));

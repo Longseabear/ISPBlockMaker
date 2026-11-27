@@ -62,8 +62,10 @@ const opened = openWorkspace(initialFolder, root);
 let { workspace, dataDir, artifactDir, store } = opened;
 let cliPath = opened.cli;
 let token = crypto.randomBytes(32).toString("hex");
-const port = Number(process.env.PORT || 4310);
-const origin = `http://127.0.0.1:${port}`;
+const automaticPort=process.platform==='linux'&&!process.env.PORT;
+let port = Number(process.env.PORT || 4310);
+if(!Number.isInteger(port)||port<1||port>65535)throw Error('PORT must be an integer from 1 to 65535.');
+let origin = `http://127.0.0.1:${port}`;
 const instance = crypto.randomUUID();
 const app = express();
 app.disable("x-powered-by");
@@ -1185,12 +1187,18 @@ function publishConnection() {
       { mode: 0o600 },
     );
 }
-server.on("error", error => { console.error(error.code === "EADDRINUSE" ? `Port ${port} is already in use. Close the other server or choose another PORT.` : error.message); process.exitCode=1; });
-server.listen(port, "127.0.0.1", () => {
+server.on("error", error => {
+  if(error.code==='EADDRINUSE'&&automaticPort&&port!==0){port=0;server.listen(0,'127.0.0.1');return;}
+  console.error(error.code === "EADDRINUSE" ? `Port ${port} is already in use. Close the other server or choose another PORT.` : error.message);
+  shutdown().finally(()=>process.exit(1));
+});
+server.on('listening', () => {
+  port=server.address().port;origin=`http://127.0.0.1:${port}`;
   fs.mkdirSync(runtime, { recursive: true });
   if (!process.env.ISP_NO_DISCOVERY) publishConnection();
   console.log(`ISP Block Maker → ${origin}\nWorkspace: ${workspace}`);
 });
+server.listen(port, '127.0.0.1');
 async function shutdown() {
   clearInterval(terminalStatusTimer);
   await sharedTerminals.close();
